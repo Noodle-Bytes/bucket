@@ -70,3 +70,10 @@ which processes a readout. Writers may for example:
 Accessors provide an API on top of readouts to access to data in a hierarchical
 object form, this can be useful for some writers (particularly those for displaying
 data to humans).
+
+---
+<br>
+
+Prev: [Exporting and merging coverage](export_and_merge.md)
+<br>
+---: [Back to index](index.md)

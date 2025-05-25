@@ -90,6 +90,6 @@ Each of the axis columns and goal names can be filtered to only display the buck
 ---
 <br>
 
-Prev: [Export and merge](export_and_merge.md)
+Prev: [Reading and Writing](reading_and_writing.md)
 <br>
 ---: [Back to index](index.md)
