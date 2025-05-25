@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
 from typing import Any, Iterable, NamedTuple, Protocol
 
@@ -119,6 +119,8 @@ class BucketHitTuple(NamedTuple):
 
 ###############################################################################
 # Inferface definitions
+# The Reading interface is intended to be easy to implement and provide
+# consistent low-level access to data.
 ###############################################################################
 
 
@@ -166,7 +168,314 @@ class Writer(Protocol):
     Writers write to a backend from a reading.
     """
 
-    def write(self, reading) -> Any: ...
+    def write(self, reading: Reading) -> Any: ...
+
+
+###############################################################################
+# Accessors
+# Accessors provide a human friendly interface to Readings, similarly to an ORM
+# (object-relational mapper).
+###############################################################################
+
+
+class CoverageAccess:
+    """
+    Provides a human friendly interface to a reading.
+    """
+
+    def __init__(self, reading: "Reading"):
+        self._reading = reading
+
+    def points(self) -> Iterable["PointAccess"]:
+        for point, point_hit in zip(self.raw_points(), self.raw_point_hits()):
+            yield PointAccess(self, point, point_hit)
+
+    def raw_points(
+        self, start: int = 0, end: int | None = None, depth: int = 0
+    ) -> Iterable[PointTuple]:
+        yield from self._reading.iter_points(start, end, depth)
+
+    def raw_point_hits(
+        self, start: int = 0, end: int | None = None, depth: int = 0
+    ) -> Iterable[PointHitTuple]:
+        yield from self._reading.iter_point_hits(start, end, depth)
+
+    def raw_axes(self, start: int = 0, end: int | None = None) -> Iterable[AxisTuple]:
+        yield from self._reading.iter_axes(start, end)
+
+    def raw_goals(self, start: int = 0, end: int | None = None) -> Iterable[GoalTuple]:
+        yield from self._reading.iter_goals(start, end)
+
+    def raw_axis_values(
+        self, start: int = 0, end: int | None = None
+    ) -> Iterable[AxisValueTuple]:
+        yield from self._reading.iter_axis_values(start, end)
+
+    def raw_bucket_goals(
+        self, start: int = 0, end: int | None = None
+    ) -> Iterable[BucketGoalTuple]:
+        yield from self._reading.iter_bucket_goals(start, end)
+
+    def raw_bucket_hits(
+        self, start: int = 0, end: int | None = None
+    ) -> Iterable[BucketHitTuple]:
+        yield from self._reading.iter_bucket_hits(start, end)
+
+
+class PointAccess:
+    def __init__(
+        self, coverage: CoverageAccess, point: PointTuple, point_hit: PointHitTuple
+    ):
+        self._coverage = coverage
+        self._point = point
+        self._point_hit = point_hit
+
+    @property
+    def name(self) -> str:
+        return self._point.name
+
+    @property
+    def description(self) -> str:
+        return self._point.description
+
+    @property
+    def is_group(self) -> bool:
+        return self._point.end != self._point.start + 1
+
+    @property
+    def hits(self) -> int:
+        return self._point_hit.hits
+
+    @property
+    def target(self) -> int:
+        return self._point.target
+
+    @property
+    def hit_ratio(self) -> float:
+        if self.target > 0:
+            return self.hits / self.target
+        return 1
+
+    @property
+    def hit_percent(self) -> str:
+        return f"{self.hit_ratio*100:.2f}%"
+
+    @property
+    def bucket_hits(self) -> int:
+        return self._point_hit.hit_buckets
+
+    @property
+    def bucket_target(self) -> int:
+        return self._point.target_buckets
+
+    @property
+    def buckets_full(self) -> int:
+        return self._point_hit.full_buckets
+
+    @property
+    def bucket_hit_ratio(self) -> float:
+        if self.bucket_target == 0:
+            return 1
+        return self.bucket_hits / self.bucket_target
+
+    @property
+    def bucket_full_ratio(self) -> float:
+        if self.bucket_target == 0:
+            return 1
+        return self.buckets_full / self.bucket_target
+
+    @property
+    def buckets_hit_percent(self) -> str:
+        return f"{self.hit_ratio*100:.2f}%"
+
+    @property
+    def buckets_full_percent(self) -> str:
+        return f"{self.hit_ratio*100:.2f}%"
+
+    def axes(self) -> Iterable["AxisAccess"]:
+        for axis in self._coverage.raw_axes(
+            self._point.axis_start, self._point.axis_end
+        ):
+            yield AxisAccess(self, axis)
+
+    def goals(self) -> Iterable["GoalAccess"]:
+        for goal in self._coverage.raw_goals(
+            self._point.goal_start, self._point.goal_end
+        ):
+            yield GoalAccess(self, goal)
+
+    def buckets(self) -> Iterable["BucketAccess"]:
+        goals = list(self.goals())
+        axis_values = list(
+            self._coverage.raw_axis_values(
+                self._point.axis_value_start, self._point.axis_value_end
+            )
+        )
+        axes = list(self.axes())
+        axes.reverse()
+
+        for bucket_goal, bucket_hit in zip(
+            self._coverage.raw_bucket_goals(
+                self._point.bucket_start, self._point.bucket_end
+            ),
+            self._coverage.raw_bucket_hits(
+                self._point.bucket_start, self._point.bucket_end
+            ),
+        ):
+            # Find the offset of the bucket within the coverpoint
+            offset = bucket_goal.start - self._point.bucket_start
+            bucket_axis_values = {}
+
+            # We're now getting the axis values from the bucket index.
+            #
+            # The axis values are in a flat list ordered by axis:
+            #
+            #   axis_value | axis  value_in_axis
+            #   0          | 0     0
+            #   1          | 0     1
+            #   2          | 0     2
+            #   3          | 1     0
+            #   4          | 1     1
+            #
+            # The buckets are in a flat list ordered by axis combination, such that the last
+            # axis changes most frequently.
+            #
+            #   bucket | axis_0 axis_1
+            #   0      | 0      0
+            #   1      | 0      1
+            #   2      | 1      0
+            #   3      | 1      1
+            #   4      | 2      0
+            #   5      | 2      1
+            #
+            # To find the axis value for each axis from the bucket, we go through the axes
+            # from last to first, finding the axis position and size within the axis values,
+            # and the bucket index offset within each axis. # The '%' and '//=' operators here
+            # are used to align the offset within the values for an axis.
+            for axis in axes:
+                axis_offset = axis.value_start - self._point.axis_value_start
+                axis_size = axis.value_end - axis.value_start
+
+                value = axis_values[axis_offset + (offset % (axis_size))].value
+
+                bucket_axis_values[axis.name] = value
+                offset //= axis_size
+
+            yield BucketAccess(
+                self,
+                goals[bucket_goal.goal - self._point.goal_start],
+                bucket_axis_values,
+                bucket_hit,
+            )
+
+
+class AxisAccess:
+    def __init__(self, point: PointAccess, axis: AxisTuple):
+        self._point = point
+        self._axis = axis
+
+    def point(self) -> PointAccess:
+        return self._point
+
+    @property
+    def name(self) -> str:
+        return self._axis.name
+
+    @property
+    def description(self) -> str:
+        return self._axis.description
+
+    @property
+    def start(self) -> int:
+        return self._axis.start
+
+    @property
+    def value_start(self) -> int:
+        return self._axis.value_start
+
+    @property
+    def value_end(self) -> int:
+        return self._axis.value_end
+
+
+class GoalAccess:
+    def __init__(self, point: PointAccess, goal: GoalTuple):
+        self._point = point
+        self._goal = goal
+
+    def point(self) -> PointAccess:
+        return self._point
+
+    @property
+    def start(self) -> int:
+        return self._goal.start
+
+    @property
+    def name(self) -> str:
+        return self._goal.name
+
+    @property
+    def description(self) -> str:
+        return self._goal.description
+
+    @property
+    def target(self) -> int:
+        return self._goal.target
+
+
+class BucketAccess:
+    def __init__(
+        self,
+        point: PointAccess,
+        goal: GoalAccess,
+        axis_values: dict[str, str],
+        bucket_hit: BucketHitTuple,
+    ):
+        self._point = point
+        self._goal = goal
+        self._axis_values = axis_values
+        self._bucket_hit = bucket_hit
+
+    def point(self) -> PointAccess:
+        return self._point
+
+    def goal(self) -> GoalAccess:
+        return self._goal
+
+    def axis_value(self, name: str) -> str:
+        return self._axis_values[name]
+
+    @property
+    def start(self) -> int:
+        return self._bucket_hit.start
+
+    @property
+    def target(self) -> int:
+        return self._goal.target
+
+    @property
+    def hits(self) -> int:
+        return self._bucket_hit.hits
+
+    @property
+    def hit_ratio(self) -> float:
+        if self.target > 0:
+            return min(self.target, self.hits) / self.target
+        # Illegal or ignore
+        return 0
+
+    @property
+    def hit_percent(self) -> str:
+        if self.target > 0:
+            return f"{self.hit_ratio*100:.2f}%"
+        if self.target == 0:
+            return "-"
+        if self.target < 0:
+            return "!" if self.hits else "-"
+
+    @property
+    def is_legal(self):
+        return self.target >= 0
 
 
 ###############################################################################

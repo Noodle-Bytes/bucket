@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Vypercore. All Rights Reserved
+# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
 import logging
 import random
@@ -84,7 +84,8 @@ def run_testbench(
     # Create a context specific hash
     # This is stored alongside recorded coverage and is used to determine if
     # coverage is valid to merge.
-    context_hash = Repo().head.object.hexsha
+    # Note repo path set explicitely here as otherwise it will use the cwd.
+    context_hash = Repo(Path(__file__).parent.parent).head.object.hexsha
 
     # Create a reader
     point_reader = PointReader(context_hash)
