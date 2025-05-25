@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
 import json
 from pathlib import Path
@@ -12,7 +12,7 @@ from .common import (
     GoalTuple,
     PointHitTuple,
     PointTuple,
-    Reading,
+    Readout,
     Writer,
 )
 
@@ -54,17 +54,17 @@ class JSONWriter(Writer):
         with self.path.open("w") as f:
             json.dump(data, f)
 
-    def write(self, reading: Reading):
+    def write(self, readout: Readout):
         with self.path.open("r") as f:
             data = json.load(f)
 
             definition = {
-                "sha": reading.get_def_sha(),
-                "point": [list(it) for it in reading.iter_points()],
-                "axis": [list(it) for it in reading.iter_axes()],
-                "axis_value": [list(it) for it in reading.iter_axis_values()],
-                "goal": [list(it) for it in reading.iter_goals()],
-                "bucket_goal": [list(it) for it in reading.iter_bucket_goals()],
+                "sha": readout.get_def_sha(),
+                "point": [list(it) for it in readout.iter_points()],
+                "axis": [list(it) for it in readout.iter_axes()],
+                "axis_value": [list(it) for it in readout.iter_axis_values()],
+                "goal": [list(it) for it in readout.iter_goals()],
+                "bucket_goal": [list(it) for it in readout.iter_bucket_goals()],
             }
 
             definition_id = len(data["definitions"])
@@ -73,8 +73,8 @@ class JSONWriter(Writer):
             record = {
                 "def": definition_id,
                 "sha": "",
-                "point_hit": [list(it) for it in reading.iter_point_hits()],
-                "bucket_hit": [list(it) for it in reading.iter_bucket_hits()],
+                "point_hit": [list(it) for it in readout.iter_point_hits()],
+                "bucket_hit": [list(it) for it in readout.iter_bucket_hits()],
             }
 
             record_id = len(data["records"])

@@ -1,6 +1,6 @@
 <!--
   ~ SPDX-License-Identifier: MIT
-  ~ Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+  ~ Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
   -->
 NOTE: THIS PAGE IS BEING UPDATED
 
@@ -22,10 +22,10 @@ At the end of a simulation, the recorded coverage should be exported for later r
         context_hash = Repo().head.object.hexsha
 
         # Collect coverage
-        reading = PointReader(context_hash).read(self.my_cvg)
+        readout = PointReader(context_hash).read(self.my_cvg)
 
         # Write out to file
-        SQLAccessor.File("test_2356.db").write(reading)
+        SQLAccessor.File("test_2356.db").write(readout)
 
 ```
 ---

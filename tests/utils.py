@@ -13,13 +13,13 @@ from bucket.rw.common import (
     GoalTuple,
     PointHitTuple,
     PointTuple,
-    PuppetReading,
+    PuppetReadout,
 )
 
 
-class GeneratedReading(PuppetReading):
+class GeneratedReadout(PuppetReadout):
     """
-    A reading for a generated tree of coverpoints containing arbitrary data.
+    A readout for a generated tree of coverpoints containing arbitrary data.
     """
 
     def __init__(

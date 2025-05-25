@@ -1,13 +1,13 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+ * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
  */
 
 import { LayoutOutlined, TableOutlined } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode, View } from "./tree";
 
 export type PointData = {
-    reading: Reading;
+    readout: Readout;
     point: PointTuple;
     point_hit: PointHitTuple;
 };
@@ -15,15 +15,15 @@ export type PointData = {
 export type PointNode = TreeNode<PointData>;
 
 export default class CoverageTree extends Tree<PointData> {
-    static fromReadings(readings: Reading[]): CoverageTree {
+    static fromReadouts(readouts: Readout[]): CoverageTree {
         // Record the tree and stack of current ancestors
         const tree: TreeNode[] = [];
         const stack: TreeNode[] = [];
 
-        for (const [i, reading] of readings.entries()) {
+        for (const [i, readout] of readouts.entries()) {
             // Iterate over the points, building up a tree
-            const point_hits = reading.iter_point_hits();
-            for (const point of reading.iter_points()) {
+            const point_hits = readout.iter_point_hits();
+            for (const point of readout.iter_points()) {
                 const point_hit = point_hits.next().value;
 
                 const dataNode: TreeNode<PointData> = {
@@ -31,7 +31,7 @@ export default class CoverageTree extends Tree<PointData> {
                     key: `${i}-${point.start}-${point.end}`,
                     children: [],
                     data: {
-                        reading,
+                        readout,
                         point,
                         point_hit,
                     },

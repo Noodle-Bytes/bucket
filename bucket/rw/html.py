@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
 import os
 import shlex
@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from .common import Reading, Writer
+from .common import Readout, Writer
 from .json import JSONWriter
 
 
@@ -36,21 +36,21 @@ class HTMLWriter(Writer):
                 "    see https://docs.npmjs.com/downloading-and-installing-node-js-and-npm"
             )
 
-    def write(self, reading: Reading | list[Reading]):
+    def write(self, readout: Readout | list[Readout]):
         if self.written:
             raise RuntimeError(
                 "A new HTMLWriter instance is required for each `write(...)`"
             )
 
-        if not isinstance(reading, list):
-            reading = [reading]
+        if not isinstance(readout, list):
+            readout = [readout]
 
         with tempfile.TemporaryDirectory() as tmp:
             json_path = Path(tmp) / "cov.json"
             html_path = Path(tmp) / "index.html"
             json_writer = JSONWriter(json_path)
-            for a_reading in reading:
-                json_writer.write(a_reading)
+            for a_readout in readout:
+                json_writer.write(a_readout)
 
             process_env = os.environ.copy()
             process_env["BUCKET_CVG_JSON"] = json_path.as_posix()

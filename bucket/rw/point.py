@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
 from ..axis import Axis
 from ..covergroup import CoverBase
@@ -13,7 +13,7 @@ from .common import (
     GoalTuple,
     PointHitTuple,
     PointTuple,
-    PuppetReading,
+    PuppetReadout,
     Reader,
 )
 
@@ -27,15 +27,15 @@ class PointReader(Reader):
         self._rec_sha = context_sha
 
     def read(self, point):
-        reading = PuppetReading()
+        readout = PuppetReadout()
 
         chain = point._chain_def()
-        reading.def_sha = chain.end.sha.hexdigest()
-        reading.rec_sha = self._rec_sha
+        readout.def_sha = chain.end.sha.hexdigest()
+        readout.rec_sha = self._rec_sha
         for point_link in sorted(
             chain.index.iter(CoverBase), key=lambda link: (link.start.point, link.depth)
         ):
-            reading.points.append(PointTuple.from_link(point_link))
+            readout.points.append(PointTuple.from_link(point_link))
 
             if isinstance(point_link.item, Coverpoint):
                 start = point_link.start.bucket
@@ -47,18 +47,18 @@ class PointReader(Reader):
                     bg_tuple = BucketGoalTuple(
                         start=(start + offset), goal=(goal_start + goal_offsets[goal])
                     )
-                    reading.bucket_goals.append(bg_tuple)
+                    readout.bucket_goals.append(bg_tuple)
 
         for axis_link in chain.index.iter(Axis):
-            reading.axes.append(AxisTuple.from_link(axis_link))
+            readout.axes.append(AxisTuple.from_link(axis_link))
 
             start = axis_link.start.axis_value
             for offset, axis_value in enumerate(axis_link.item.values.keys()):
                 av_tuple = AxisValueTuple(start=(start + offset), value=axis_value)
-                reading.axis_values.append(av_tuple)
+                readout.axis_values.append(av_tuple)
 
         for goal_link in chain.index.iter(GoalItem):
-            reading.goals.append(GoalTuple.from_link(goal_link))
+            readout.goals.append(GoalTuple.from_link(goal_link))
 
         self.point = point
         chain = self.point._chain_run()
@@ -66,12 +66,12 @@ class PointReader(Reader):
         for point_link in sorted(
             chain.index.iter(CoverBase), key=lambda link: (link.start.point, link.depth)
         ):
-            reading.point_hits.append(PointHitTuple.from_link(point_link))
+            readout.point_hits.append(PointHitTuple.from_link(point_link))
 
             if isinstance(point_link.item, Coverpoint):
                 start = point_link.start.bucket
                 for offset, hits in enumerate(point_link.item._bucket_hits()):
                     bh_tuple = BucketHitTuple(start=(start + offset), hits=hits)
-                    reading.bucket_hits.append(bh_tuple)
+                    readout.bucket_hits.append(bh_tuple)
 
-        return reading
+        return readout

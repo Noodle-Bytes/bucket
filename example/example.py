@@ -8,7 +8,7 @@ from pathlib import Path
 from git.repo import Repo
 
 from bucket import CoverageContext
-from bucket.rw import ConsoleWriter, HTMLWriter, MergeReading, PointReader, SQLAccessor
+from bucket.rw import ConsoleWriter, HTMLWriter, MergeReadout, PointReader, SQLAccessor
 
 from .common import CatInfo, DogInfo, MadeUpStuff, PetInfo
 from .top import TopPets
@@ -91,13 +91,13 @@ def run_testbench(
     point_reader = PointReader(context_hash)
 
     # Read the coverage
-    reading = point_reader.read(cvg)
+    readout = point_reader.read(cvg)
 
     # Create/Access a local sql database
     sql_accessor = SQLAccessor.File(db_path)
 
-    # Write the reading into the database
-    rec_ref = sql_accessor.write(reading)
+    # Write the readout into the database
+    rec_ref = sql_accessor.write(readout)
 
     # Output to console
     if apply_filters_and_logging:
@@ -107,7 +107,7 @@ def run_testbench(
     log.info(
         f"To view this coverage in detail please run: python -m bucket write console --sql-path example_file_store.db --points --record {rec_ref}"
     )
-    ConsoleWriter().write(reading)
+    ConsoleWriter().write(readout)
     log.info("-------------------------------------------------------")
 
     if apply_filters_and_logging:
@@ -133,32 +133,32 @@ def merge(log, regr_db_path, merged_db_path, ref_1, ref_2):
     m_sql_accessor = SQLAccessor.File(merged_db_path)
 
     # Read back from sql
-    sql_reading_1 = r_sql_accessor.read(ref_1)
-    sql_reading_2 = r_sql_accessor.read(ref_2)
+    sql_readout_1 = r_sql_accessor.read(ref_1)
+    sql_readout_2 = r_sql_accessor.read(ref_2)
 
     # Merge together
-    merged_reading = MergeReading(sql_reading_1, sql_reading_2)
+    merged_readout = MergeReadout(sql_readout_1, sql_readout_2)
 
     # Write merged coverage into the merged database
-    rec_ref_merged = m_sql_accessor.write(merged_reading)
+    rec_ref_merged = m_sql_accessor.write(merged_readout)
 
     log.info("This is the merged coverage from the above 2 regressions.")
     log.info(
         f"To view this coverage in detail please run: python -m bucket write console --sql-path example_file_store.db --points --record {rec_ref_merged}"
     )
-    ConsoleWriter().write(merged_reading)
+    ConsoleWriter().write(merged_readout)
     log.info("-------------------------------------------------------")
 
     # Read all back from sql - note as the db is not removed this will
     # accumulate each time this example is run. This will also include
     # merged data as well as the individual runs. It is meant as an example
     # of how to use the command
-    merged_reading_all = MergeReading(*r_sql_accessor.read_all())
+    merged_readout_all = MergeReadout(*r_sql_accessor.read_all())
     log.info("This is the coverage from all the regression data so far:")
     log.info(
         f"(To reset please delete the files '{regr_db_path}' and '{merged_db_path}')"
     )
-    ConsoleWriter().write(merged_reading_all)
+    ConsoleWriter().write(merged_readout_all)
     log.info("-------------------------------------------------------")
 
     # Generating web viewer
@@ -166,7 +166,7 @@ def merge(log, regr_db_path, merged_db_path, ref_1, ref_2):
     # python -m bucket write html --sql-path ./example_file_store.db --output index.html
     log.info("Generating the web viewer for all coverage")
     try:
-        HTMLWriter().write(merged_reading_all)
+        HTMLWriter().write(merged_readout_all)
         log.info("To see the coverage in your browser open: index.html")
     except Exception:
         log.error("Web viewer failed")

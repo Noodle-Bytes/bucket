@@ -3,18 +3,18 @@
 
 import pytest
 
-from bucket.rw.common import CoverageAccess, MergeReading, PuppetReading
+from bucket.rw.common import CoverageAccess, MergeReadout, PuppetReadout
 
-from ..utils import GeneratedReading
+from ..utils import GeneratedReadout
 
 
 class TestCommon:
-    def test_full_reading(self):
+    def test_full_readout(self):
         """
-        Tests correct results for a uniform generated reading where every
+        Tests correct results for a uniform generated readout where every
         bucket is fully hit
         """
-        reading = GeneratedReading(
+        readout = GeneratedReadout(
             min_goals=(goals := 3),
             max_goals=goals,
             min_axes=(axes := 3),
@@ -30,7 +30,7 @@ class TestCommon:
             group_initial_chance=0,
         )
 
-        cov = CoverageAccess(reading)
+        cov = CoverageAccess(readout)
 
         axis_start = 0
         goal_start = 0
@@ -75,12 +75,12 @@ class TestCommon:
             assert point.buckets_full_percent == "100.00%"
             assert point.buckets_hit_percent == "100.00%"
 
-    def test_half_reading(self):
+    def test_half_readout(self):
         """
-        Tests correct results for a uniform generated reading where every
+        Tests correct results for a uniform generated readout where every
         bucket is exactly half hit
         """
-        reading = GeneratedReading(
+        readout = GeneratedReadout(
             min_goals=(goals := 3),
             max_goals=goals,
             min_axes=(axes := 3),
@@ -96,7 +96,7 @@ class TestCommon:
             group_initial_chance=0,
         )
 
-        cov = CoverageAccess(reading)
+        cov = CoverageAccess(readout)
 
         axis_start = 0
         goal_start = 0
@@ -138,12 +138,12 @@ class TestCommon:
             assert point.buckets_full_percent == "0.00%"
             assert point.buckets_hit_percent == "100.00%"
 
-    def test_mixed_reading(self):
+    def test_mixed_readout(self):
         """
         Tests that results fall within expected bounds for randomly generated
-        reading.
+        readout.
         """
-        reading = GeneratedReading(
+        readout = GeneratedReadout(
             min_goals=(min_goals := 1),
             max_goals=(max_goals := 3),
             min_axes=(min_axes := 1),
@@ -158,7 +158,7 @@ class TestCommon:
             max_points=10,
         )
 
-        cov = CoverageAccess(reading)
+        cov = CoverageAccess(readout)
 
         axis_start = 0
         goal_start = 0
@@ -215,8 +215,8 @@ class TestCommon:
         """
         Tests specific point edge cases
         """
-        reading = GeneratedReading(min_target=-1, max_target=0, root_is_point=True)
-        cov = CoverageAccess(reading)
+        readout = GeneratedReadout(min_target=-1, max_target=0, root_is_point=True)
+        cov = CoverageAccess(readout)
         points = list(cov.points())
         assert len(points) == 1
         for point in points:
@@ -231,30 +231,30 @@ class TestCommon:
 
     def test_unset_sha(self):
         """
-        Tests getting sha from uninitialized puppet reading
+        Tests getting sha from uninitialized puppet readout
         """
-        reading = PuppetReading()
+        readout = PuppetReadout()
         with pytest.raises(RuntimeError):
-            reading.get_def_sha()
+            readout.get_def_sha()
         with pytest.raises(RuntimeError):
-            reading.get_rec_sha()
+            readout.get_rec_sha()
 
     def test_illegal_merge(self):
         """
         Tests merging incompatable coverage
         """
-        reading_a = GeneratedReading(def_seed=1, rec_seed=1)
-        reading_b = GeneratedReading(def_seed=1, rec_seed=2)
-        reading_c = GeneratedReading(def_seed=2, rec_seed=1)
+        readout_a = GeneratedReadout(def_seed=1, rec_seed=1)
+        readout_b = GeneratedReadout(def_seed=1, rec_seed=2)
+        readout_c = GeneratedReadout(def_seed=2, rec_seed=1)
 
         # Match
-        MergeReading(reading_a, reading_b)
+        MergeReadout(readout_a, readout_b)
 
         # Def mismatch
         with pytest.raises(RuntimeError):
-            MergeReading(reading_a, reading_c)
+            MergeReadout(readout_a, readout_c)
 
         # Rec mismatch
-        reading_b.rec_sha += "_"
+        readout_b.rec_sha += "_"
         with pytest.raises(RuntimeError):
-            MergeReading(reading_a, reading_b)
+            MergeReadout(readout_a, readout_b)

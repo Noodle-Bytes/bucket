@@ -119,14 +119,14 @@ class BucketHitTuple(NamedTuple):
 
 ###############################################################################
 # Interface definitions
-# The Reading interface is intended to be easy to implement and provide
+# The Readout interface is intended to be easy to implement and provide
 # consistent low-level access to data.
 ###############################################################################
 
 
-class Reading(Protocol):
+class Readout(Protocol):
     """
-    Readings allow us to access coverage from a record consistently, without
+    Readouts allow us to access coverage from a record consistently, without
     having to worry about the storage backend.
     """
 
@@ -157,34 +157,34 @@ class Reading(Protocol):
 
 class Reader(Protocol):
     """
-    Readers read from a backend to produce readings.
+    Readers read from a backend to produce readouts.
     """
 
-    def read(self, rec_ref) -> Reading: ...
+    def read(self, rec_ref) -> Readout: ...
 
 
 class Writer(Protocol):
     """
-    Writers write to a backend from a reading.
+    Writers write to a backend from a readout.
     """
 
-    def write(self, reading: Reading) -> Any: ...
+    def write(self, readout: Readout) -> Any: ...
 
 
 ###############################################################################
 # Accessors
-# Accessors provide a human friendly interface to Readings, similarly to an ORM
+# Accessors provide a human friendly interface to Readouts, similarly to an ORM
 # (object-relational mapper).
 ###############################################################################
 
 
 class CoverageAccess:
     """
-    Provides a human friendly interface to a reading.
+    Provides a human friendly interface to a readout.
     """
 
-    def __init__(self, reading: "Reading"):
-        self._reading = reading
+    def __init__(self, readout: "Readout"):
+        self._readout = readout
 
     def points(self) -> Iterable["PointAccess"]:
         for point, point_hit in zip(self.raw_points(), self.raw_point_hits()):
@@ -193,33 +193,33 @@ class CoverageAccess:
     def raw_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
     ) -> Iterable[PointTuple]:
-        yield from self._reading.iter_points(start, end, depth)
+        yield from self._readout.iter_points(start, end, depth)
 
     def raw_point_hits(
         self, start: int = 0, end: int | None = None, depth: int = 0
     ) -> Iterable[PointHitTuple]:
-        yield from self._reading.iter_point_hits(start, end, depth)
+        yield from self._readout.iter_point_hits(start, end, depth)
 
     def raw_axes(self, start: int = 0, end: int | None = None) -> Iterable[AxisTuple]:
-        yield from self._reading.iter_axes(start, end)
+        yield from self._readout.iter_axes(start, end)
 
     def raw_goals(self, start: int = 0, end: int | None = None) -> Iterable[GoalTuple]:
-        yield from self._reading.iter_goals(start, end)
+        yield from self._readout.iter_goals(start, end)
 
     def raw_axis_values(
         self, start: int = 0, end: int | None = None
     ) -> Iterable[AxisValueTuple]:
-        yield from self._reading.iter_axis_values(start, end)
+        yield from self._readout.iter_axis_values(start, end)
 
     def raw_bucket_goals(
         self, start: int = 0, end: int | None = None
     ) -> Iterable[BucketGoalTuple]:
-        yield from self._reading.iter_bucket_goals(start, end)
+        yield from self._readout.iter_bucket_goals(start, end)
 
     def raw_bucket_hits(
         self, start: int = 0, end: int | None = None
     ) -> Iterable[BucketHitTuple]:
-        yield from self._reading.iter_bucket_hits(start, end)
+        yield from self._readout.iter_bucket_hits(start, end)
 
 
 class PointAccess:
@@ -479,13 +479,13 @@ class BucketAccess:
 
 
 ###############################################################################
-# Utility readings
+# Utility readouts
 ###############################################################################
 
 
-class PuppetReading(Reading):
+class PuppetReadout(Readout):
     """
-    Utility reading which stores coverage information directly rather than
+    Utility readout which stores coverage information directly rather than
     acting as an interface to other storage.
     """
 
@@ -546,13 +546,13 @@ class PuppetReading(Reading):
         yield from self.bucket_hits[start:end]
 
 
-class MergeReading(Reading):
+class MergeReadout(Readout):
     """
-    Utility reading which merges data from other readings. It takes one master
-    reading, which all others must match.
+    Utility readout which merges data from other readouts. It takes one master
+    readout, which all others must match.
     """
 
-    def __init__(self, master: Reading, *others: Reading):
+    def __init__(self, master: Readout, *others: Readout):
         super().__init__()
         self.master = master
 
@@ -631,23 +631,23 @@ class MergeReading(Reading):
                 full_buckets=full_buckets,
             )
 
-    def merge(self, *readings: Reading):
+    def merge(self, *readouts: Readout):
         """
-        Merge additional readings post init
+        Merge additional readouts post init
         """
         master_def_sha = self.get_def_sha()
         master_rec_sha = self.get_rec_sha()
 
-        for reading in readings:
-            if reading.get_def_sha() != master_def_sha:
+        for readout in readouts:
+            if readout.get_def_sha() != master_def_sha:
                 raise RuntimeError(
                     "Tried to merge coverage with two different definition hashes!"
                 )
 
-            if reading.get_rec_sha() != master_rec_sha:
+            if readout.get_rec_sha() != master_rec_sha:
                 raise RuntimeError(
                     "Tried to merge coverage with two different record hashes!"
                 )
 
-            for bucket_hit in reading.iter_bucket_hits():
+            for bucket_hit in readout.iter_bucket_hits():
                 self.bucket_hits[bucket_hit.start] += bucket_hit.hits

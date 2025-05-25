@@ -4,7 +4,7 @@
 from rich.console import Console
 from rich.table import Column, Table
 
-from .common import CoverageAccess, Reading, Writer
+from .common import CoverageAccess, Readout, Writer
 
 
 class ConsoleWriter(Writer):
@@ -18,7 +18,7 @@ class ConsoleWriter(Writer):
         self.write_points = points
         self.write_summary = summary
 
-    def write(self, reading: Reading):
+    def write(self, readout: Readout):
         summary_table_columns = [
             Column("Name", justify="left", style="cyan", no_wrap=True),
             Column("Description", justify="left", style="cyan", no_wrap=True),
@@ -42,7 +42,7 @@ class ConsoleWriter(Writer):
             Column("Goal Description", justify="left", style="cyan", no_wrap=True),
         ]
 
-        coverage = CoverageAccess(reading)
+        coverage = CoverageAccess(readout)
 
         for point in coverage.points():
             summary_table.add_row(

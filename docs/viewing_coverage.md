@@ -1,6 +1,6 @@
 <!--
   ~ SPDX-License-Identifier: MIT
-  ~ Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+  ~ Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
   -->
 
 ## Viewing coverage
@@ -16,8 +16,8 @@ Bucket is able to print both a summary, or whole tables of coverage collected du
 
 ```Python
     ...
-    reading_a = point_reader.read(cvg_a)
-    ConsoleWriter().write(reading_a)
+    readout_a = point_reader.read(cvg_a)
+    ConsoleWriter().write(readout_a)
     ...
 ```
 

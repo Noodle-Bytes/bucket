@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
 from pathlib import Path
 
@@ -36,9 +36,9 @@ def cli(ctx, web_path):
 )
 def merge(sql_paths: tuple[Path], output: Path):
     output_accessor = SQLAccessor.File(output)
-    merged_reading = SQLAccessor.merge_files(*sql_paths)
-    if merged_reading:
-        output_accessor.write(merged_reading)
+    merged_readout = SQLAccessor.merge_files(*sql_paths)
+    if merged_readout:
+        output_accessor.write(merged_readout)
 
 
 @cli.group()
@@ -65,11 +65,11 @@ def html(ctx, sql_path: Path, output: Path, record: int | None):
     web_path = ctx.obj["web_path"]
     writer = HTMLWriter(web_path, output)
     if record is None:
-        readings = list(SQLAccessor.File(sql_path).read_all())
-        writer.write(readings)
+        readouts = list(SQLAccessor.File(sql_path).read_all())
+        writer.write(readouts)
     else:
-        reading = SQLAccessor.File(sql_path).read(record)
-        writer.write(reading)
+        readout = SQLAccessor.File(sql_path).read(record)
+        writer.write(readout)
 
 
 @write.command()
@@ -94,11 +94,11 @@ def console(
 ):
     writer = ConsoleWriter(axes=axes, goals=goals, points=points, summary=summary)
     if record is None:
-        for reading in SQLAccessor.File(sql_path).read_all():
-            writer.write(reading)
+        for readout in SQLAccessor.File(sql_path).read_all():
+            writer.write(readout)
     else:
-        reading = SQLAccessor.File(sql_path).read(record)
-        writer.write(reading)
+        readout = SQLAccessor.File(sql_path).read(record)
+        writer.write(readout)
 
 
 if __name__ == "__main__":
