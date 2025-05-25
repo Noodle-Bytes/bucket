@@ -1,6 +1,6 @@
 <!--
   ~ SPDX-License-Identifier: MIT
-  ~ Copyright (c) 2023-2025 Vypercore. All Rights Reserved
+  ~ Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
   -->
 
 # Getting Started:
@@ -22,6 +22,7 @@ Below describes how to use Bucket to create a coverage tree, sample your data an
 5. [Adding coverage to the testbench](add_to_testbench.md)
 6. [Exporting and merging coverage](export_and_merge.md)
 7. [Viewing coverage](viewing_coverage.md)
+8. [Reading and Writing](readers_and_writers.md)
 
 
 ---
