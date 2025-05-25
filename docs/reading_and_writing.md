@@ -76,4 +76,4 @@ data to humans).
 
 Prev: [Exporting and merging coverage](export_and_merge.md)
 <br>
----: [Back to index](index.md)
+Next: [Viewing coverage](viewing_coverage.md)

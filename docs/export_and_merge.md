@@ -46,4 +46,4 @@ This merged coverage will then be ready for viewing.
 
 Prev: [Adding coverage to the testbench](add_to_testbench.md)
 <br>
-Next: [Viewing coverage](viewing_coverage.md)
+Next: [Reading and Writing](reading_and_writing.md)

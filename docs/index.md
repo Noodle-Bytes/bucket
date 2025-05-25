@@ -21,7 +21,7 @@ Below describes how to use Bucket to create a coverage tree, sample your data an
 4. [Covertop](covertop.md)
 5. [Adding coverage to the testbench](add_to_testbench.md)
 6. [Exporting and merging coverage](export_and_merge.md)
-7. [Reading and Writing](readers_and_writers.md)
+7. [Reading and Writing](reading_and_writing.md)
 8. [Viewing coverage](viewing_coverage.md)
 
 
