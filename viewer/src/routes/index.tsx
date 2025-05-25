@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+ * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
  */
 
 import { useRoutes } from "react-router-dom";
@@ -17,7 +17,7 @@ function getDefaultTree() {
     } catch (error) {
         return new CoverageTree(treeMock);
     }
-    return CoverageTree.fromReadings(Array.from(new JSONReader(coverageJSON).read_all()));
+    return CoverageTree.fromReadouts(Array.from(new JSONReader(coverageJSON).read_all()));
 }
 
 export const AppRoutes = () => {

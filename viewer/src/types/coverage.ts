@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+ * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
  */
 
 type PointTuple = {
@@ -59,7 +59,7 @@ type BucketHitTuple = {
     hits: number;
 };
 
-type Reading = {
+type Readout = {
     get_def_sha: () => string;
     get_rec_sha: () => string;
     iter_points: (
@@ -89,6 +89,6 @@ type Reading = {
 };
 
 type Reader = {
-    read: (recordId: number) => Reading;
-    read_all: () => Generator<Reading>;
+    read: (recordId: number) => Readout;
+    read_all: () => Generator<Readout>;
 }

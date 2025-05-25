@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
 from pathlib import Path
 from typing import Iterable, overload
@@ -13,12 +13,12 @@ from .common import (
     BucketGoalTuple,
     BucketHitTuple,
     GoalTuple,
-    MergeReading,
+    MergeReadout,
     PointHitTuple,
     PointTuple,
-    PuppetReading,
+    PuppetReadout,
     Reader,
-    Reading,
+    Readout,
     Writer,
 )
 
@@ -160,27 +160,27 @@ class SQLWriter(Writer):
     def __init__(self, engine):
         self.engine = engine
 
-    def write(self, reading: Reading):
+    def write(self, readout: Readout):
         with Session(self.engine) as self.session:
             # Write the definition out
-            def_row = DefinitionRow(sha=reading.get_def_sha())
+            def_row = DefinitionRow(sha=readout.get_def_sha())
             self.session.add(def_row)
             self.session.commit()
             def_ref = def_row.definition
 
-            for point in reading.iter_points():
+            for point in readout.iter_points():
                 self.session.add(PointRow.from_tuple(def_ref, point))
 
-            for axis in reading.iter_axes():
+            for axis in readout.iter_axes():
                 self.session.add(AxisRow.from_tuple(def_ref, axis))
 
-            for axis_value in reading.iter_axis_values():
+            for axis_value in readout.iter_axis_values():
                 self.session.add(AxisValueRow.from_tuple(def_ref, axis_value))
 
-            for goal in reading.iter_goals():
+            for goal in readout.iter_goals():
                 self.session.add(GoalRow.from_tuple(def_ref, goal))
 
-            for bucket_goal in reading.iter_bucket_goals():
+            for bucket_goal in readout.iter_bucket_goals():
                 self.session.add(BucketGoalRow.from_tuple(def_ref, bucket_goal))
 
             rec_row = RunRow(definition=def_ref, sha="")
@@ -188,10 +188,10 @@ class SQLWriter(Writer):
             self.session.commit()
             rec_ref = rec_row.run
 
-            for point_hit in reading.iter_point_hits():
+            for point_hit in readout.iter_point_hits():
                 self.session.add(PointHitRow.from_tuple(rec_ref, point_hit))
 
-            for bucket_hit in reading.iter_bucket_hits():
+            for bucket_hit in readout.iter_bucket_hits():
                 self.session.add(BucketHitRow.from_tuple(rec_ref, bucket_hit))
 
             self.session.commit()
@@ -208,17 +208,17 @@ class SQLReader(Reader):
         self.engine = engine
 
     def read(self, rec_ref: int):
-        reading = PuppetReading()
+        readout = PuppetReadout()
 
         with Session(self.engine) as session:
             rec_st = select(RunRow).where(RunRow.run == rec_ref)
             rec_row = session.scalars(rec_st).one()
-            reading.rec_sha = rec_row.sha
+            readout.rec_sha = rec_row.sha
             def_ref = rec_row.definition
 
             def_st = select(DefinitionRow).where(DefinitionRow.definition == def_ref)
             def_row = session.scalars(def_st).one()
-            reading.def_sha = def_row.sha
+            readout.def_sha = def_row.sha
 
             point_st = (
                 select_tup(PointRow)
@@ -247,19 +247,19 @@ class SQLReader(Reader):
             )
 
             for point_row in session.execute(point_st).all():
-                reading.points.append(PointTuple(*point_row[1:]))
+                readout.points.append(PointTuple(*point_row[1:]))
 
             for axis_row in session.execute(axis_st).all():
-                reading.axes.append(AxisTuple(*axis_row[1:]))
+                readout.axes.append(AxisTuple(*axis_row[1:]))
 
             for axis_value_row in session.execute(axis_value_st).all():
-                reading.axis_values.append(AxisValueTuple(*axis_value_row[1:]))
+                readout.axis_values.append(AxisValueTuple(*axis_value_row[1:]))
 
             for goal_row in session.execute(goal_st).all():
-                reading.goals.append(GoalTuple(*goal_row[1:]))
+                readout.goals.append(GoalTuple(*goal_row[1:]))
 
             for bucket_goal_row in session.execute(bucket_goal_st).all():
-                reading.bucket_goals.append(BucketGoalTuple(*bucket_goal_row[1:]))
+                readout.bucket_goals.append(BucketGoalTuple(*bucket_goal_row[1:]))
 
             point_hit_st = (
                 select_tup(PointHitRow)
@@ -273,14 +273,14 @@ class SQLReader(Reader):
             )
 
             for point_hit_row in session.execute(point_hit_st).all():
-                reading.point_hits.append(PointHitTuple(*point_hit_row[1:]))
+                readout.point_hits.append(PointHitTuple(*point_hit_row[1:]))
 
             for bucket_hit_row in session.execute(bucket_hit_st).all():
-                reading.bucket_hits.append(BucketHitTuple(*bucket_hit_row[1:]))
+                readout.bucket_hits.append(BucketHitTuple(*bucket_hit_row[1:]))
 
-        return reading
+        return readout
 
-    def read_all(self) -> Iterable[Reading]:
+    def read_all(self) -> Iterable[Readout]:
         with Session(self.engine) as session:
             for rec_row in session.scalars(select(RunRow)).all():
                 yield self.read(rec_row.run)
@@ -302,11 +302,11 @@ class SQLAccessor(Reader, Writer):
     def read(self, rec_ref):
         return SQLReader(self.engine).read(rec_ref)
 
-    def read_all(self) -> Iterable[Reading]:
+    def read_all(self) -> Iterable[Readout]:
         yield from SQLReader(self.engine).read_all()
 
-    def write(self, reading: Reading):
-        return SQLWriter(self.engine).write(reading)
+    def write(self, readout: Readout):
+        return SQLWriter(self.engine).write(readout)
 
     @overload
     @classmethod
@@ -318,13 +318,13 @@ class SQLAccessor(Reader, Writer):
     def merge_files(cls, *db_paths):
         if len(db_paths) == 1 and not isinstance(db_paths[0], (str, Path)):
             db_paths = db_paths[0]
-        merged_reading = None
+        merged_readout = None
         for db_path in db_paths:
             sql_accessor = cls.File(db_path)
-            reading_iter = iter(sql_accessor.read_all())
-            if merged_reading is None:
-                if (first_reading := next(reading_iter, None)) is None:
+            readout_iter = iter(sql_accessor.read_all())
+            if merged_readout is None:
+                if (first_readout := next(readout_iter, None)) is None:
                     continue
-                merged_reading = MergeReading(first_reading)
-            merged_reading.merge(*reading_iter)
-        return merged_reading
+                merged_readout = MergeReadout(first_readout)
+            merged_readout.merge(*readout_iter)
+        return merged_readout

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
 from typing import Any, Iterable, NamedTuple, Protocol
 
@@ -118,13 +118,15 @@ class BucketHitTuple(NamedTuple):
 
 
 ###############################################################################
-# Inferface definitions
+# Interface definitions
+# The Readout interface is intended to be easy to implement and provide
+# consistent low-level access to data.
 ###############################################################################
 
 
-class Reading(Protocol):
+class Readout(Protocol):
     """
-    Readings allow us to access coverage from a record consistently, without
+    Readouts allow us to access coverage from a record consistently, without
     having to worry about the storage backend.
     """
 
@@ -155,28 +157,335 @@ class Reading(Protocol):
 
 class Reader(Protocol):
     """
-    Readers read from a backend to produce readings.
+    Readers read from a backend to produce readouts.
     """
 
-    def read(self, rec_ref) -> Reading: ...
+    def read(self, rec_ref) -> Readout: ...
 
 
 class Writer(Protocol):
     """
-    Writers write to a backend from a reading.
+    Writers write to a backend from a readout.
     """
 
-    def write(self, reading) -> Any: ...
+    def write(self, readout: Readout) -> Any: ...
 
 
 ###############################################################################
-# Utility readings
+# Accessors
+# Accessors provide a human friendly interface to Readouts, similarly to an ORM
+# (object-relational mapper).
 ###############################################################################
 
 
-class PuppetReading(Reading):
+class CoverageAccess:
     """
-    Utility reading which stores coverage information directly rather than
+    Provides a human friendly interface to a readout.
+    """
+
+    def __init__(self, readout: "Readout"):
+        self._readout = readout
+
+    def points(self) -> Iterable["PointAccess"]:
+        for point, point_hit in zip(self.raw_points(), self.raw_point_hits()):
+            yield PointAccess(self, point, point_hit)
+
+    def raw_points(
+        self, start: int = 0, end: int | None = None, depth: int = 0
+    ) -> Iterable[PointTuple]:
+        yield from self._readout.iter_points(start, end, depth)
+
+    def raw_point_hits(
+        self, start: int = 0, end: int | None = None, depth: int = 0
+    ) -> Iterable[PointHitTuple]:
+        yield from self._readout.iter_point_hits(start, end, depth)
+
+    def raw_axes(self, start: int = 0, end: int | None = None) -> Iterable[AxisTuple]:
+        yield from self._readout.iter_axes(start, end)
+
+    def raw_goals(self, start: int = 0, end: int | None = None) -> Iterable[GoalTuple]:
+        yield from self._readout.iter_goals(start, end)
+
+    def raw_axis_values(
+        self, start: int = 0, end: int | None = None
+    ) -> Iterable[AxisValueTuple]:
+        yield from self._readout.iter_axis_values(start, end)
+
+    def raw_bucket_goals(
+        self, start: int = 0, end: int | None = None
+    ) -> Iterable[BucketGoalTuple]:
+        yield from self._readout.iter_bucket_goals(start, end)
+
+    def raw_bucket_hits(
+        self, start: int = 0, end: int | None = None
+    ) -> Iterable[BucketHitTuple]:
+        yield from self._readout.iter_bucket_hits(start, end)
+
+
+class PointAccess:
+    def __init__(
+        self, coverage: CoverageAccess, point: PointTuple, point_hit: PointHitTuple
+    ):
+        self._coverage = coverage
+        self._point = point
+        self._point_hit = point_hit
+
+    @property
+    def name(self) -> str:
+        return self._point.name
+
+    @property
+    def description(self) -> str:
+        return self._point.description
+
+    @property
+    def is_group(self) -> bool:
+        return self._point.end != self._point.start + 1
+
+    @property
+    def hits(self) -> int:
+        return self._point_hit.hits
+
+    @property
+    def target(self) -> int:
+        return self._point.target
+
+    @property
+    def hit_ratio(self) -> float:
+        if self.target > 0:
+            return self.hits / self.target
+        return 1
+
+    @property
+    def hit_percent(self) -> str:
+        return f"{self.hit_ratio*100:.2f}%"
+
+    @property
+    def bucket_hits(self) -> int:
+        return self._point_hit.hit_buckets
+
+    @property
+    def bucket_target(self) -> int:
+        return self._point.target_buckets
+
+    @property
+    def buckets_full(self) -> int:
+        return self._point_hit.full_buckets
+
+    @property
+    def bucket_hit_ratio(self) -> float:
+        if self.bucket_target == 0:
+            return 1
+        return self.bucket_hits / self.bucket_target
+
+    @property
+    def bucket_full_ratio(self) -> float:
+        if self.bucket_target == 0:
+            return 1
+        return self.buckets_full / self.bucket_target
+
+    @property
+    def buckets_hit_percent(self) -> str:
+        return f"{self.bucket_hit_ratio*100:.2f}%"
+
+    @property
+    def buckets_full_percent(self) -> str:
+        return f"{self.bucket_full_ratio*100:.2f}%"
+
+    def axes(self) -> Iterable["AxisAccess"]:
+        for axis in self._coverage.raw_axes(
+            self._point.axis_start, self._point.axis_end
+        ):
+            yield AxisAccess(self, axis)
+
+    def goals(self) -> Iterable["GoalAccess"]:
+        for goal in self._coverage.raw_goals(
+            self._point.goal_start, self._point.goal_end
+        ):
+            yield GoalAccess(self, goal)
+
+    def buckets(self) -> Iterable["BucketAccess"]:
+        goals = list(self.goals())
+        axis_values = list(
+            self._coverage.raw_axis_values(
+                self._point.axis_value_start, self._point.axis_value_end
+            )
+        )
+        axes = list(self.axes())
+        axes.reverse()
+
+        for bucket_goal, bucket_hit in zip(
+            self._coverage.raw_bucket_goals(
+                self._point.bucket_start, self._point.bucket_end
+            ),
+            self._coverage.raw_bucket_hits(
+                self._point.bucket_start, self._point.bucket_end
+            ),
+        ):
+            # Find the offset of the bucket within the coverpoint
+            offset = bucket_goal.start - self._point.bucket_start
+            bucket_axis_values = {}
+
+            # We're now getting the axis values from the bucket index.
+            #
+            # The axis values are in a flat list ordered by axis:
+            #
+            #   axis_value | axis  value_in_axis
+            #   0          | 0     0
+            #   1          | 0     1
+            #   2          | 0     2
+            #   3          | 1     0
+            #   4          | 1     1
+            #
+            # The buckets are in a flat list ordered by axis combination, such that the last
+            # axis changes most frequently.
+            #
+            #   bucket | axis_0 axis_1
+            #   0      | 0      0
+            #   1      | 0      1
+            #   2      | 1      0
+            #   3      | 1      1
+            #   4      | 2      0
+            #   5      | 2      1
+            #
+            # To find the axis value for each axis from the bucket, we go through the axes
+            # from last to first, finding the axis position and size within the axis values,
+            # and the bucket index offset within each axis. # The '%' and '//=' operators here
+            # are used to align the offset within the values for an axis.
+            for axis in axes:
+                axis_offset = axis.value_start - self._point.axis_value_start
+                axis_size = axis.value_end - axis.value_start
+
+                value = axis_values[axis_offset + (offset % (axis_size))].value
+
+                bucket_axis_values[axis.name] = value
+                offset //= axis_size
+
+            yield BucketAccess(
+                self,
+                goals[bucket_goal.goal - self._point.goal_start],
+                bucket_axis_values,
+                bucket_hit,
+            )
+
+
+class AxisAccess:
+    def __init__(self, point: PointAccess, axis: AxisTuple):
+        self._point = point
+        self._axis = axis
+
+    def point(self) -> PointAccess:
+        return self._point
+
+    @property
+    def name(self) -> str:
+        return self._axis.name
+
+    @property
+    def description(self) -> str:
+        return self._axis.description
+
+    @property
+    def start(self) -> int:
+        return self._axis.start
+
+    @property
+    def value_start(self) -> int:
+        return self._axis.value_start
+
+    @property
+    def value_end(self) -> int:
+        return self._axis.value_end
+
+
+class GoalAccess:
+    def __init__(self, point: PointAccess, goal: GoalTuple):
+        self._point = point
+        self._goal = goal
+
+    def point(self) -> PointAccess:
+        return self._point
+
+    @property
+    def start(self) -> int:
+        return self._goal.start
+
+    @property
+    def name(self) -> str:
+        return self._goal.name
+
+    @property
+    def description(self) -> str:
+        return self._goal.description
+
+    @property
+    def target(self) -> int:
+        return self._goal.target
+
+
+class BucketAccess:
+    def __init__(
+        self,
+        point: PointAccess,
+        goal: GoalAccess,
+        axis_values: dict[str, str],
+        bucket_hit: BucketHitTuple,
+    ):
+        self._point = point
+        self._goal = goal
+        self._axis_values = axis_values
+        self._bucket_hit = bucket_hit
+
+    def point(self) -> PointAccess:
+        return self._point
+
+    def goal(self) -> GoalAccess:
+        return self._goal
+
+    def axis_value(self, name: str) -> str:
+        return self._axis_values[name]
+
+    @property
+    def start(self) -> int:
+        return self._bucket_hit.start
+
+    @property
+    def target(self) -> int:
+        return self._goal.target
+
+    @property
+    def hits(self) -> int:
+        return self._bucket_hit.hits
+
+    @property
+    def hit_ratio(self) -> float:
+        if self.target > 0:
+            return min(self.target, self.hits) / self.target
+        # Illegal or ignore
+        return 0
+
+    @property
+    def hit_percent(self) -> str:
+        if self.target > 0:
+            return f"{self.hit_ratio*100:.2f}%"
+        if self.target == 0:
+            return "-"
+        if self.target < 0:
+            return "!" if self.hits else "-"
+
+    @property
+    def is_legal(self):
+        return self.target >= 0
+
+
+###############################################################################
+# Utility readouts
+###############################################################################
+
+
+class PuppetReadout(Readout):
+    """
+    Utility readout which stores coverage information directly rather than
     acting as an interface to other storage.
     """
 
@@ -237,13 +546,13 @@ class PuppetReading(Reading):
         yield from self.bucket_hits[start:end]
 
 
-class MergeReading(Reading):
+class MergeReadout(Readout):
     """
-    Utility reading which merges data from other readings. It takes one master
-    reading, which all others must match.
+    Utility readout which merges data from other readouts. It takes one master
+    readout, which all others must match.
     """
 
-    def __init__(self, master: Reading, *others: Reading):
+    def __init__(self, master: Readout, *others: Readout):
         super().__init__()
         self.master = master
 
@@ -322,23 +631,23 @@ class MergeReading(Reading):
                 full_buckets=full_buckets,
             )
 
-    def merge(self, *readings: Reading):
+    def merge(self, *readouts: Readout):
         """
-        Merge additional readings post init
+        Merge additional readouts post init
         """
         master_def_sha = self.get_def_sha()
         master_rec_sha = self.get_rec_sha()
 
-        for reading in readings:
-            if reading.get_def_sha() != master_def_sha:
+        for readout in readouts:
+            if readout.get_def_sha() != master_def_sha:
                 raise RuntimeError(
                     "Tried to merge coverage with two different definition hashes!"
                 )
 
-            if reading.get_rec_sha() != master_rec_sha:
+            if readout.get_rec_sha() != master_rec_sha:
                 raise RuntimeError(
                     "Tried to merge coverage with two different record hashes!"
                 )
 
-            for bucket_hit in reading.iter_bucket_hits():
+            for bucket_hit in readout.iter_bucket_hits():
                 self.bucket_hits[bucket_hit.start] += bucket_hit.hits

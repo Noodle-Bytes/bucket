@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Vypercore. All Rights Reserved
+# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
 from rich.console import Console
 from rich.table import Column, Table
 
-from .common import Reading, Writer
+from .common import CoverageAccess, Readout, Writer
 
 
 class ConsoleWriter(Writer):
@@ -18,7 +18,7 @@ class ConsoleWriter(Writer):
         self.write_points = points
         self.write_summary = summary
 
-    def write(self, reading: Reading):
+    def write(self, readout: Readout):
         summary_table_columns = [
             Column("Name", justify="left", style="cyan", no_wrap=True),
             Column("Description", justify="left", style="cyan", no_wrap=True),
@@ -42,66 +42,41 @@ class ConsoleWriter(Writer):
             Column("Goal Description", justify="left", style="cyan", no_wrap=True),
         ]
 
-        goals = list(reading.iter_goals())
-        axis_values = list(reading.iter_axis_values())
+        coverage = CoverageAccess(readout)
 
-        for point, point_hit in zip(reading.iter_points(), reading.iter_point_hits()):
-            name = f"{point.depth * '| '}{point.name}"
-            desc = point.description
-            hits = point_hit.hits
-            target = point.target
-            if target == 0:
-                target_percent = 100
-            else:
-                target_percent = (hits / target) * 100
-
-            bucket_hits = point_hit.hit_buckets
-            bucket_target = point.target_buckets
-            buckets_full = point_hit.full_buckets
-            if bucket_target == 0:
-                bucket_target_percent = 100
-                buckets_full_percent = 100
-            else:
-                bucket_target_percent = (bucket_hits / bucket_target) * 100
-                buckets_full_percent = (buckets_full / bucket_target) * 100
-
+        for point in coverage.points():
             summary_table.add_row(
-                name,
-                desc,
-                str(target),
-                str(hits),
-                f"{target_percent:.2f}%",
-                str(bucket_target),
-                str(bucket_hits),
-                str(buckets_full),
-                f"{bucket_target_percent:.2f}%",
-                f"{buckets_full_percent:.2f}%",
+                point.name,
+                point.description,
+                str(point.target),
+                str(point.hits),
+                point.hit_percent,
+                str(point.bucket_target),
+                str(point.bucket_hits),
+                str(point.buckets_full),
+                point.buckets_hit_percent,
+                point.buckets_full_percent,
             )
 
-            if point.end != point.start + 1:
-                # It's a cover group
+            if point.is_group:
+                # Skip groups
                 continue
 
             axis_table = Table("Name", "Description", title=f"{point.name} - Axes")
             if self.write_axes:
                 point_tables.append(axis_table)
 
-            axis_offset_sizes = []
             axis_titles = []
-            for axis in reading.iter_axes(point.axis_start, point.axis_end):
-                axis_offset_sizes.append(
-                    (axis.value_start, axis.value_end - axis.value_start)
-                )
+            for axis in point.axes():
                 axis_table.add_row(axis.name, axis.description)
                 axis_titles.append(axis.name)
-            axis_offset_sizes.reverse()
 
             if self.write_goals:
                 goal_table = Table(
                     "Name", "Description", "Target", title=f"{point.name} - Goals"
                 )
                 point_tables.append(goal_table)
-                for goal in reading.iter_goals(point.goal_start, point.goal_end):
+                for goal in point.goals():
                     goal_table.add_row(goal.name, goal.description, str(goal.target))
 
             if self.write_points:
@@ -112,74 +87,22 @@ class ConsoleWriter(Writer):
                 )
                 point_tables.append(point_table)
 
-                point_bucket_goals = reading.iter_bucket_goals(
-                    point.bucket_start, point.bucket_end
-                )
-                point_bucket_hits = reading.iter_bucket_hits(
-                    point.bucket_start, point.bucket_end
-                )
-                for bucket_goal, bucket_hit in zip(
-                    point_bucket_goals, point_bucket_hits
-                ):
-                    goal = goals[bucket_goal.goal]
-
-                    target = goal.target
-
-                    if target > 0:
-                        hits = bucket_hit.hits
-                        target_percent = f"{(min(target,hits) / target) * 100:.2f}%"
-                    else:
-                        if hits != 0:
-                            print(
-                                f"Expect hits to be zero for ignore/illegal buckets, got {hits}"
-                            )
-                        hits = "-"
-                        target_percent = "-"
+                for bucket in point.buckets():
+                    goal = bucket.goal()
 
                     bucket_columns = []
 
-                    # Find the offset of the bucket within the coverpoint
-                    offset = bucket_goal.start - point.bucket_start
-
-                    # We're now getting the axis values from the bucket index.
-                    #
-                    # The axis values are in a flat list ordered by axis:
-                    #
-                    #   axis_value | axis  value_in_axis
-                    #   0          | 0     0
-                    #   1          | 0     1
-                    #   2          | 0     2
-                    #   3          | 1     0
-                    #   4          | 1     1
-                    #
-                    # The buckets are in a flat list ordered by axis combination, such that the last
-                    # axis changes most frequently.
-                    #
-                    #   bucket | axis_0 axis_1
-                    #   0      | 0      0
-                    #   1      | 0      1
-                    #   2      | 1      0
-                    #   3      | 1      1
-                    #   4      | 2      0
-                    #   5      | 2      1
-                    #
-                    # To find the axis value for each axis from the bucket, we go through the axes
-                    # from last to first, finding the axis position and size within the axis values,
-                    # and the bucket index offset within each axis. # The '%' and '//=' operators here
-                    # are used to align the offset within the values for an axis.
-                    for axis_offset, axis_size in axis_offset_sizes:
-                        bucket_columns.insert(
-                            0, axis_values[axis_offset + (offset % axis_size)].value
-                        )
-                        offset //= axis_size
+                    for axis_title in axis_titles:
+                        bucket_columns.append(bucket.axis_value(axis_title))
 
                     bucket_columns += [
-                        str(hits),
-                        str(target),
-                        target_percent,
+                        str(bucket.hits),
+                        str(bucket.target) if bucket.is_legal else "-",
+                        bucket.hit_percent,
                         goal.name,
                         goal.description,
                     ]
+
                     point_table.add_row(*bucket_columns)
 
         console = Console()

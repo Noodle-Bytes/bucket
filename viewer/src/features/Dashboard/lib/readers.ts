@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+ * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
  */
 
 type JSONDefinition = {
@@ -23,7 +23,7 @@ type JSONData = {
 }
 
 
-export class JSONReading implements Reading {
+export class JSONReadout implements Readout {
     tables: JSONTables;
     definition: JSONDefinition;
     record: JSONRecord;
@@ -105,12 +105,12 @@ export class JSONReader implements Reader {
     read(recordId: number) {
         const record = this.data.records[recordId]
         const definition = this.data.definitions[record.def]
-        return new JSONReading(this.data.tables, definition, record)
+        return new JSONReadout(this.data.tables, definition, record)
     }
     *read_all() {
         for (const record of this.data.records) {
             const definition = this.data.definitions[record.def]
-            yield new JSONReading(this.data.tables, definition, record)
+            yield new JSONReadout(this.data.tables, definition, record)
         }
         return 0;
     }

@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 """
 This file contains utilities to label the bounds of items in a tree structure.
 
 Each node is given start and end bounds such that a child's start bound is
-always >= a parents start bound, a child's end bound is always <= to a
+always >= a parents start bound, a child's end bound is always < a
 parents end bound, and a node's end bound is always > its start bound.
 
 This is done by (starting at the root node):

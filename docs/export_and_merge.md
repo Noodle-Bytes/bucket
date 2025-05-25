@@ -1,6 +1,6 @@
 <!--
   ~ SPDX-License-Identifier: MIT
-  ~ Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+  ~ Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
   -->
 NOTE: THIS PAGE IS BEING UPDATED
 
@@ -22,10 +22,10 @@ At the end of a simulation, the recorded coverage should be exported for later r
         context_hash = Repo().head.object.hexsha
 
         # Collect coverage
-        reading = PointReader(context_hash).read(self.my_cvg)
+        readout = PointReader(context_hash).read(self.my_cvg)
 
         # Write out to file
-        SQLAccessor.File("test_2356.db").write(reading)
+        SQLAccessor.File("test_2356.db").write(readout)
 
 ```
 ---
@@ -46,4 +46,4 @@ This merged coverage will then be ready for viewing.
 
 Prev: [Adding coverage to the testbench](add_to_testbench.md)
 <br>
-Next: [Viewing coverage](viewing_coverage.md)
+Next: [Reading and Writing](reading_and_writing.md)

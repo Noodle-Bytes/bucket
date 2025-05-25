@@ -1,6 +1,6 @@
 <!--
   ~ SPDX-License-Identifier: MIT
-  ~ Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+  ~ Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
   -->
 
 ## Viewing coverage
@@ -16,8 +16,8 @@ Bucket is able to print both a summary, or whole tables of coverage collected du
 
 ```Python
     ...
-    reading_a = point_reader.read(cvg_a)
-    ConsoleWriter().write(reading_a)
+    readout_a = point_reader.read(cvg_a)
+    ConsoleWriter().write(readout_a)
     ...
 ```
 
@@ -90,6 +90,6 @@ Each of the axis columns and goal names can be filtered to only display the buck
 ---
 <br>
 
-Prev: [Export and merge](export_and_merge.md)
+Prev: [Reading and Writing](reading_and_writing.md)
 <br>
 ---: [Back to index](index.md)

@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2025 Vypercore. All Rights Reserved
+ * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
  */
 
 import CoverageTree, { PointNode } from "./coveragetree";
@@ -135,7 +135,7 @@ function getColumnNumCompare(columnKey: string) {
 
 export function PointGrid({node}: PointGridProps) {
     const pointData = node.data;
-    const reading = pointData.reading;
+    const readout = pointData.readout;
     let dataSource: {}[] = [];
     const {
         axis_start,
@@ -148,17 +148,17 @@ export function PointGrid({node}: PointGridProps) {
         goal_end,
     } = pointData.point;
     const axes = Array.from(
-        pointData.reading.iter_axes(axis_start, axis_end),
+        pointData.readout.iter_axes(axis_start, axis_end),
     );
 
     const axis_values = Array.from(
-        pointData.reading.iter_axis_values(
+        pointData.readout.iter_axis_values(
             axis_value_start,
             axis_value_end,
         ),
     );
     const goals = Array.from(
-        pointData.reading.iter_goals(goal_start, goal_end),
+        pointData.readout.iter_goals(goal_start, goal_end),
     );
 
     const getColumns = (theme: ThemeType): TableProps['columns'] => [
@@ -265,8 +265,8 @@ export function PointGrid({node}: PointGridProps) {
     ]
 
 
-    const bucket_hits = reading.iter_bucket_hits(bucket_start, bucket_end);
-    for (const bucket_goal of reading.iter_bucket_goals(
+    const bucket_hits = readout.iter_bucket_hits(bucket_start, bucket_end);
+    for (const bucket_goal of readout.iter_bucket_goals(
         bucket_start,
         bucket_end,
     )) {
