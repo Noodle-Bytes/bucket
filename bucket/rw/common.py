@@ -118,7 +118,7 @@ class BucketHitTuple(NamedTuple):
 
 
 ###############################################################################
-# Inferface definitions
+# Interface definitions
 # The Reading interface is intended to be easy to implement and provide
 # consistent low-level access to data.
 ###############################################################################
@@ -286,11 +286,11 @@ class PointAccess:
 
     @property
     def buckets_hit_percent(self) -> str:
-        return f"{self.hit_ratio*100:.2f}%"
+        return f"{self.bucket_hit_ratio*100:.2f}%"
 
     @property
     def buckets_full_percent(self) -> str:
-        return f"{self.hit_ratio*100:.2f}%"
+        return f"{self.bucket_full_ratio*100:.2f}%"
 
     def axes(self) -> Iterable["AxisAccess"]:
         for axis in self._coverage.raw_axes(

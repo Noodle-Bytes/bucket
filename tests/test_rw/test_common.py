@@ -11,7 +11,7 @@ from ..utils import GeneratedReading
 class TestCommon:
     def test_full_reading(self):
         """
-        Tests correct results for a uniform generated reading where every"
+        Tests correct results for a uniform generated reading where every
         bucket is fully hit
         """
         reading = GeneratedReading(
@@ -77,7 +77,7 @@ class TestCommon:
 
     def test_half_reading(self):
         """
-        Tests correct results for a uniform generated reading where every"
+        Tests correct results for a uniform generated reading where every
         bucket is exactly half hit
         """
         reading = GeneratedReading(
@@ -135,8 +135,8 @@ class TestCommon:
             assert point.bucket_full_ratio == 0
             assert point.bucket_hit_ratio == 1
             assert point.hit_ratio == 0.5
-            assert point.buckets_full_percent == "50.00%"
-            assert point.buckets_hit_percent == "50.00%"
+            assert point.buckets_full_percent == "0.00%"
+            assert point.buckets_hit_percent == "100.00%"
 
     def test_mixed_reading(self):
         """
