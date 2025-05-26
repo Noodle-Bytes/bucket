@@ -8,6 +8,7 @@ import { Table, TableProps } from "antd";
 import { view } from "../theme";
 import { TreeKey } from "./tree";
 import {Theme as ThemeType} from "@/theme";
+import { natCompare, numCompare } from "./compare";
 import Color from "colorjs.io";
 import Theme from "@/providers/Theme";
 
@@ -61,72 +62,10 @@ function getCoverageColumnConfig(theme: ThemeType, columnKey: string) {
     }
 }
 
-/**
- * Splits strings into alpha and numeric portions before comparison
- * and tries to treat the numeric portions as numbers.
- */
-function naturalCompare(a: String | Number, b: String | Number) {
-    const num_regex = /(\d+\.?\d*)/g
-    const aParts = a.toString().split(num_regex);
-    const bParts = b.toString().split(num_regex);
-    while (true) {
-        const aPart = aParts.shift();
-        const bPart = bParts.shift();
-
-        if (aPart === undefined || bPart === undefined) {
-            if (aPart !== undefined) {
-                return 1;
-            }
-            if (bPart !== undefined) {
-                return -1;
-            }
-            return NaN;
-        }
-
-        const numCompare = Number.parseInt(aPart) - Number.parseInt(bPart);
-        if (!Number.isNaN(numCompare) && numCompare != 0) {
-            return numCompare;
-        }
-        const strCompare = aPart.localeCompare(bPart);
-        if (strCompare != 0) {
-            return strCompare;
-        }
-    }
-}
-
 function getColumnMixedCompare(columnKey: string) {
-    return (a:any,b:any) => naturalCompare(a[columnKey], b[columnKey]);
+    return (a:any,b:any) => natCompare(a[columnKey], b[columnKey]);
 }
 
-function numCompare(a: number, b: number) {
-    const rel = a - b;
-    if (Number.isFinite(rel) && (a !== 0 || b !== 0)) {
-        return rel;
-    }
-
-    const aIsNaN = Number.isNaN(a);
-    const bIsNaN = Number.isNaN(b);
-
-    if (aIsNaN && bIsNaN) {
-        return 0;
-    } else if (aIsNaN) {
-        return -1;
-    } else if (bIsNaN) {
-        return 1;
-    }
-
-    const aIsNeg0 = Object.is(a, -0);
-    const bIsNeg0 = Object.is(b, -0);
-
-    if (aIsNeg0 && bIsNeg0) {
-        return 0;
-    } else if (aIsNeg0) {
-        return -1;
-    } else if (bIsNeg0) {
-        return 1;
-    }
-    return 0;
-}
 
 function getColumnNumCompare(columnKey: string) {
     return (a:any,b:any) => numCompare(a[columnKey], b[columnKey]);
