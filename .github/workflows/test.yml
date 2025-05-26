@@ -46,5 +46,7 @@ jobs:
           cache-dependency-path: ./viewer/package-lock.json
 
       - name: Run tests
-        run: |
-          npm test
+        run: npm install --dev
+
+      - name: Run tests
+        run: npm test
