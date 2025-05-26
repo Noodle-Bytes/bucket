@@ -3,6 +3,8 @@
 
 name: Tests
 on: pull_request
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -45,7 +47,7 @@ jobs:
           node-version-file: ./viewer/package.json
           cache-dependency-path: ./viewer/package-lock.json
 
-      - name: Run tests
+      - name: Install dependencies
         run: npm install --dev
 
       - name: Run tests
