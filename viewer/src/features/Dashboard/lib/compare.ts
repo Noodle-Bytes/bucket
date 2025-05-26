@@ -64,7 +64,6 @@ export function numCompare(a: number, b: number): number {
     const aIsNeg0 = Object.is(a, -0);
     const bIsNeg0 = Object.is(b, -0);
 
-    console.log("Comparing -0 and 0", a, b, aIsNeg0, bIsNeg0);
     if (aIsNeg0 && bIsNeg0) {
         return 0;
     } else if (aIsNeg0) {
