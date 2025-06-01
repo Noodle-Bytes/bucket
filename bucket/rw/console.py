@@ -12,11 +12,19 @@ class ConsoleWriter(Writer):
     Write coverage information out to the terminal using Rich.
     """
 
-    def __init__(self, axes=False, goals=False, points=False, summary=True):
+    def __init__(
+        self,
+        axes=False,
+        goals=False,
+        points=False,
+        summary=True,
+        console: Console | None = None,
+    ):
         self.write_axes = axes
         self.write_goals = goals
         self.write_points = points
         self.write_summary = summary
+        self.console = console or Console()
 
     def write(self, readout: Readout):
         summary_table_columns = [
@@ -51,8 +59,8 @@ class ConsoleWriter(Writer):
                 str(point.target),
                 str(point.hits),
                 point.hit_percent,
-                str(point.bucket_target),
-                str(point.bucket_hits),
+                str(point.buckets_targetted),
+                str(point.buckets_hit),
                 str(point.buckets_full),
                 point.buckets_hit_percent,
                 point.buckets_full_percent,
@@ -105,8 +113,7 @@ class ConsoleWriter(Writer):
 
                     point_table.add_row(*bucket_columns)
 
-        console = Console()
         for point_table in point_tables:
-            console.print(point_table)
+            self.console.print(point_table)
         if self.write_summary:
-            console.print(summary_table)
+            self.console.print(summary_table)

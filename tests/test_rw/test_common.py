@@ -61,12 +61,12 @@ class TestCommon:
                     assert bucket.start == bucket_start
                     bucket_start += 1
 
-                assert point.bucket_hits == axis_values**axes
-                assert point.bucket_target == axis_values**axes
+                assert point.buckets_hit == axis_values**axes
+                assert point.buckets_targetted == axis_values**axes
                 assert point.buckets_full == axis_values**axes
             else:
-                assert point.bucket_hits == points * (axis_values**axes)
-                assert point.bucket_target == points * (axis_values**axes)
+                assert point.buckets_hit == points * (axis_values**axes)
+                assert point.buckets_targetted == points * (axis_values**axes)
                 assert point.buckets_full == points * (axis_values**axes)
 
             assert point.bucket_full_ratio == 1
@@ -124,12 +124,12 @@ class TestCommon:
                     assert bucket.start == bucket_start
                     bucket_start += 1
 
-                assert point.bucket_hits == axis_values**axes
-                assert point.bucket_target == axis_values**axes
+                assert point.buckets_hit == axis_values**axes
+                assert point.buckets_targetted == axis_values**axes
                 assert point.buckets_full == 0
             else:
-                assert point.bucket_hits == points * (axis_values**axes)
-                assert point.bucket_target == points * (axis_values**axes)
+                assert point.buckets_hit == points * (axis_values**axes)
+                assert point.buckets_targetted == points * (axis_values**axes)
                 assert point.buckets_full == 0
 
             assert point.bucket_full_ratio == 0
@@ -198,12 +198,12 @@ class TestCommon:
                 )
                 assert (
                     min_hits * bucket_count
-                    <= point.bucket_hits
+                    <= point.buckets_hit
                     <= max_hits * bucket_count
                 )
                 assert (
                     min_target * bucket_count
-                    <= point.bucket_target
+                    <= point.buckets_targetted
                     <= max_target * bucket_count
                 )
 
