@@ -4,7 +4,7 @@ build-backend = "poetry.masonry.api"
 
 [tool.poetry]
 name = "bucket"
-version = "0.1"
+version = "2.1.2"
 description = "Python functional coverage"
 authors = [
     "Stuart Alldred <stuartalldred@gmail.com>",
