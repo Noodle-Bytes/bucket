@@ -2,6 +2,7 @@
 # Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
 from io import StringIO
+from typing import Iterator
 
 from rich.console import Console
 
@@ -24,17 +25,23 @@ def check_text(
 ):
     lines = iter(text.splitlines())
 
+    def next_row(lines_iter: Iterator[str]) -> str:
+        """
+        Skip to the next non-header table row.
+        """
+        while True:
+            line = next(lines_iter)
+            # skip headers etc
+            if line.startswith("│") and line.endswith("│"):
+                return line
+
     for point in cov.points():
         if point.is_group:
             continue
 
         if axes:
             for axis in point.axes():
-                # strip headers etc
-                while True:
-                    line = next(lines)
-                    if line.startswith("│") and line.endswith("│"):
-                        break
+                line = next_row(lines)
 
                 start = 0
                 for column_value in [axis.name, axis.description]:
@@ -42,11 +49,7 @@ def check_text(
 
         if goals:
             for goal in point.goals():
-                # strip headers etc
-                while True:
-                    line = next(lines)
-                    if line.startswith("│") and line.endswith("│"):
-                        break
+                line = next_row(lines)
 
                 start = 0
                 for column_value in [goal.name, goal.description, str(goal.target)]:
@@ -55,11 +58,7 @@ def check_text(
         if points:
             point_axes = list(point.axes())
             for bucket in point.buckets():
-                # strip headers etc
-                while True:
-                    line = next(lines)
-                    if line.startswith("│") and line.endswith("│"):
-                        break
+                line = next_row(lines)
 
                 start = 0
                 goal = bucket.goal()
@@ -82,11 +81,7 @@ def check_text(
 
     if summary:
         for point in cov.points():
-            # strip headers etc
-            while True:
-                line = next(lines)
-                if line.startswith("│") and line.endswith("│"):
-                    break
+            line = next_row(lines)
 
             column_values = map(
                 str,
