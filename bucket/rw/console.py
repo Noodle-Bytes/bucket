@@ -59,7 +59,7 @@ class ConsoleWriter(Writer):
                 str(point.target),
                 str(point.hits),
                 point.hit_percent,
-                str(point.buckets_targetted),
+                str(point.buckets_targeted),
                 str(point.buckets_hit),
                 str(point.buckets_full),
                 point.buckets_hit_percent,

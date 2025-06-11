@@ -96,7 +96,7 @@ def check_text(
                     point.target,
                     point.hits,
                     point.hit_percent,
-                    point.buckets_targetted,
+                    point.buckets_targeted,
                     point.buckets_hit,
                     point.buckets_full,
                     point.buckets_hit_percent,
