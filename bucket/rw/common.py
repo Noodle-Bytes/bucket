@@ -261,11 +261,11 @@ class PointAccess:
         return f"{self.hit_ratio*100:.2f}%"
 
     @property
-    def bucket_hits(self) -> int:
+    def buckets_hit(self) -> int:
         return self._point_hit.hit_buckets
 
     @property
-    def bucket_target(self) -> int:
+    def buckets_targeted(self) -> int:
         return self._point.target_buckets
 
     @property
@@ -274,15 +274,15 @@ class PointAccess:
 
     @property
     def bucket_hit_ratio(self) -> float:
-        if self.bucket_target == 0:
+        if self.buckets_targeted == 0:
             return 1
-        return self.bucket_hits / self.bucket_target
+        return self.buckets_hit / self.buckets_targeted
 
     @property
     def bucket_full_ratio(self) -> float:
-        if self.bucket_target == 0:
+        if self.buckets_targeted == 0:
             return 1
-        return self.buckets_full / self.bucket_target
+        return self.buckets_full / self.buckets_targeted
 
     @property
     def buckets_hit_percent(self) -> str:
