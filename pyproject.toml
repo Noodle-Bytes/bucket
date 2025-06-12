@@ -5,7 +5,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry]
 name = "bucket"
 version = "2.1.3"
-description = "Functional coverage written in python"
+description = "Functional coverage written in Python"
 authors = [
     "Stuart Alldred <stuartalldred@gmail.com>",
     "Edward Kotarski <edktrsk@gmail.com>",
