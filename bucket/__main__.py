@@ -5,6 +5,8 @@ from pathlib import Path
 
 import click
 
+from bucket.rw.json import JSONWriter
+
 from .rw import ConsoleWriter, HTMLWriter, SQLAccessor
 
 
@@ -57,7 +59,6 @@ def write():
 @click.option(
     "--output",
     help="Path to output the HTML report",
-    required=True,
     type=click.Path(path_type=Path),
 )
 @click.option("--record", default=None, type=click.INT)
@@ -67,6 +68,29 @@ def html(ctx, sql_path: Path, output: Path, record: int | None):
     if record is None:
         readouts = list(SQLAccessor.File(sql_path).read_all())
         writer.write(readouts)
+    else:
+        readout = SQLAccessor.File(sql_path).read(record)
+        writer.write(readout)
+
+
+@write.command()
+@click.option(
+    "--sql-path",
+    help="Path to an SQL db file",
+    required=True,
+    type=click.Path(exists=True, readable=True, path_type=Path),
+)
+@click.option(
+    "--output",
+    help="Path to output the JSON",
+    type=click.Path(path_type=Path),
+)
+@click.option("--record", default=None, type=click.INT)
+def json(sql_path: Path, output: Path, record: int | None):
+    writer = JSONWriter(output)
+    if record is None:
+        for readout in SQLAccessor.File(sql_path).read_all():
+            writer.write(readout)
     else:
         readout = SQLAccessor.File(sql_path).read(record)
         writer.write(readout)
