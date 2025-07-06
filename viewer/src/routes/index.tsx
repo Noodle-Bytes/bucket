@@ -7,7 +7,7 @@ import { useRoutes } from "react-router-dom";
 import Dashboard from "@/features/Dashboard";
 import CoverageTree from "@/features/Dashboard/lib/coveragetree";
 import treeMock from "@/features/Dashboard/test/mocks/tree";
-import { JSONReader } from "@/features/Dashboard/lib/readers";
+import { readFileHandle, JSONReader } from "@/features/Dashboard/lib/readers";
 import { useEffect, useState } from "react";
 
 function getDefaultTree() {
@@ -28,17 +28,14 @@ export const AppRoutes = () => {
     useEffect(() => {
         if ("launchQueue" in window) {
             launchQueue.setConsumer(async (launchParams) => {
-                for (const file of launchParams.files as FileSystemHandle[]) {
-                    const fr = new FileReader();
-
-                    const fl = await file.getFile();
-                    fr.addEventListener("load", e => {
-                        const json = JSON.parse(e.target.result)
-                        const tree = CoverageTree.fromReadouts(Array.from(new JSONReader(json).read_all()));
-                        setTree(tree)
-                    })
-                    fr.readAsText(fl);
+                const readouts: Readout[] = [];
+                for (const file of launchParams.files as FileSystemFileHandle[]) {
+                    const reader = await readFileHandle(file);
+                    for await (const readout of reader.read_all()) {
+                        readouts.push(readout)
+                    }
                 }
+                setTree(CoverageTree.fromReadouts(readouts));
             });
         }
     }, [])

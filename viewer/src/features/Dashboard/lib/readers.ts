@@ -102,16 +102,41 @@ export class JSONReader implements Reader {
     constructor(data: JSONData) {
         this.data = data;
     }
-    read(recordId: number) {
+    async read(recordId: number) {
         const record = this.data.records[recordId]
         const definition = this.data.definitions[record.def]
         return new JSONReadout(this.data.tables, definition, record)
     }
-    *read_all() {
+    async *read_all() {
         for (const record of this.data.records) {
             const definition = this.data.definitions[record.def]
             yield new JSONReadout(this.data.tables, definition, record)
         }
         return 0;
     }
+}
+
+export async function readFileHandle(file: FileSystemFileHandle): Promise<Reader> {
+
+    if (file.name.endsWith(".json")) {
+       const getJSON = new Promise<string>(async (resolve, reject) => {
+            const fileData = await file.getFile();
+            const reader = new FileReader();
+            reader.addEventListener("load", e => {
+                const result = e.target?.result;
+                if (result === null || result === undefined) {
+                    reject(new Error("Failed to read JSON file"));
+                } else {
+                    resolve(result as string)
+                }
+            });
+            reader.readAsText(fileData);
+        })
+        const json = await getJSON;
+        const data: JSONData = JSON.parse(json);
+        console.log("Read JSON data", data);
+        return new JSONReader(data);
+    }
+    throw new Error("Unsupported file type");
+
 }

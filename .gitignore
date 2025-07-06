@@ -14,3 +14,5 @@ example_file_store.db
 
 # test coverage
 .coverage
+
+dist/

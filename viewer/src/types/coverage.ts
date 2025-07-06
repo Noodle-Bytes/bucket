@@ -89,6 +89,6 @@ type Readout = {
 };
 
 type Reader = {
-    read: (recordId: number) => Readout;
-    read_all: () => Generator<Readout>;
+    read: (recordId: number) => Promise<Readout>;
+    read_all: () => AsyncGenerator<Readout>;
 }
