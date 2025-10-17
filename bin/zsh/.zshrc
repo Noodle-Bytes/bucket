@@ -17,7 +17,7 @@ setopt INC_APPEND_HISTORY
 echo "# Checking Python environment is up-to-date"
 if [ ! -d ".venv" ] || [ ! -f "uv.lock" ]; then
     uv lock
-    uv sync
+    uv sync --extra dev
 fi
 
 # Ensure web environment is installed

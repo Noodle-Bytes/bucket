@@ -34,10 +34,3 @@ bucket = "bucket.__main__:cli"
 [tool.hatch.build.targets.wheel]
 packages = ["bucket"]
 include = ["viewer/**/*"]
-
-[tool.uv]
-dev-dependencies = [
-    "pre-commit>=3.8.0",
-    "pytest>=8.0.1",
-    "pytest-cov>=4.1.0",
-]

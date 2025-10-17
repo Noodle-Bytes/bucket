@@ -23,7 +23,7 @@ jobs:
       - name: Set up uv
         run: |
           python -m pip install --upgrade pip uv
-          uv sync
+          uv sync --extra dev
 
       - name: Run tests
         run: |
