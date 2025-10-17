@@ -13,11 +13,11 @@ export HISTFILE=$USER_HISTFILE
 # Incrementally append to history file
 setopt INC_APPEND_HISTORY
 
-# Ensure poetry environment is installed
+# Ensure uv environment is installed
 echo "# Checking Python environment is up-to-date"
-if ! poetry env info --path >& /dev/null || ! poetry check --quiet; then
-    poetry lock --no-interaction
-    poetry install --quiet --no-root --no-interaction
+if [ ! -d ".venv" ] || [ ! -f "uv.lock" ]; then
+    uv lock
+    uv sync
 fi
 
 # Ensure web environment is installed
@@ -29,10 +29,10 @@ else
     echo "NPM not installed - HTML writer will be disabled. See 'https://docs.npmjs.com/downloading-and-installing-node-js-and-npm'"
 fi
 
-# Activate the poetry shell
+# Activate the uv virtual environment
 echo "# Activating virtual environment"
 export VIRTUAL_ENV_DISABLE_PROMPT=1
-source $(poetry env info --path)/bin/activate
+source .venv/bin/activate
 
 # Install pre-commit
 echo "# Setting up pre-commit hooks"
