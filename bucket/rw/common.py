@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
+from datetime import datetime
 from typing import Any, Iterable, NamedTuple, Protocol
 
 from ..common.chain import Link
@@ -132,6 +133,8 @@ class Readout(Protocol):
 
     def get_def_sha(self) -> str: ...
     def get_rec_sha(self) -> str: ...
+    def get_test_name(self) -> str | None: ...
+    def get_seed(self) -> str | None: ...
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
     ) -> Iterable[PointTuple]: ...
@@ -520,6 +523,8 @@ class PuppetReadout(Readout):
         self.bucket_hits: list[BucketHitTuple] = []
         self.def_sha = None
         self.rec_sha = None
+        self.test_name: str | None = None
+        self.seed: str | None = None
 
     def get_def_sha(self) -> str:
         if self.def_sha is None:
@@ -530,6 +535,12 @@ class PuppetReadout(Readout):
         if self.rec_sha is None:
             raise RuntimeError("rec_sha not set")
         return self.rec_sha
+
+    def get_test_name(self) -> str | None:
+        return self.test_name
+
+    def get_seed(self) -> str | None:
+        return self.seed
 
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
@@ -576,6 +587,8 @@ class MergeReadout(Readout):
     def __init__(self, master: Readout, *others: Readout):
         super().__init__()
         self.master = master
+        self.test_name = f"Merged_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.seed = None
 
         self.bucket_hits: list[int] = []
         for bucket_hit in master.iter_bucket_hits():
@@ -597,6 +610,12 @@ class MergeReadout(Readout):
 
     def get_rec_sha(self) -> str:
         return self.master.get_rec_sha()
+
+    def get_test_name(self) -> str | None:
+        return self.test_name
+
+    def get_seed(self) -> str | None:
+        return self.seed
 
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
