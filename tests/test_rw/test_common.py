@@ -278,7 +278,7 @@ class TestCommon:
             assert readouts_are_equal(away, back)
 
         # Read back a second time in reverse to check
-        # not holding state unexepectedly
+        # not holding state unexpectedly
         for ref, away in reversed(aways.items()):
             back = reader.read(ref)
             assert readouts_are_equal(away, back)
