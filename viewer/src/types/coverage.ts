@@ -62,6 +62,8 @@ type BucketHitTuple = {
 type Readout = {
     get_def_sha: () => string;
     get_rec_sha: () => string;
+    get_test_name: () => string | null;
+    get_seed: () => string | null;
     iter_points: (
         start?: number,
         end?: number | null,

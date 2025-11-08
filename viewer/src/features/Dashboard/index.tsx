@@ -1,5 +1,10 @@
 /*
  * SPDX-License-Identifier: MIT
+ * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+ */
+
+/*
+ * SPDX-License-Identifier: MIT
  * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
  */
 
@@ -183,6 +188,29 @@ export default function Dashboard({ tree }: DashboardProps) {
         });
     };
 
+    // Get test name and seed from the currently selected node's readout
+    const testInfo = useMemo(() => {
+        // Don't show test info when at root level
+        if (viewKey === Tree.ROOT) {
+            return { test_name: null, seed: null };
+        }
+
+        const currentNode = tree.getNodeByKey(viewKey);
+        if (currentNode?.data?.readout) {
+            const readout = currentNode.data.readout;
+            try {
+                return {
+                    test_name: readout.get_test_name?.() ?? null,
+                    seed: readout.get_seed?.() ?? null,
+                };
+            } catch (error) {
+                // Fallback if methods don't exist (old readout format)
+                return { test_name: null, seed: null };
+            }
+        }
+        return { test_name: null, seed: null };
+    }, [tree, viewKey]);
+
     const selectedViewContent = useMemo(() => {
         switch (currentContentKey) {
             case "Pivot":
@@ -220,15 +248,31 @@ export default function Dashboard({ tree }: DashboardProps) {
                                 {/* The breadcrumb menu is placed outside of the main DOM tree
                                     so we need to pass through the theme class */}
                                 {({ theme }) => (
-                                    <Breadcrumb
-                                        {...view.body.header.flex.breadcrumb
-                                            .props}
-                                        items={getBreadCrumbItems({
-                                            tree,
-                                            selectedTreeKeys,
-                                            onSelect,
-                                            theme,
-                                        })}></Breadcrumb>
+                                    <>
+                                        <Breadcrumb
+                                            {...view.body.header.flex.breadcrumb
+                                                .props}
+                                            items={getBreadCrumbItems({
+                                                tree,
+                                                selectedTreeKeys,
+                                                onSelect,
+                                                theme,
+                                            })}></Breadcrumb>
+                                        {(testInfo.test_name || testInfo.seed) && (
+                                            <Flex gap="small" style={{ marginLeft: '16px' }}>
+                                                {testInfo.test_name && (
+                                                    <span style={{ color: theme.theme.colors.primarytxt.value }}>
+                                                        Test: {testInfo.test_name}
+                                                    </span>
+                                                )}
+                                                {testInfo.seed && (
+                                                    <span style={{ color: theme.theme.colors.primarytxt.value }}>
+                                                        Seed: {testInfo.seed}
+                                                    </span>
+                                                )}
+                                            </Flex>
+                                        )}
+                                    </>
                                 )}
                             </Theme.Consumer>
                             <Segmented
