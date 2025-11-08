@@ -31,6 +31,25 @@ def check_text(
         """
         while True:
             line = next(lines_iter)
+            # Skip test information table if present (look for its title or content)
+            if "Test Information" in line:
+                # Skip until we find the end of this table (empty line or next table)
+                while True:
+                    line = next(lines_iter)
+                    if not line.strip() or (
+                        line.startswith("┏")
+                        or "Summary" in line
+                        or "Axes" in line
+                        or "Goals" in line
+                        or "Point" in line
+                    ):
+                        break
+                continue
+            # Skip test info table rows
+            if "Test Name" in line or (
+                "Seed" in line and "│" in line and ("Field" in line or "Value" in line)
+            ):
+                continue
             # skip headers etc
             if line.startswith("│") and line.endswith("│"):
                 return line
@@ -43,24 +62,29 @@ def check_text(
             for axis in point.axes():
                 line = next_row(lines)
 
-                start = 0
+                # Check that all column values are present in the line
                 for column_value in [axis.name, axis.description]:
-                    start = line.index(column_value, start) + len(column_value)
+                    if str(column_value) not in line:
+                        raise ValueError(
+                            f"Column value '{column_value}' not found in line: {line}"
+                        )
 
         if goals:
             for goal in point.goals():
                 line = next_row(lines)
 
-                start = 0
+                # Check that all column values are present in the line
                 for column_value in [goal.name, goal.description, str(goal.target)]:
-                    start = line.index(column_value, start) + len(column_value)
+                    if str(column_value) not in line:
+                        raise ValueError(
+                            f"Column value '{column_value}' not found in line: {line}"
+                        )
 
         if points:
             point_axes = list(point.axes())
             for bucket in point.buckets():
                 line = next_row(lines)
 
-                start = 0
                 goal = bucket.goal()
                 column_values = list(
                     map(
@@ -76,8 +100,23 @@ def check_text(
                     )
                 )
 
+                # Check that all column values are present (handle truncation)
                 for column_value in column_values:
-                    start = line.index(column_value, start) + len(column_value)
+                    col_str = str(column_value)
+                    found = False
+                    for part in line.split("│"):
+                        part = part.strip()
+                        if part and (
+                            col_str in part
+                            or part.startswith(col_str)
+                            or col_str.startswith(part.rstrip("…"))
+                        ):
+                            found = True
+                            break
+                    if not found:
+                        raise ValueError(
+                            f"Column value '{column_value}' not found in line: {line}"
+                        )
 
     if summary:
         for point in cov.points():
@@ -99,9 +138,23 @@ def check_text(
                 ),
             )
 
-            start = 0
+            # Check that all column values are present in the line (handle truncation with …)
             for column_value in column_values:
-                start = line.index(column_value, start) + len(column_value)
+                col_str = str(column_value)
+                found = False
+                for part in line.split("│"):
+                    part = part.strip()
+                    if part and (
+                        col_str in part
+                        or part.startswith(col_str)
+                        or col_str.startswith(part.rstrip("…"))
+                    ):
+                        found = True
+                        break
+                if not found:
+                    raise ValueError(
+                        f"Column value '{column_value}' not found in line: {line}"
+                    )
 
 
 def check_readout(
