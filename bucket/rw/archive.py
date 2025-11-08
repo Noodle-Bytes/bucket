@@ -76,7 +76,7 @@ def _read(
     path: Path, byte_offset: int, byte_end: int, line_offset: int, line_end: int
 ) -> Iterable[tuple]:
     """
-    Read a slice of values from a CSV files from a 'seeked' section of the file.
+    Read a slice of values from a CSV file from a 'seeked' section of the file.
     """
     if byte_end - byte_offset == 0:
         yield from []
