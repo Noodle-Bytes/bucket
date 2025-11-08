@@ -16,3 +16,4 @@ example_file_store.db
 .coverage
 
 dist/
+dev-dist/

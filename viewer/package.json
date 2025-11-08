@@ -24,7 +24,8 @@
     "react-helmet-async": "^2.0.4",
     "react-query": "^3.39.3",
     "react-router-dom": "^6.21.3",
-    "vite-plugin-singlefile": "^2.0.2"
+    "vite": "^7.2.2",
+    "vite-plugin-singlefile": "^2.3.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.8",
@@ -39,7 +40,6 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
     "typescript": "^5.2.2",
-    "vite": "^5.0.12",
     "vite-plugin-pwa": "^1.0.0",
     "vite-tsconfig-paths": "^4.3.1",
     "vitest": "^3.1.4"
