@@ -1,11 +1,15 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
+import tempfile
+from pathlib import Path
+
 import pytest
 
-from bucket.rw.common import CoverageAccess, MergeReadout, PuppetReadout
+from bucket.rw import ArchiveAccessor, JSONAccessor, SQLAccessor
+from bucket.rw.common import CoverageAccess, MergeReadout, PuppetReadout, Reader, Writer
 
-from ..utils import GeneratedReadout
+from ..utils import GeneratedReadout, readouts_are_equal
 
 
 class TestCommon:
@@ -258,3 +262,53 @@ class TestCommon:
         readout_b.rec_sha += "_"
         with pytest.raises(RuntimeError):
             MergeReadout(readout_a, readout_b)
+
+    @staticmethod
+    def roundtrip_test(writer: Writer, reader: Reader):
+        aways = {}
+        # Generate and write readings
+        for i in range(5):
+            readout = GeneratedReadout(def_seed=i, rec_seed=i)
+            ref = writer.write(readout)
+            aways[ref] = readout
+
+        # Read back and check they match
+        for ref, away in aways.items():
+            back = reader.read(ref)
+            assert readouts_are_equal(away, back)
+
+        # Read back a second time in reverse to check
+        # not holding state unexpectedly
+        for ref, away in reversed(aways.items()):
+            back = reader.read(ref)
+            assert readouts_are_equal(away, back)
+
+    def test_roundtrip_sql(self):
+        """
+        Tests SQL read/write roundtrip
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "storage.db"
+            self.roundtrip_test(
+                SQLAccessor.File(path).writer(), SQLAccessor.File(path).reader()
+            )
+
+    def test_roundtrip_json(self):
+        """
+        Tests JSON read/write roundtrip
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "storage.json"
+            self.roundtrip_test(
+                JSONAccessor(path).writer(), JSONAccessor(path).reader()
+            )
+
+    def test_roundtrip_archive(self):
+        """
+        Tests Archive read/write roundtrip
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "storage"
+            self.roundtrip_test(
+                ArchiveAccessor(path).writer(), ArchiveAccessor(path).reader()
+            )

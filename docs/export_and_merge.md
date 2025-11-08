@@ -37,7 +37,7 @@ At present a simple merge is done, with a merged dataset being produced. In futu
 
 To initiate coverage merging from the command line:
 ```
-python -m bucket merge --output merged_cvg.db --sql-path="test_2356.db" --sql-path="test_87263.db"
+python -m bucket write --readout="test_2356.db" --readout="test_87263.db --merge sql --output "merged_cvg.db"
 ```
 This merged coverage will then be ready for viewing.
 

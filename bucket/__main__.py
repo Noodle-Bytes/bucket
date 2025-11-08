@@ -2,10 +2,12 @@
 # Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
 from pathlib import Path
+from typing import Iterable
 
 import click
 
-from .rw import ConsoleWriter, HTMLWriter, SQLAccessor
+from .rw import ArchiveAccessor, ConsoleWriter, HTMLWriter, JSONAccessor, SQLAccessor
+from .rw.common import MergeReadout, Readout
 
 
 @click.group()
@@ -20,84 +22,206 @@ def cli(ctx, web_path):
     ctx.obj = {"web_path": web_path}
 
 
-@cli.command()
-@click.option(
-    "--sql-path",
-    "sql_paths",
-    help="Path to an SQL db file, or a directory containing ONLY SQL db files",
-    multiple=True,
-    type=click.Path(exists=True, readable=True, path_type=Path, resolve_path=True),
-)
-@click.option(
-    "--output",
-    help="Path to output the merged SQL db file",
-    required=True,
-    type=click.Path(path_type=Path),
-)
-def merge(sql_paths: tuple[Path], output: Path):
-    output_accessor = SQLAccessor.File(output)
-    merged_readout = SQLAccessor.merge_files(*sql_paths)
-    if merged_readout:
-        output_accessor.write(merged_readout)
+_VALID_READERS = ["sql", "json", "archive"]
+
+
+def _split_spec(spec: str) -> tuple[str | None, str, str]:
+    """
+    Split a readout spec into its components.
+
+    Valid Formats:
+        - `<record>@<type>:<URI>`
+        - `<record>@:<URI>`
+        - `<type>:<URI>`
+        - `<URI>`
+
+    Returns: (record: str | None, type: str, uri: str)
+    """
+    record = None
+
+    # Get record if present
+    if "@" in spec:
+        record, spec = spec.split("@", 1)
+        record = int(record)
+
+    # Get type if present
+    if ":" in spec:
+        head, tail = spec.split(":", 1)
+        if head in _VALID_READERS:
+            typ, uri = head, tail
+        else:
+            typ, uri = None, spec
+    else:
+        typ, uri = None, spec
+
+    # Infer type if missing
+    if typ is None:
+        if uri.endswith(".db"):
+            typ = "sql"
+        elif uri.endswith(".json"):
+            typ = "json"
+        else:
+            raise ValueError(
+                f"Could not infer reader type from '{uri}'; please specify explicitly."
+            )
+
+    return record, typ, uri
+
+
+def get_readouts_from_spec(*specs: str) -> Iterable[Readout]:
+    "Parse readout specs into Readout objects."
+    for spec in specs:
+        record, typ, uri = _split_spec(spec)
+
+        if typ == "sql":
+            sql_path = Path(uri)
+            assert sql_path.exists(), f"SQL path does not exist: {sql_path}"
+            assert sql_path.is_file(), f"SQL path is not a file: {sql_path}"
+
+            reader = SQLAccessor.File(sql_path).reader()
+
+        elif typ == "json":
+            json_path = Path(uri)
+            assert json_path.exists(), f"JSON path does not exist: {uri}"
+            assert json_path.is_file(), f"JSON path is not a file: {uri}"
+
+            reader = JSONAccessor(json_path).reader()
+
+        elif typ == "archive":
+            json_path = Path(uri)
+            assert json_path.exists(), f"Archive path does not exist: {uri}"
+            assert json_path.is_dir(), f"Archive path is not a directory: {uri}"
+
+            reader = ArchiveAccessor(json_path).reader()
+        else:
+            raise ValueError(f"Unknown reader type: {typ}")
+
+        if record is None:
+            yield from reader.read_all()
+        else:
+            yield reader.read(record)
 
 
 @cli.group()
-def write():
-    pass
+@click.pass_context
+@click.option(
+    "--read",
+    "-r",
+    "readout_specs",
+    multiple=True,
+    type=str,
+    help=f"""Can be specified multiple times.
+    Valid Formats:
+        - `<record>@<type>:<URI>`
+        - `<record>@:<URI>`
+        - `<type>:<URI>`
+        - `<URI>`
+
+    If the <record> is omitted, all records from the source are read.
+    If the <type> is omitted, it is inferred from the URI extension.
+    <URI> is interpreted according to the <type> as follows:
+        - `sql`: path to an SQL database file
+        - `json`: path to a JSON file
+
+    Valid <type> values are: {', '.join(_VALID_READERS)}.
+    """,
+)
+@click.option("--merge", "-m", is_flag=True, default=False, help="Merge all readouts.")
+def write(ctx, readout_specs: Iterable[str], merge: bool):
+    ctx.obj = ctx.obj or {}
+    readouts = get_readouts_from_spec(*readout_specs)
+
+    if merge:
+        readouts = [MergeReadout(*readouts)]
+
+    ctx.obj["readouts"] = readouts
 
 
 @write.command()
 @click.pass_context
 @click.option(
-    "--sql-path",
-    help="Path to an SQL db file",
-    required=True,
-    type=click.Path(exists=True, readable=True, path_type=Path),
-)
-@click.option(
     "--output",
-    help="Path to output the HTML report",
+    "-o",
+    help="Path to output the JSON",
     required=True,
     type=click.Path(path_type=Path),
 )
-@click.option("--record", default=None, type=click.INT)
-def html(ctx, sql_path: Path, output: Path, record: int | None):
-    web_path = ctx.obj["web_path"]
-    writer = HTMLWriter(web_path, output)
-    if record is None:
-        readouts = list(SQLAccessor.File(sql_path).read_all())
-        writer.write(readouts)
-    else:
-        readout = SQLAccessor.File(sql_path).read(record)
+def json(ctx, output: Path):
+    readouts = ctx.obj["readouts"]
+    writer = JSONAccessor(output).writer()
+
+    for readout in readouts:
         writer.write(readout)
 
 
 @write.command()
+@click.pass_context
 @click.option(
-    "--sql-path",
-    help="Path to an SQL db file",
+    "--output",
+    "-o",
+    help="Path to output the Archive",
     required=True,
-    type=click.Path(exists=True, readable=True, path_type=Path),
+    type=click.Path(path_type=Path),
 )
+def archive(ctx, output: Path):
+    readouts = ctx.obj["readouts"]
+    writer = ArchiveAccessor(output).writer()
+
+    for readout in readouts:
+        writer.write(readout)
+
+
+@write.command()
+@click.pass_context
+@click.option(
+    "--output",
+    "-o",
+    help="Path to output the SQL",
+    required=True,
+    type=click.Path(path_type=Path),
+)
+def sql(ctx, output: Path):
+    readouts = ctx.obj["readouts"]
+    writer = SQLAccessor.File(output).writer()
+
+    for readout in readouts:
+        writer.write(readout)
+
+
+@write.command()
+@click.pass_context
+@click.option(
+    "--output",
+    "-o",
+    help="Path to output the HTML report",
+    required=True,
+    type=click.Path(path_type=Path),
+)
+def html(ctx, output: Path):
+    readouts = ctx.obj["readouts"]
+    web_path = ctx.obj["web_path"]
+    writer = HTMLWriter(web_path, output)
+
+    for readout in readouts:
+        writer.write(readout)
+
+
+@write.command()
+@click.pass_context
 @click.option("--axes/--no-axes", default=False)
 @click.option("--goals/--no-goals", default=False)
 @click.option("--points/--no-points", default=False)
 @click.option("--summary/--no-summary", default=True)
-@click.option("--record", default=None, type=click.INT)
 def console(
-    sql_path: Path,
+    ctx,
     axes: bool,
     goals: bool,
     points: bool,
     summary: bool,
-    record: int | None,
 ):
+    readouts = ctx.obj["readouts"]
     writer = ConsoleWriter(axes=axes, goals=goals, points=points, summary=summary)
-    if record is None:
-        for readout in SQLAccessor.File(sql_path).read_all():
-            writer.write(readout)
-    else:
-        readout = SQLAccessor.File(sql_path).read(record)
+    for readout in readouts:
         writer.write(readout)
 
 
