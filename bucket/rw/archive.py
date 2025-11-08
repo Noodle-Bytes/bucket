@@ -41,6 +41,8 @@ class ArchiveRecordTuple(NamedTuple):
     point_hit_end: int
     bucket_hit_offset: int
     bucket_hit_end: int
+    test_name: str | None
+    seed: str | None
 
 
 DEFINITION_PATH = "definition"
@@ -67,7 +69,9 @@ def _write(path: Path, values: Iterable[tuple]):
         byte_offset = f.tell()
         csv_writer = csv.writer(f, quoting=csv.QUOTE_NONNUMERIC)
         for value in values:
-            csv_writer.writerow(value)
+            # Convert None values to empty strings for CSV compatibility
+            csv_row = tuple("" if v is None else v for v in value)
+            csv_writer.writerow(csv_row)
         byte_end = f.tell()
     return byte_offset, byte_end
 
@@ -88,7 +92,16 @@ def _read(
         lines = f.readlines(byte_end - byte_offset - 1)[line_offset:line_end]
 
         for row in csv.reader(lines, quoting=csv.QUOTE_NONNUMERIC):
-            yield tuple(int(x) if isinstance(x, float) else x for x in row)
+            # Convert empty strings to None, and convert numeric strings to ints
+            processed_row = []
+            for x in row:
+                if x == "":
+                    processed_row.append(None)
+                elif isinstance(x, float) and x.is_integer():
+                    processed_row.append(int(x))
+                else:
+                    processed_row.append(x)
+            yield tuple(processed_row)
 
 
 class ArchiveReadout(Readout):
@@ -96,7 +109,11 @@ class ArchiveReadout(Readout):
         self.path = path
 
         record_row = next(_read(self.path / RECORD_PATH, rec_ref, rec_ref + 1, 0, 1))
-        self.record = ArchiveRecordTuple(*record_row)
+        # Handle old format without test_name/seed (backwards compatibility during migration)
+        record_list = list(record_row)
+        if len(record_list) < 8:
+            record_list.extend([None] * (8 - len(record_list)))
+        self.record = ArchiveRecordTuple(*record_list[:8])
 
         definition_row = next(
             _read(
@@ -114,6 +131,12 @@ class ArchiveReadout(Readout):
 
     def get_rec_sha(self) -> str:
         return self.record.rec_sha
+
+    def get_test_name(self) -> str | None:
+        return self.record.test_name
+
+    def get_seed(self) -> str | None:
+        return self.record.seed
 
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
@@ -276,6 +299,8 @@ class ArchiveWriter(Writer):
                     self.point_hit_end,
                     self.bucket_hit_offset,
                     self.bucket_hit_end,
+                    readout.get_test_name(),
+                    readout.get_seed(),
                 )
             ],
         )

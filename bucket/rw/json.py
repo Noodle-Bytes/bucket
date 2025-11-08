@@ -77,6 +77,8 @@ class JSONWriter(Writer):
             record = {
                 "def": definition_id,
                 "sha": readout.get_rec_sha(),
+                "test_name": readout.get_test_name(),
+                "seed": readout.get_seed(),
                 "point_hit": [list(it) for it in readout.iter_point_hits()],
                 "bucket_hit": [list(it) for it in readout.iter_bucket_hits()],
             }
@@ -108,6 +110,8 @@ class JSONReader(Reader):
         definition = data.get("definitions", [])[record["def"]]
 
         readout.rec_sha = record["sha"]
+        readout.test_name = record.get("test_name")
+        readout.seed = record.get("seed")
         readout.def_sha = definition["sha"]
 
         readout.points = [PointTuple(*p) for p in definition["point"]]
