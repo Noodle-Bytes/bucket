@@ -28,8 +28,12 @@ class Covertop(Covergroup):
         log: logging.Logger | None = None,
         verbosity: str | int | None = None,
         except_on_illegal: bool = False,
+        test_name: str | None = None,
+        seed: str | None = None,
     ):
         self.config = CoverConfig(except_on_illegal=except_on_illegal)
+        self.test_name = test_name
+        self.seed = seed
 
         if log:
             assert isinstance(

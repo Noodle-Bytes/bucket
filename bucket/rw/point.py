@@ -23,8 +23,12 @@ class PointReader(Reader):
     Read coverage from coverpoints
     """
 
-    def __init__(self, context_sha):
+    def __init__(
+        self, context_sha, test_name: str | None = None, seed: str | None = None
+    ):
         self._rec_sha = context_sha
+        self._test_name = test_name
+        self._seed = seed
 
     def read(self, point):
         readout = PuppetReadout()
@@ -32,6 +36,21 @@ class PointReader(Reader):
         chain = point._chain_def()
         readout.def_sha = chain.end.sha.hexdigest()
         readout.rec_sha = self._rec_sha
+
+        # Get test_name and seed: PointReader params take precedence, then Covertop attributes, then None
+        if self._test_name is not None:
+            readout.test_name = self._test_name
+        elif hasattr(point, "test_name"):
+            readout.test_name = point.test_name
+        else:
+            readout.test_name = None
+
+        if self._seed is not None:
+            readout.seed = self._seed
+        elif hasattr(point, "seed"):
+            readout.seed = point.seed
+        else:
+            readout.seed = None
         for point_link in sorted(
             chain.index.iter(CoverBase), key=lambda link: (link.start.point, link.depth)
         ):
