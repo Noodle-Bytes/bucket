@@ -52,6 +52,20 @@ class ConsoleWriter(Writer):
 
         coverage = CoverageAccess(readout)
 
+        # Display test name and seed
+        test_name = readout.get_test_name()
+        seed = readout.get_seed()
+        if test_name is not None or seed is not None:
+            info_table = Table(title="Test Information")
+            info_table.add_column("Field", justify="left", style="cyan", no_wrap=True)
+            info_table.add_column("Value", justify="left", style="cyan", no_wrap=True)
+            info_table.add_row(
+                "Test Name", test_name if test_name is not None else "N/A"
+            )
+            info_table.add_row("Seed", seed if seed is not None else "N/A")
+            self.console.print(info_table)
+            self.console.print()
+
         for point in coverage.points():
             summary_table.add_row(
                 point.name,
