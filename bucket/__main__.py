@@ -6,7 +6,7 @@ from typing import Iterable
 
 import click
 
-from .rw import ConsoleWriter, HTMLWriter, JSONAccessor, SQLAccessor
+from .rw import ArchiveAccessor, ConsoleWriter, HTMLWriter, JSONAccessor, SQLAccessor
 from .rw.common import MergeReadout, Readout
 
 
@@ -22,7 +22,7 @@ def cli(ctx, web_path):
     ctx.obj = {"web_path": web_path}
 
 
-_VALID_READERS = ["sql", "json"]
+_VALID_READERS = ["sql", "json", "archive"]
 
 
 def _split_spec(spec: str) -> tuple[str | None, str, str]:
@@ -37,7 +37,7 @@ def _split_spec(spec: str) -> tuple[str | None, str, str]:
 
     Returns: (record: str | None, type: str, uri: str)
     """
-    record, typ = None, None
+    record = None
 
     # Get record if present
     if "@" in spec:
@@ -50,9 +50,9 @@ def _split_spec(spec: str) -> tuple[str | None, str, str]:
         if head in _VALID_READERS:
             typ, uri = head, tail
         else:
-            uri = spec
+            typ, uri = None, spec
     else:
-        uri = spec
+        typ, uri = None, spec
 
     # Infer type if missing
     if typ is None:
@@ -86,8 +86,15 @@ def get_readouts_from_spec(*specs: str) -> Iterable[Readout]:
             assert json_path.is_file(), f"JSON path is not a file: {uri}"
 
             reader = JSONAccessor(json_path).reader()
+
+        elif typ == "archive":
+            json_path = Path(uri)
+            assert json_path.exists(), f"Archive path does not exist: {uri}"
+            assert json_path.is_dir(), f"Archive path is not a directory: {uri}"
+
+            reader = ArchiveAccessor(json_path).reader()
         else:
-            raise ValueError(f"Unknown reader type: {reader}")
+            raise ValueError(f"Unknown reader type: {typ}")
 
         if record is None:
             yield from reader.read_all()
@@ -142,6 +149,23 @@ def write(ctx, readout_specs: Iterable[str], merge: bool):
 def json(ctx, output: Path):
     readouts = ctx.obj["readouts"]
     writer = JSONAccessor(output).writer()
+
+    for readout in readouts:
+        writer.write(readout)
+
+
+@write.command()
+@click.pass_context
+@click.option(
+    "--output",
+    "-o",
+    help="Path to output the Archive",
+    required=True,
+    type=click.Path(path_type=Path),
+)
+def archive(ctx, output: Path):
+    readouts = ctx.obj["readouts"]
+    writer = ArchiveAccessor(output).writer()
 
     for readout in readouts:
         writer.write(readout)

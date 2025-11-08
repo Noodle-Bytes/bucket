@@ -96,32 +96,16 @@ class JSONReader(Reader):
     """
 
     def __init__(self, path: str | Path):
-        path = Path(path)
-        with path.open("r") as f:
-            data = json.load(f)
-
-        if "tables" not in data:
-            data["tables"] = {
-                "point": PointTuple._fields,
-                "axis": AxisTuple._fields,
-                "axis_value": AxisValueTuple._fields,
-                "goal": GoalTuple._fields,
-                "bucket_goal": BucketGoalTuple._fields,
-                "point_hit": PointHitTuple._fields,
-                "bucket_hit": BucketHitTuple._fields,
-            }
-        if "definitions" not in data:
-            data["definitions"] = []
-        if "records" not in data:
-            data["records"] = []
-
-        self.data = data
+        self.path = Path(path)
 
     def read(self, rec_ref: int):
         readout = PuppetReadout()
 
-        record = self.data["records"][rec_ref]
-        definition = self.data["definitions"][record["def"]]
+        with self.path.open("r") as f:
+            data = json.load(f)
+
+        record = data.get("records", [])[rec_ref]
+        definition = data.get("definitions", [])[record["def"]]
 
         readout.rec_sha = record["sha"]
         readout.def_sha = definition["sha"]
@@ -140,7 +124,10 @@ class JSONReader(Reader):
         return readout
 
     def read_all(self) -> Iterable[Readout]:
-        for record_index in range(len(self.data["records"])):
+        with self.path.open("r") as f:
+            data = json.load(f)
+
+        for record_index in range(len(data.get("records", []))):
             yield self.read(record_index)
 
 

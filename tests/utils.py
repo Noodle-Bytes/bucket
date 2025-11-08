@@ -311,9 +311,9 @@ def readouts_are_equal(readout_a: Readout, readout_b: Readout) -> bool:
         "iter_point_hits",
     ):
         try:
-            for field_a, field_b in zip(
-                getattr(readout_a, fn)(), getattr(readout_b, fn)(), strict=True
-            ):
+            vals_a = list(getattr(readout_a, fn)())
+            vals_b = list(getattr(readout_b, fn)())
+            for field_a, field_b in zip(vals_a, vals_b, strict=True):
                 if field_a != field_b:
                     return False
         except ValueError:
