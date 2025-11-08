@@ -3,8 +3,10 @@
 
 import json
 from pathlib import Path
+from typing import Iterable
 
 from .common import (
+    Accessor,
     AxisTuple,
     AxisValueTuple,
     BucketGoalTuple,
@@ -12,6 +14,8 @@ from .common import (
     GoalTuple,
     PointHitTuple,
     PointTuple,
+    PuppetReadout,
+    Reader,
     Readout,
     Writer,
 )
@@ -72,7 +76,7 @@ class JSONWriter(Writer):
 
             record = {
                 "def": definition_id,
-                "sha": "",
+                "sha": readout.get_rec_sha(),
                 "point_hit": [list(it) for it in readout.iter_point_hits()],
                 "bucket_hit": [list(it) for it in readout.iter_bucket_hits()],
             }
@@ -84,3 +88,72 @@ class JSONWriter(Writer):
             json.dump(data, f)
 
         return record_id
+
+
+class JSONReader(Reader):
+    """
+    Read from a JSON file
+    """
+
+    def __init__(self, path: str | Path):
+        path = Path(path)
+        with path.open("r") as f:
+            data = json.load(f)
+
+        if "tables" not in data:
+            data["tables"] = {
+                "point": PointTuple._fields,
+                "axis": AxisTuple._fields,
+                "axis_value": AxisValueTuple._fields,
+                "goal": GoalTuple._fields,
+                "bucket_goal": BucketGoalTuple._fields,
+                "point_hit": PointHitTuple._fields,
+                "bucket_hit": BucketHitTuple._fields,
+            }
+        if "definitions" not in data:
+            data["definitions"] = []
+        if "records" not in data:
+            data["records"] = []
+
+        self.data = data
+
+    def read(self, rec_ref: int):
+        readout = PuppetReadout()
+
+        record = self.data["records"][rec_ref]
+        definition = self.data["definitions"][record["def"]]
+
+        readout.rec_sha = record["sha"]
+        readout.def_sha = definition["sha"]
+
+        readout.points = [PointTuple(*p) for p in definition["point"]]
+        readout.axes = [AxisTuple(*a) for a in definition["axis"]]
+        readout.axis_values = [AxisValueTuple(*av) for av in definition["axis_value"]]
+        readout.goals = [GoalTuple(*g) for g in definition["goal"]]
+        readout.bucket_goals = [
+            BucketGoalTuple(*bg) for bg in definition["bucket_goal"]
+        ]
+
+        readout.point_hits = [PointHitTuple(*ph) for ph in record["point_hit"]]
+        readout.bucket_hits = [BucketHitTuple(*bh) for bh in record["bucket_hit"]]
+
+        return readout
+
+    def read_all(self) -> Iterable[Readout]:
+        for record_index in range(len(self.data["records"])):
+            yield self.read(record_index)
+
+
+class JSONAccessor(Accessor):
+    """
+    Read/Write from/to an JSON file.
+    """
+
+    def __init__(self, path: str | Path):
+        self.path = path
+
+    def reader(self):
+        return JSONReader(self.path)
+
+    def writer(self):
+        return JSONWriter(self.path)

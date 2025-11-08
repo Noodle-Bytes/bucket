@@ -8,6 +8,7 @@ from sqlalchemy import Integer, String, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from .common import (
+    Accessor,
     AxisTuple,
     AxisValueTuple,
     BucketGoalTuple,
@@ -183,7 +184,7 @@ class SQLWriter(Writer):
             for bucket_goal in readout.iter_bucket_goals():
                 self.session.add(BucketGoalRow.from_tuple(def_ref, bucket_goal))
 
-            rec_row = RunRow(definition=def_ref, sha="")
+            rec_row = RunRow(definition=def_ref, sha=readout.get_rec_sha())
             self.session.add(rec_row)
             self.session.commit()
             rec_ref = rec_row.run
@@ -286,7 +287,7 @@ class SQLReader(Reader):
                 yield self.read(rec_row.run)
 
 
-class SQLAccessor(Reader, Writer):
+class SQLAccessor(Accessor):
     """
     Read/Write from/to an SQL database
     """
@@ -296,17 +297,14 @@ class SQLAccessor(Reader, Writer):
         BaseRow.metadata.create_all(self.engine)
 
     @classmethod
-    def File(cls, path: str | Path):
+    def File(cls, path: str | Path) -> "SQLAccessor":
         return cls(f"sqlite:///{path}")
 
-    def read(self, rec_ref):
-        return SQLReader(self.engine).read(rec_ref)
+    def reader(self):
+        return SQLReader(self.engine)
 
-    def read_all(self) -> Iterable[Readout]:
-        yield from SQLReader(self.engine).read_all()
-
-    def write(self, readout: Readout):
-        return SQLWriter(self.engine).write(readout)
+    def writer(self):
+        return SQLWriter(self.engine)
 
     @overload
     @classmethod

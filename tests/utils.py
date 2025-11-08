@@ -14,6 +14,7 @@ from bucket.rw.common import (
     PointHitTuple,
     PointTuple,
     PuppetReadout,
+    Readout,
 )
 
 
@@ -287,3 +288,35 @@ class GeneratedReadout(PuppetReadout):
         self.points.append(group)
         self.point_hits.append(group_hit)
         return group, group_hit
+
+
+def readouts_are_equal(readout_a: Readout, readout_b: Readout) -> bool:
+    """
+    Returns True if the two readouts match, False otherwise.
+    """
+
+    if readout_a.get_def_sha() != readout_b.get_def_sha():
+        return False
+
+    if readout_a.get_rec_sha() != readout_b.get_rec_sha():
+        return False
+
+    for fn in (
+        "iter_points",
+        "iter_axes",
+        "iter_axis_values",
+        "iter_goals",
+        "iter_bucket_goals",
+        "iter_bucket_hits",
+        "iter_point_hits",
+    ):
+        try:
+            for field_a, field_b in zip(
+                getattr(readout_a, fn)(), getattr(readout_b, fn)(), strict=True
+            ):
+                if field_a != field_b:
+                    return False
+        except ValueError:
+            return False
+
+    return True

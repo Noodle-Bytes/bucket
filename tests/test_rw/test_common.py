@@ -1,11 +1,15 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
+import tempfile
+from pathlib import Path
+
 import pytest
 
+from bucket.rw import JSONAccessor, SQLAccessor
 from bucket.rw.common import CoverageAccess, MergeReadout, PuppetReadout
 
-from ..utils import GeneratedReadout
+from ..utils import GeneratedReadout, readouts_are_equal
 
 
 class TestCommon:
@@ -258,3 +262,29 @@ class TestCommon:
         readout_b.rec_sha += "_"
         with pytest.raises(RuntimeError):
             MergeReadout(readout_a, readout_b)
+
+    def test_roundtrip_sql(self):
+        """
+        Tests SQL read/write roundtrip
+        """
+        away = GeneratedReadout(def_seed=1, rec_seed=1)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "readout_a.db"
+            ref = SQLAccessor.File(path).write(away)
+            back = SQLAccessor.File(path).read(ref)
+
+        assert readouts_are_equal(away, back)
+
+    def test_roundtrip_json(self):
+        """
+        Tests JSON read/write roundtrip
+        """
+        away = GeneratedReadout(def_seed=1, rec_seed=1)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "readout_a.json"
+            ref = JSONAccessor(path).write(away)
+            back = JSONAccessor(path).read(ref)
+
+        assert readouts_are_equal(away, back)

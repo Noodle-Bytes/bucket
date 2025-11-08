@@ -162,6 +162,8 @@ class Reader(Protocol):
 
     def read(self, rec_ref) -> Readout: ...
 
+    def read_all(self) -> Iterable[Readout]: ...
+
 
 class Writer(Protocol):
     """
@@ -169,6 +171,25 @@ class Writer(Protocol):
     """
 
     def write(self, readout: Readout) -> Any: ...
+
+
+class Accessor(Protocol):
+    """
+    Accessors read or write from/to a backend.
+    """
+
+    def reader(self) -> Reader: ...
+
+    def writer(self) -> Writer: ...
+
+    def read(self, rec_ref):
+        return self.reader().read(rec_ref)
+
+    def read_all(self) -> Iterable[Readout]:
+        yield from self.reader().read_all()
+
+    def write(self, readout: Readout):
+        return self.writer().write(readout)
 
 
 ###############################################################################

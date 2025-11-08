@@ -4,10 +4,10 @@
 from .common import MergeReadout
 from .console import ConsoleWriter
 from .html import HTMLWriter
-from .json import JSONWriter
+from .json import JSONAccessor
 from .point import PointReader
 from .sql import SQLAccessor
 
 assert all(
-    [ConsoleWriter, JSONWriter, HTMLWriter, SQLAccessor, PointReader, MergeReadout]
+    [ConsoleWriter, JSONAccessor, HTMLWriter, SQLAccessor, PointReader, MergeReadout]
 )
