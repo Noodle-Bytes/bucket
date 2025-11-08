@@ -109,11 +109,7 @@ class ArchiveReadout(Readout):
         self.path = path
 
         record_row = next(_read(self.path / RECORD_PATH, rec_ref, rec_ref + 1, 0, 1))
-        # Handle old format without test_name/seed (backwards compatibility during migration)
-        record_list = list(record_row)
-        if len(record_list) < 8:
-            record_list.extend([None] * (8 - len(record_list)))
-        self.record = ArchiveRecordTuple(*record_list[:8])
+        self.record = ArchiveRecordTuple(*record_row)
 
         definition_row = next(
             _read(
