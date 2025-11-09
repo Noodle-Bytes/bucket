@@ -1,5 +1,10 @@
 /*
  * SPDX-License-Identifier: MIT
+ * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+ */
+
+/*
+ * SPDX-License-Identifier: MIT
  * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
  */
 
@@ -84,7 +89,27 @@ export default function Sider({
     };
 
     const onSelect = (newSelectedKeys: React.Key[]) => {
-        setSelectedTreeKeys(newSelectedKeys as TreeKey[]);
+        const keys = newSelectedKeys as TreeKey[];
+        // If clicking on an already selected node, keep it selected (don't deselect)
+        // This allows collapsing/expanding without jumping to root
+        if (keys.length === 0 && selectedTreeKeys.length > 0) {
+            // User clicked on already selected node - keep it selected
+            // Just toggle expansion if it has children
+            const currentKey = selectedTreeKeys[0];
+            const currentNode = tree.getNodeByKey(currentKey);
+            if (currentNode?.children && currentNode.children.length > 0) {
+                // Toggle expansion
+                const isExpanded = expandedTreeKeys.includes(currentKey);
+                if (isExpanded) {
+                    setExpandedTreeKeys(expandedTreeKeys.filter(k => k !== currentKey));
+                } else {
+                    setExpandedTreeKeys([...expandedTreeKeys, currentKey]);
+                }
+            }
+            // Keep the selection
+            return;
+        }
+        setSelectedTreeKeys(keys);
     };
 
     const onSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {

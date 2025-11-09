@@ -301,6 +301,12 @@ def readouts_are_equal(readout_a: Readout, readout_b: Readout) -> bool:
     if readout_a.get_rec_sha() != readout_b.get_rec_sha():
         return False
 
+    if readout_a.get_source() != readout_b.get_source():
+        return False
+
+    if readout_a.get_source_key() != readout_b.get_source_key():
+        return False
+
     for fn in (
         "iter_points",
         "iter_axes",

@@ -23,8 +23,18 @@ class PointReader(Reader):
     Read coverage from coverpoints
     """
 
-    def __init__(self, context_sha):
+    def __init__(
+        self,
+        context_sha,
+        source: str | int | None = None,
+        source_key: str | int | None = None,
+    ):
         self._rec_sha = context_sha
+        # Convert int to str, keep None as None
+        self._source = str(source) if isinstance(source, int) else source
+        self._source_key = (
+            str(source_key) if isinstance(source_key, int) else source_key
+        )
 
     def read(self, point):
         readout = PuppetReadout()
@@ -32,6 +42,30 @@ class PointReader(Reader):
         chain = point._chain_def()
         readout.def_sha = chain.end.sha.hexdigest()
         readout.rec_sha = self._rec_sha
+
+        # Get source and source_key: PointReader params take precedence, then Covertop attributes, then None
+        # Convert int to str, keep None as None
+        if self._source is not None:
+            readout.source = self._source
+        elif hasattr(point, "source"):
+            point_source = point.source
+            readout.source = (
+                str(point_source) if isinstance(point_source, int) else point_source
+            )
+        else:
+            readout.source = None
+
+        if self._source_key is not None:
+            readout.source_key = self._source_key
+        elif hasattr(point, "source_key"):
+            point_source_key = point.source_key
+            readout.source_key = (
+                str(point_source_key)
+                if isinstance(point_source_key, int)
+                else point_source_key
+            )
+        else:
+            readout.source_key = None
         for point_link in sorted(
             chain.index.iter(CoverBase), key=lambda link: (link.start.point, link.depth)
         ):

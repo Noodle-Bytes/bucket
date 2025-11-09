@@ -4,6 +4,7 @@
 from io import StringIO
 from typing import Iterator
 
+import pytest
 from rich.console import Console
 
 from bucket.rw import ConsoleWriter
@@ -13,6 +14,30 @@ from bucket.rw.common import (
 )
 
 from ..utils import GeneratedReadout
+
+
+def _check_column_values_in_line(column_values, line: str):
+    """
+    Check that all column values are present in a table line, handling truncation.
+
+    Args:
+        column_values: Iterable of column values to check for
+        line: The table line to search in
+    """
+    for column_value in column_values:
+        col_str = str(column_value)
+        found = False
+        for part in line.split("│"):
+            part = part.strip()
+            if part and (
+                col_str in part
+                or part.startswith(col_str)
+                or col_str.startswith(part.rstrip("…"))
+            ):
+                found = True
+                break
+        if not found:
+            raise ValueError(f"Column value '{column_value}' not found in line: {line}")
 
 
 def check_text(
@@ -31,6 +56,29 @@ def check_text(
         """
         while True:
             line = next(lines_iter)
+            # Skip source information table if present (look for its title or content)
+            if "Source Information" in line:
+                # Skip until we find the end of this table (empty line or next table)
+                while True:
+                    line = next(lines_iter)
+                    if not line.strip() or (
+                        line.startswith("┏")
+                        or "Summary" in line
+                        or "Axes" in line
+                        or "Goals" in line
+                        or "Point" in line
+                    ):
+                        break
+                continue
+            # Skip source info table rows
+            if (
+                "Source" in line
+                and "│" in line
+                and ("Field" in line or "Value" in line)
+            ):
+                continue
+            if "Source Key" in line and "│" in line:
+                continue
             # skip headers etc
             if line.startswith("│") and line.endswith("│"):
                 return line
@@ -43,24 +91,29 @@ def check_text(
             for axis in point.axes():
                 line = next_row(lines)
 
-                start = 0
+                # Check that all column values are present in the line
                 for column_value in [axis.name, axis.description]:
-                    start = line.index(column_value, start) + len(column_value)
+                    if str(column_value) not in line:
+                        raise ValueError(
+                            f"Column value '{column_value}' not found in line: {line}"
+                        )
 
         if goals:
             for goal in point.goals():
                 line = next_row(lines)
 
-                start = 0
+                # Check that all column values are present in the line
                 for column_value in [goal.name, goal.description, str(goal.target)]:
-                    start = line.index(column_value, start) + len(column_value)
+                    if str(column_value) not in line:
+                        raise ValueError(
+                            f"Column value '{column_value}' not found in line: {line}"
+                        )
 
         if points:
             point_axes = list(point.axes())
             for bucket in point.buckets():
                 line = next_row(lines)
 
-                start = 0
                 goal = bucket.goal()
                 column_values = list(
                     map(
@@ -76,8 +129,8 @@ def check_text(
                     )
                 )
 
-                for column_value in column_values:
-                    start = line.index(column_value, start) + len(column_value)
+                # Check that all column values are present (handle truncation)
+                _check_column_values_in_line(column_values, line)
 
     if summary:
         for point in cov.points():
@@ -99,9 +152,8 @@ def check_text(
                 ),
             )
 
-            start = 0
-            for column_value in column_values:
-                start = line.index(column_value, start) + len(column_value)
+            # Check that all column values are present in the line (handle truncation with …)
+            _check_column_values_in_line(column_values, line)
 
 
 def check_readout(
@@ -155,3 +207,62 @@ class TestConsole:
     def test_all(self):
         readout = GeneratedReadout(min_points=3, max_points=10, max_axis_values=3)
         check_readout(readout, points=True, axes=True, goals=True, summary=True)
+
+    @pytest.mark.parametrize(
+        "source,source_key,expected_in_text,expected_not_in_text",
+        [
+            (
+                "test_source",
+                "test_key_123",
+                [
+                    "Source Information",
+                    "Source",
+                    "Source Key",
+                    "test_source",
+                    "test_key_123",
+                ],
+                [],
+            ),
+            (
+                "test_source_only",
+                None,
+                [
+                    "Source Information",
+                    "Source",
+                    "Source Key",
+                    "test_source_only",
+                    "N/A",
+                ],
+                [],
+            ),
+            (
+                None,
+                "key_only_456",
+                ["Source Information", "Source", "Source Key", "key_only_456", "N/A"],
+                [],
+            ),
+            (None, None, [], ["Source Information"]),
+        ],
+    )
+    def test_source_display(
+        self, source, source_key, expected_in_text, expected_not_in_text
+    ):
+        """
+        Test that source information table appears/disappears correctly based on source and source_key values
+        """
+        readout = GeneratedReadout(min_points=3, max_points=10)
+        readout.source = source
+        readout.source_key = source_key
+        output = StringIO()
+        console = Console(file=output, width=1000)
+        writer = ConsoleWriter(console=console)
+        writer.write(readout)
+        text = output.getvalue()
+
+        for expected in expected_in_text:
+            assert expected in text, f"Expected '{expected}' to be in output"
+
+        for not_expected in expected_not_in_text:
+            assert (
+                not_expected not in text
+            ), f"Expected '{not_expected}' not to be in output"

@@ -52,6 +52,20 @@ class ConsoleWriter(Writer):
 
         coverage = CoverageAccess(readout)
 
+        # Display source and source_key
+        source = readout.get_source()
+        source_key = readout.get_source_key()
+        if source is not None or source_key is not None:
+            info_table = Table(title="Source Information")
+            info_table.add_column("Field", justify="left", style="cyan", no_wrap=True)
+            info_table.add_column("Value", justify="left", style="cyan", no_wrap=True)
+            info_table.add_row("Source", source if source is not None else "N/A")
+            info_table.add_row(
+                "Source Key", source_key if source_key is not None else "N/A"
+            )
+            self.console.print(info_table)
+            self.console.print()
+
         for point in coverage.points():
             summary_table.add_row(
                 point.name,
