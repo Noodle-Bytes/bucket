@@ -449,7 +449,14 @@ function toArchiveDefinition(row: (string | number)[]): ArchiveDefinition {
 }
 
 function toArchiveRecord(row: (string | number)[]): ArchiveRecord {
-    const [rec_sha, definition_offset, point_hit_offset, point_hit_end, bucket_hit_offset, bucket_hit_end] = row;
+    const [
+        rec_sha,
+        definition_offset,
+        point_hit_offset,
+        point_hit_end,
+        bucket_hit_offset,
+        bucket_hit_end
+    ] = row;
     return {
         rec_sha: toString(rec_sha),
         definition_offset: toNumber(definition_offset),

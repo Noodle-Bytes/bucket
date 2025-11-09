@@ -7,19 +7,11 @@ import { useRoutes } from "react-router-dom";
 import Dashboard from "@/features/Dashboard";
 import CoverageTree from "@/features/Dashboard/lib/coveragetree";
 import treeMock from "@/features/Dashboard/test/mocks/tree";
-import { readFileHandle, JSONReader } from "@/features/Dashboard/lib/readers";
+import { readFileHandle } from "@/features/Dashboard/lib/readers";
 import { useEffect, useState } from "react";
 
 function getDefaultTree() {
     return new CoverageTree(treeMock);
-    let coverageJSON;
-    try {
-        // @ts-ignore
-        coverageJSON = __BUCKET_CVG_JSON;
-    } catch (error) {
-        return new CoverageTree(treeMock);
-    }
-    return CoverageTree.fromReadouts(Array.from(new JSONReader(coverageJSON).read_all()));
 }
 
 export const AppRoutes = () => {

@@ -317,14 +317,13 @@ class ArchiveReader(Reader):
         self.path = Path(path)
 
     def _extract(self):
-        if not self.path.is_dir():
-            if not self.path.exists():
-                raise FileNotFoundError(f"Archive path does not exist: {self.path}")
+        if not self.path.exists():
+            raise FileNotFoundError(f"Archive path does not exist: {self.path}")
 
-            tempdir = tempfile.TemporaryDirectory()
-            path = Path(tempdir.name)
-            with tarfile.open(self.path, mode="r:gz") as tar:
-                tar.extractall(path)
+        tempdir = tempfile.TemporaryDirectory()
+        path = Path(tempdir.name)
+        with tarfile.open(self.path, mode="r:gz") as tar:
+            tar.extractall(path)
         return path, tempdir
 
     def read(self, rec_ref: int):
