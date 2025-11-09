@@ -1,5 +1,10 @@
 /*
  * SPDX-License-Identifier: MIT
+ * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+ */
+
+/*
+ * SPDX-License-Identifier: MIT
  * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
  */
 
@@ -200,7 +205,7 @@ export default function Dashboard({ tree }: DashboardProps) {
             default:
                 throw new Error("Invalid view!?");
         }
-    }, [viewKey, currentContentKey]);
+    }, [viewKey, currentContentKey, tree]);
 
     return (
         <ConfigProvider theme={antTheme}>

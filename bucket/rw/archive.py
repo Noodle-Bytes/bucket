@@ -2,6 +2,8 @@
 # Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
 import csv
+import tarfile
+import tempfile
 from pathlib import Path
 from typing import Iterable, NamedTuple
 
@@ -92,8 +94,14 @@ def _read(
 
 
 class ArchiveReadout(Readout):
-    def __init__(self, path: Path, rec_ref: int):
+    def __init__(
+        self,
+        path: Path,
+        rec_ref: int,
+        _tempdir: tempfile.TemporaryDirectory | None = None,
+    ):
         self.path = path
+        self._tempdir = _tempdir
 
         record_row = next(_read(self.path / RECORD_PATH, rec_ref, rec_ref + 1, 0, 1))
         self.record = ArchiveRecordTuple(*record_row)
@@ -217,68 +225,85 @@ class ArchiveWriter(Writer):
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
-        self.path.mkdir(parents=True, exist_ok=True)
 
     def write(self, readout: Readout):
         """
         Write a readout to the archive.
         """
-        # Write tables and get byte offsets/ends
-        point_offset, point_end = _write(self.path / POINT_PATH, readout.iter_points())
-        self.point_hit_offset, self.point_hit_end = _write(
-            self.path / POINT_HIT_PATH, readout.iter_point_hits()
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            work_path = Path(tmpdir)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            work_path.mkdir(parents=True, exist_ok=True)
 
-        # For non-point tables, skip the first column (offset) as it can be reconstructed
-        # when reading back.
-        axis_offset, axis_end = _write(
-            self.path / AXIS_PATH, (a[1:] for a in readout.iter_axes())
-        )
-        axis_value_offset, axis_value_end = _write(
-            self.path / AXIS_VALUE_PATH, (av[1:] for av in readout.iter_axis_values())
-        )
-        goal_offset, goal_end = _write(
-            self.path / GOAL_PATH, (bg[1:] for bg in readout.iter_goals())
-        )
-        bucket_goal_offset, bucket_goal_end = _write(
-            self.path / BUCKET_GOAL_PATH, (bg[1:] for bg in readout.iter_bucket_goals())
-        )
-        self.bucket_hit_offset, self.bucket_hit_end = _write(
-            self.path / BUCKET_HIT_PATH, (bh[1:] for bh in readout.iter_bucket_hits())
-        )
-        # Store offsets in definition and record tables so we can seek later
-        definition_offset, _ = _write(
-            self.path / DEFINITION_PATH,
-            [
-                ArchiveDefinitionTuple(
-                    readout.get_def_sha(),
-                    point_offset,
-                    point_end,
-                    axis_offset,
-                    axis_end,
-                    axis_value_offset,
-                    axis_value_end,
-                    goal_offset,
-                    goal_end,
-                    bucket_goal_offset,
-                    bucket_goal_end,
-                )
-            ],
-        )
+            if self.path.exists():
+                with tarfile.open(self.path, mode="r:gz") as tar:
+                    tar.extractall(work_path)
 
-        record_offset, _ = _write(
-            self.path / RECORD_PATH,
-            [
-                ArchiveRecordTuple(
-                    readout.get_rec_sha(),
-                    definition_offset,
-                    self.point_hit_offset,
-                    self.point_hit_end,
-                    self.bucket_hit_offset,
-                    self.bucket_hit_end,
-                )
-            ],
-        )
+            # Write tables and get byte offsets/ends
+            point_offset, point_end = _write(
+                work_path / POINT_PATH, readout.iter_points()
+            )
+            point_hit_offset, point_hit_end = _write(
+                work_path / POINT_HIT_PATH, readout.iter_point_hits()
+            )
+
+            # For non-point tables, skip the first column (offset) as it can be reconstructed
+            # when reading back.
+            axis_offset, axis_end = _write(
+                work_path / AXIS_PATH, (a[1:] for a in readout.iter_axes())
+            )
+            axis_value_offset, axis_value_end = _write(
+                work_path / AXIS_VALUE_PATH,
+                (av[1:] for av in readout.iter_axis_values()),
+            )
+            goal_offset, goal_end = _write(
+                work_path / GOAL_PATH, (bg[1:] for bg in readout.iter_goals())
+            )
+            bucket_goal_offset, bucket_goal_end = _write(
+                work_path / BUCKET_GOAL_PATH,
+                (bg[1:] for bg in readout.iter_bucket_goals()),
+            )
+            bucket_hit_offset, bucket_hit_end = _write(
+                work_path / BUCKET_HIT_PATH,
+                (bh[1:] for bh in readout.iter_bucket_hits()),
+            )
+            # Store offsets in definition and record tables so we can seek later
+            definition_offset, _ = _write(
+                work_path / DEFINITION_PATH,
+                [
+                    ArchiveDefinitionTuple(
+                        readout.get_def_sha(),
+                        point_offset,
+                        point_end,
+                        axis_offset,
+                        axis_end,
+                        axis_value_offset,
+                        axis_value_end,
+                        goal_offset,
+                        goal_end,
+                        bucket_goal_offset,
+                        bucket_goal_end,
+                    )
+                ],
+            )
+
+            record_offset, _ = _write(
+                work_path / RECORD_PATH,
+                [
+                    ArchiveRecordTuple(
+                        readout.get_rec_sha(),
+                        definition_offset,
+                        point_hit_offset,
+                        point_hit_end,
+                        bucket_hit_offset,
+                        bucket_hit_end,
+                    )
+                ],
+            )
+
+            with tarfile.open(self.path, mode="w:gz") as tar:
+                for entry in sorted(work_path.rglob("*"), key=lambda p: p.as_posix()):
+                    tar.add(entry, arcname=entry.relative_to(work_path))
 
         return record_offset
 
@@ -291,23 +316,35 @@ class ArchiveReader(Reader):
     def __init__(self, path: str | Path):
         self.path = Path(path)
 
+    def _extract(self):
+        if not self.path.exists():
+            raise FileNotFoundError(f"Archive path does not exist: {self.path}")
+
+        tempdir = tempfile.TemporaryDirectory()
+        path = Path(tempdir.name)
+        with tarfile.open(self.path, mode="r:gz") as tar:
+            tar.extractall(path)
+        return path, tempdir
+
     def read(self, rec_ref: int):
         """
         Read a single record from the archive.
         """
-        return ArchiveReadout(self.path, rec_ref)
+        path, tempdir = self._extract()
+        return ArchiveReadout(path, rec_ref, tempdir)
 
     def read_all(self) -> Iterable[Readout]:
         """
         Read all records in the archive.
         """
+        path, tempdir = self._extract()
         # Record ids in the record file are start byte of each line
-        with (self.path / "record").open("r", newline="") as f:
+        with (path / RECORD_PATH).open("r", newline="") as f:
             while True:
                 pos = f.tell()
                 if not f.readline():
                     break
-                yield self.read(pos)
+                yield ArchiveReadout(path, pos, tempdir)
 
 
 class ArchiveAccessor(Accessor):
