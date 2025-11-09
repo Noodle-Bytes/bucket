@@ -107,13 +107,7 @@ def _read(
             processed_row = []
             for idx, x in enumerate(row):
                 if x == "":
-                    if is_record_row and idx in (
-                        6,
-                        7,
-                    ):  # source and source_key fields: "" -> None
-                        processed_row.append(None)
-                    else:
-                        processed_row.append(None)
+                    processed_row.append(None)
                 elif isinstance(x, float) and x.is_integer():
                     processed_row.append(int(x))
                 else:
