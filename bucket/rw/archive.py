@@ -43,8 +43,8 @@ class ArchiveRecordTuple(NamedTuple):
     point_hit_end: int
     bucket_hit_offset: int
     bucket_hit_end: int
-    source: str | None
-    source_key: str | None
+    source: str
+    source_key: str
 
 
 DEFINITION_PATH = "definition"
@@ -117,7 +117,12 @@ class ArchiveReadout(Readout):
         self._tempdir = _tempdir
 
         record_row = next(_read(self.path / RECORD_PATH, rec_ref, rec_ref + 1, 0, 1))
-        self.record = ArchiveRecordTuple(*record_row)
+        # Convert None to "" for source and source_key (last two fields)
+        record_list = list(record_row)
+        if len(record_list) >= 2:
+            record_list[-2] = record_list[-2] or ""  # source
+            record_list[-1] = record_list[-1] or ""  # source_key
+        self.record = ArchiveRecordTuple(*record_list)
 
         definition_row = next(
             _read(
@@ -136,11 +141,11 @@ class ArchiveReadout(Readout):
     def get_rec_sha(self) -> str:
         return self.record.rec_sha
 
-    def get_source(self) -> str | None:
-        return self.record.source
+    def get_source(self) -> str:
+        return self.record.source or ""
 
-    def get_source_key(self) -> str | None:
-        return self.record.source_key
+    def get_source_key(self) -> str:
+        return self.record.source_key or ""
 
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
@@ -316,8 +321,8 @@ class ArchiveWriter(Writer):
                         point_hit_end,
                         bucket_hit_offset,
                         bucket_hit_end,
-                        readout.get_source(),
-                        readout.get_source_key(),
+                        readout.get_source() or "",
+                        readout.get_source_key() or "",
                     )
                 ],
             )

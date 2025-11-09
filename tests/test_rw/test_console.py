@@ -238,7 +238,7 @@ class TestConsole:
         """
         readout = GeneratedReadout(min_points=3, max_points=10)
         readout.source = "test_source_only"
-        readout.source_key = None
+        readout.source_key = ""
         output = StringIO()
         console = Console(file=output, width=1000)
         writer = ConsoleWriter(console=console)
@@ -256,7 +256,7 @@ class TestConsole:
         Test that source information table appears when only source_key is set
         """
         readout = GeneratedReadout(min_points=3, max_points=10)
-        readout.source = None
+        readout.source = ""
         readout.source_key = "key_only_456"
         output = StringIO()
         console = Console(file=output, width=1000)
@@ -272,11 +272,11 @@ class TestConsole:
 
     def test_source_display_with_none(self):
         """
-        Test that source information table does not appear when both are None
+        Test that source information table does not appear when both are empty strings
         """
         readout = GeneratedReadout(min_points=3, max_points=10)
-        readout.source = None
-        readout.source_key = None
+        readout.source = ""
+        readout.source_key = ""
         output = StringIO()
         console = Console(file=output, width=1000)
         writer = ConsoleWriter(console=console)

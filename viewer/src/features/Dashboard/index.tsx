@@ -192,7 +192,7 @@ export default function Dashboard({ tree }: DashboardProps) {
     const sourceInfo = useMemo(() => {
         // Don't show source info when at root level
         if (viewKey === Tree.ROOT) {
-            return { source: null, source_key: null };
+            return { source: "", source_key: "" };
         }
 
         const currentNode = tree.getNodeByKey(viewKey);
@@ -200,15 +200,15 @@ export default function Dashboard({ tree }: DashboardProps) {
             const readout = currentNode.data.readout;
             try {
                 return {
-                    source: readout.get_source?.() ?? null,
-                    source_key: readout.get_source_key?.() ?? null,
+                    source: readout.get_source?.() ?? "",
+                    source_key: readout.get_source_key?.() ?? "",
                 };
             } catch (error) {
                 // Fallback if methods don't exist (old readout format)
-                return { source: null, source_key: null };
+                return { source: "", source_key: "" };
             }
         }
-        return { source: null, source_key: null };
+        return { source: "", source_key: "" };
     }, [tree, viewKey]);
 
     const selectedViewContent = useMemo(() => {

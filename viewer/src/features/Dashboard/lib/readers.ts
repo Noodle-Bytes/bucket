@@ -12,8 +12,8 @@ type JSONDefinition = {
 type JSONRecord = {
     def: number,
     sha: string,
-    source?: string | null,
-    source_key?: string | null,
+    source?: string,
+    source_key?: string,
 } & {[key:string]: (string | number)[][]};
 
 type JSONTables = Record<string, string[]>;
@@ -40,11 +40,11 @@ export class JSONReadout implements Readout {
     get_rec_sha(): string {
         return this.record.sha;
     }
-    get_source(): string | null {
-        return this.record.source ?? null;
+    get_source(): string {
+        return this.record.source ?? "";
     }
-    get_source_key(): string | null {
-        return this.record.source_key ?? null;
+    get_source_key(): string {
+        return this.record.source_key ?? "";
     }
     private *iter_def_table(table: string, start: number=0, end: number | null=null) {
         const keys = this.tables[table];
@@ -159,8 +159,8 @@ type ArchiveRecord = {
     point_hit_end: number;
     bucket_hit_offset: number;
     bucket_hit_end: number;
-    source: string | null;
-    source_key: string | null;
+    source: string;
+    source_key: string;
 };
 
 type ArchiveTableMap = Record<ArchiveTableName, ArchiveTable>;
@@ -244,12 +244,12 @@ export class ArchiveReadout implements Readout {
         return this.record.rec_sha;
     }
 
-    get_source(): string | null {
-        return this.record.source;
+    get_source(): string {
+        return this.record.source ?? "";
     }
 
-    get_source_key(): string | null {
-        return this.record.source_key;
+    get_source_key(): string {
+        return this.record.source_key ?? "";
     }
 
     *iter_points(
@@ -484,8 +484,8 @@ function toArchiveRecord(row: (string | number)[]): ArchiveRecord {
         point_hit_end: toNumber(point_hit_end),
         bucket_hit_offset: toNumber(bucket_hit_offset),
         bucket_hit_end: toNumber(bucket_hit_end),
-        source: source === "" ? null : toString(source),
-        source_key: source_key === "" ? null : toString(source_key),
+        source: toString(source) || "",
+        source_key: toString(source_key) || "",
     };
 }
 

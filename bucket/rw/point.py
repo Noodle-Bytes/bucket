@@ -24,11 +24,23 @@ class PointReader(Reader):
     """
 
     def __init__(
-        self, context_sha, source: str | None = None, source_key: str | None = None
+        self,
+        context_sha,
+        source: str | int | None = None,
+        source_key: str | int | None = None,
     ):
         self._rec_sha = context_sha
-        self._source = source
-        self._source_key = source_key
+        # Normalize source and source_key: convert None to "", int to str
+        self._source = (
+            ""
+            if source is None
+            else (str(source) if isinstance(source, int) else source)
+        )
+        self._source_key = (
+            ""
+            if source_key is None
+            else (str(source_key) if isinstance(source_key, int) else source_key)
+        )
 
     def read(self, point):
         readout = PuppetReadout()
@@ -37,20 +49,32 @@ class PointReader(Reader):
         readout.def_sha = chain.end.sha.hexdigest()
         readout.rec_sha = self._rec_sha
 
-        # Get source and source_key: PointReader params take precedence, then Covertop attributes, then None
-        if self._source is not None:
-            readout.source = self._source
-        elif hasattr(point, "source"):
-            readout.source = point.source
-        else:
-            readout.source = None
+        # Get source and source_key: PointReader params take precedence, then Covertop attributes, then empty string
+        # Normalize values: convert None to "", int to str
+        # Note: self._source and self._source_key are already normalized in __init__
+        readout.source = self._source
+        if not self._source and hasattr(point, "source"):
+            point_source = point.source
+            readout.source = (
+                ""
+                if point_source is None
+                else (
+                    str(point_source) if isinstance(point_source, int) else point_source
+                )
+            )
 
-        if self._source_key is not None:
-            readout.source_key = self._source_key
-        elif hasattr(point, "source_key"):
-            readout.source_key = point.source_key
-        else:
-            readout.source_key = None
+        readout.source_key = self._source_key
+        if not self._source_key and hasattr(point, "source_key"):
+            point_source_key = point.source_key
+            readout.source_key = (
+                ""
+                if point_source_key is None
+                else (
+                    str(point_source_key)
+                    if isinstance(point_source_key, int)
+                    else point_source_key
+                )
+            )
         for point_link in sorted(
             chain.index.iter(CoverBase), key=lambda link: (link.start.point, link.depth)
         ):
