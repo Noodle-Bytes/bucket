@@ -312,3 +312,169 @@ class TestCommon:
             self.roundtrip_test(
                 ArchiveAccessor(path).writer(), ArchiveAccessor(path).reader()
             )
+
+    def test_roundtrip_sql_with_source(self):
+        """
+        Tests SQL read/write roundtrip with source and source_key set
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "storage.db"
+            writer = SQLAccessor.File(path).writer()
+            reader = SQLAccessor.File(path).reader()
+
+            # Test with both source and source_key
+            readout = GeneratedReadout(def_seed=1, rec_seed=1)
+            readout.source = "test_source"
+            readout.source_key = "test_key_123"
+            ref = writer.write(readout)
+            back = reader.read(ref)
+            assert readouts_are_equal(readout, back)
+            assert back.get_source() == "test_source"
+            assert back.get_source_key() == "test_key_123"
+
+            # Test with only source
+            readout2 = GeneratedReadout(def_seed=2, rec_seed=2)
+            readout2.source = "test_source_only"
+            readout2.source_key = None
+            ref2 = writer.write(readout2)
+            back2 = reader.read(ref2)
+            assert readouts_are_equal(readout2, back2)
+            assert back2.get_source() == "test_source_only"
+            assert back2.get_source_key() is None
+
+            # Test with only source_key
+            readout3 = GeneratedReadout(def_seed=3, rec_seed=3)
+            readout3.source = None
+            readout3.source_key = "key_only_456"
+            ref3 = writer.write(readout3)
+            back3 = reader.read(ref3)
+            assert readouts_are_equal(readout3, back3)
+            assert back3.get_source() is None
+            assert back3.get_source_key() == "key_only_456"
+
+            # Test with both None
+            readout4 = GeneratedReadout(def_seed=4, rec_seed=4)
+            readout4.source = None
+            readout4.source_key = None
+            ref4 = writer.write(readout4)
+            back4 = reader.read(ref4)
+            assert readouts_are_equal(readout4, back4)
+            assert back4.get_source() is None
+            assert back4.get_source_key() is None
+
+    def test_roundtrip_json_with_source(self):
+        """
+        Tests JSON read/write roundtrip with source and source_key set
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "storage.json"
+            writer = JSONAccessor(path).writer()
+            reader = JSONAccessor(path).reader()
+
+            # Test with both source and source_key
+            readout = GeneratedReadout(def_seed=1, rec_seed=1)
+            readout.source = "test_source"
+            readout.source_key = "test_key_123"
+            ref = writer.write(readout)
+            back = reader.read(ref)
+            assert readouts_are_equal(readout, back)
+            assert back.get_source() == "test_source"
+            assert back.get_source_key() == "test_key_123"
+
+            # Test with only source
+            readout2 = GeneratedReadout(def_seed=2, rec_seed=2)
+            readout2.source = "test_source_only"
+            readout2.source_key = None
+            ref2 = writer.write(readout2)
+            back2 = reader.read(ref2)
+            assert readouts_are_equal(readout2, back2)
+            assert back2.get_source() == "test_source_only"
+            assert back2.get_source_key() is None
+
+            # Test with only source_key
+            readout3 = GeneratedReadout(def_seed=3, rec_seed=3)
+            readout3.source = None
+            readout3.source_key = "key_only_456"
+            ref3 = writer.write(readout3)
+            back3 = reader.read(ref3)
+            assert readouts_are_equal(readout3, back3)
+            assert back3.get_source() is None
+            assert back3.get_source_key() == "key_only_456"
+
+            # Test with both None
+            readout4 = GeneratedReadout(def_seed=4, rec_seed=4)
+            readout4.source = None
+            readout4.source_key = None
+            ref4 = writer.write(readout4)
+            back4 = reader.read(ref4)
+            assert readouts_are_equal(readout4, back4)
+            assert back4.get_source() is None
+            assert back4.get_source_key() is None
+
+    def test_roundtrip_archive_with_source(self):
+        """
+        Tests Archive read/write roundtrip with source and source_key set
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "storage.bktgz"
+            writer = ArchiveAccessor(path).writer()
+            reader = ArchiveAccessor(path).reader()
+
+            # Test with both source and source_key
+            readout = GeneratedReadout(def_seed=1, rec_seed=1)
+            readout.source = "test_source"
+            readout.source_key = "test_key_123"
+            ref = writer.write(readout)
+            back = reader.read(ref)
+            assert readouts_are_equal(readout, back)
+            assert back.get_source() == "test_source"
+            assert back.get_source_key() == "test_key_123"
+
+            # Test with only source
+            readout2 = GeneratedReadout(def_seed=2, rec_seed=2)
+            readout2.source = "test_source_only"
+            readout2.source_key = None
+            ref2 = writer.write(readout2)
+            back2 = reader.read(ref2)
+            assert readouts_are_equal(readout2, back2)
+            assert back2.get_source() == "test_source_only"
+            assert back2.get_source_key() is None
+
+            # Test with only source_key
+            readout3 = GeneratedReadout(def_seed=3, rec_seed=3)
+            readout3.source = None
+            readout3.source_key = "key_only_456"
+            ref3 = writer.write(readout3)
+            back3 = reader.read(ref3)
+            assert readouts_are_equal(readout3, back3)
+            assert back3.get_source() is None
+            assert back3.get_source_key() == "key_only_456"
+
+            # Test with both None
+            readout4 = GeneratedReadout(def_seed=4, rec_seed=4)
+            readout4.source = None
+            readout4.source_key = None
+            ref4 = writer.write(readout4)
+            back4 = reader.read(ref4)
+            assert readouts_are_equal(readout4, back4)
+            assert back4.get_source() is None
+            assert back4.get_source_key() is None
+
+    def test_mergereadout_source(self):
+        """
+        Tests that MergeReadout correctly sets source to Merged_... format and source_key to None
+        """
+        readout_a = GeneratedReadout(def_seed=1, rec_seed=1)
+        readout_a.source = "test_a"
+        readout_a.source_key = "key_a"
+        readout_b = GeneratedReadout(def_seed=1, rec_seed=1)
+        readout_b.source = "test_b"
+        readout_b.source_key = "key_b"
+
+        merged = MergeReadout(readout_a, readout_b)
+
+        # Verify source is set to Merged_... format
+        assert merged.get_source() is not None
+        assert merged.get_source().startswith("Merged_")
+        # Verify source_key is None
+        assert merged.get_source_key() is None
