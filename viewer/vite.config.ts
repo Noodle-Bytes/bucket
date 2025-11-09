@@ -10,6 +10,14 @@ import tsconfigPaths from "vite-tsconfig-paths";
 // Plugin to allow download as a Progressive Web Application (PWA)
 import { VitePWA } from 'vite-plugin-pwa'
 
+const githubRepoBase = (() => {
+    if (process.env.GITHUB_PAGES !== "true") {
+        return "/";
+    }
+    const repo = process.env.GITHUB_REPOSITORY?.split("/").pop();
+    return repo ? `/${repo}/` : "/";
+})();
+
 
 const getPluginPWA = ((env) => {
     const manifest = {
@@ -21,7 +29,7 @@ const getPluginPWA = ((env) => {
             {
                 action: '/',
                 accept: {
-                    "application/json": [".json"],
+                    "application/gzip": [".bktgz"],
                 }
             }
         ],
@@ -80,6 +88,7 @@ const getPluginPWA = ((env) => {
 // https://vitejs.dev/config/
 export default defineConfig((env) => {
     return {
+        base: githubRepoBase,
         plugins: [react(),
         tsconfigPaths(),
         getPluginPWA(env)
