@@ -53,8 +53,8 @@ def run_testbench(
     rand: random.Random,
     log: logging.Logger,
     apply_filters_and_logging: bool = False,
-    test_name: str | None = None,
-    seed: str | None = None,
+    source: str | None = None,
+    source_key: str | None = None,
 ):
     samples = 250
 
@@ -74,8 +74,8 @@ def run_testbench(
                 log=log,
                 verbosity=logging.DEBUG,
                 except_on_illegal=True,
-                test_name=test_name,
-                seed=seed,
+                source=source,
+                source_key=source_key,
             )
             # If apply_filters_and_logging is passed in, apply filters to the coverage
             # Filtered coverage will only activate the selected coverpoints
@@ -83,7 +83,7 @@ def run_testbench(
             cvg.include_by_name("toys_by_name")
             cvg.exclude_by_name(["group_b", "group_2"])
         else:
-            cvg = TopPets(test_name=test_name, seed=seed)
+            cvg = TopPets(source=source, source_key=source_key)
 
     log.info("Run the 'test'...")
     for _ in range(samples):
@@ -142,13 +142,11 @@ def merge(log, regr_db_path, merged_db_path, ref_1, ref_2):
 
     # Read all test data from regression database and filter out merged entries
     all_readouts = list(r_sql_accessor.read_all())
-    # Filter out merged entries (those with test_name starting with "Merged_")
+    # Filter out merged entries (those with source starting with "Merged_")
     test_readouts = [
         readout
         for readout in all_readouts
-        if not (
-            readout.get_test_name() and readout.get_test_name().startswith("Merged_")
-        )
+        if not (readout.get_source() and readout.get_source().startswith("Merged_"))
     ]
 
     if not test_readouts:
@@ -207,20 +205,20 @@ def run(reg_db_path: Path = "example_regr_file_store.db"):
     merged_db_path = "example_merged_file_store.db"
 
     # Run "testbench" once with all coverage enabled
-    seed_1 = str(rand.randint(1, 1000000))
+    source_key_1 = str(rand.randint(1, 1000000))
     ref_1 = run_testbench(
-        reg_db_path, rand, log, test_name="test_full_coverage", seed=seed_1
+        reg_db_path, rand, log, source="test_full_coverage", source_key=source_key_1
     )
 
     # Run "testbench" a second time with some coverage filtered
-    seed_2 = str(rand.randint(1, 1000000))
+    source_key_2 = str(rand.randint(1, 1000000))
     ref_2 = run_testbench(
         reg_db_path,
         rand,
         log,
         apply_filters_and_logging=True,
-        test_name="test_filtered_coverage",
-        seed=seed_2,
+        source="test_filtered_coverage",
+        source_key=source_key_2,
     )
 
     # Merge the two runs

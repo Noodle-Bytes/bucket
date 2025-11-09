@@ -48,8 +48,8 @@ class RunRow(BaseRow):
     run: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     definition: Mapped[int] = mapped_column(Integer)
     sha: Mapped[str] = mapped_column(String(64))
-    test_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    seed: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
 
 class PointRow(BaseRow):
@@ -189,8 +189,8 @@ class SQLWriter(Writer):
             rec_row = RunRow(
                 definition=def_ref,
                 sha=readout.get_rec_sha(),
-                test_name=readout.get_test_name(),
-                seed=readout.get_seed(),
+                source=readout.get_source(),
+                source_key=readout.get_source_key(),
             )
             self.session.add(rec_row)
             self.session.commit()
@@ -222,8 +222,8 @@ class SQLReader(Reader):
             rec_st = select(RunRow).where(RunRow.run == rec_ref)
             rec_row = session.scalars(rec_st).one()
             readout.rec_sha = rec_row.sha
-            readout.test_name = rec_row.test_name
-            readout.seed = rec_row.seed
+            readout.source = rec_row.source
+            readout.source_key = rec_row.source_key
             def_ref = rec_row.definition
 
             def_st = select(DefinitionRow).where(DefinitionRow.definition == def_ref)

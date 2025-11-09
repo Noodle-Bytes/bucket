@@ -10,8 +10,8 @@ type JSONDefinition = {
 type JSONRecord = {
     def: number,
     sha: string,
-    test_name?: string | null,
-    seed?: string | null,
+    source?: string | null,
+    source_key?: string | null,
 } & {[key:string]: (string | number)[][]};
 
 type JSONTables = {
@@ -40,11 +40,11 @@ export class JSONReadout implements Readout {
     get_rec_sha(): string {
         return this.record.sha;
     }
-    get_test_name(): string | null {
-        return this.record.test_name ?? null;
+    get_source(): string | null {
+        return this.record.source ?? null;
     }
-    get_seed(): string | null {
-        return this.record.seed ?? null;
+    get_source_key(): string | null {
+        return this.record.source_key ?? null;
     }
     private *iter_def_table(table: string, start: number=0, end: number | null=null) {
         const keys = this.tables[table];

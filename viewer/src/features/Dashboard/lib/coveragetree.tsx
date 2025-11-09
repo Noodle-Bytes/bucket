@@ -26,17 +26,18 @@ export default class CoverageTree extends Tree<PointData> {
             for (const point of readout.iter_points()) {
                 const point_hit = point_hits.next().value;
 
-                // Build title: for root nodes, include test name and seed if available
+                // Build title: for root nodes, include source and source_key if available
                 let title = point.name;
                 if (point.depth === 0) {
-                    const test_name = readout.get_test_name();
-                    const seed = readout.get_seed();
+                    const source = readout.get_source();
+                    const source_key = readout.get_source_key();
                     const parts: string[] = [];
-                    if (test_name) {
-                        parts.push(test_name);
-                    }
-                    if (seed) {
-                        parts.push(`(seed: ${seed})`);
+                    if (source && source_key) {
+                        parts.push(`${source}[${source_key}]`);
+                    } else if (source) {
+                        parts.push(source);
+                    } else if (source_key) {
+                        parts.push(`[${source_key}]`);
                     }
                     if (parts.length > 0) {
                         title = `${parts.join(' ')} ${point.name}`;

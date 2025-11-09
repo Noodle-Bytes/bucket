@@ -188,11 +188,11 @@ export default function Dashboard({ tree }: DashboardProps) {
         });
     };
 
-    // Get test name and seed from the currently selected node's readout
-    const testInfo = useMemo(() => {
-        // Don't show test info when at root level
+    // Get source and source_key from the currently selected node's readout
+    const sourceInfo = useMemo(() => {
+        // Don't show source info when at root level
         if (viewKey === Tree.ROOT) {
-            return { test_name: null, seed: null };
+            return { source: null, source_key: null };
         }
 
         const currentNode = tree.getNodeByKey(viewKey);
@@ -200,15 +200,15 @@ export default function Dashboard({ tree }: DashboardProps) {
             const readout = currentNode.data.readout;
             try {
                 return {
-                    test_name: readout.get_test_name?.() ?? null,
-                    seed: readout.get_seed?.() ?? null,
+                    source: readout.get_source?.() ?? null,
+                    source_key: readout.get_source_key?.() ?? null,
                 };
             } catch (error) {
                 // Fallback if methods don't exist (old readout format)
-                return { test_name: null, seed: null };
+                return { source: null, source_key: null };
             }
         }
-        return { test_name: null, seed: null };
+        return { source: null, source_key: null };
     }, [tree, viewKey]);
 
     const selectedViewContent = useMemo(() => {
@@ -258,18 +258,15 @@ export default function Dashboard({ tree }: DashboardProps) {
                                                 onSelect,
                                                 theme,
                                             })}></Breadcrumb>
-                                        {(testInfo.test_name || testInfo.seed) && (
+                                        {(sourceInfo.source || sourceInfo.source_key) && (
                                             <Flex gap="small" style={{ marginLeft: '16px' }}>
-                                                {testInfo.test_name && (
-                                                    <span style={{ color: theme.theme.colors.primarytxt.value }}>
-                                                        Test: {testInfo.test_name}
-                                                    </span>
-                                                )}
-                                                {testInfo.seed && (
-                                                    <span style={{ color: theme.theme.colors.primarytxt.value }}>
-                                                        Seed: {testInfo.seed}
-                                                    </span>
-                                                )}
+                                                <span style={{ color: theme.theme.colors.primarytxt.value }}>
+                                                    {sourceInfo.source && sourceInfo.source_key
+                                                        ? `${sourceInfo.source}[${sourceInfo.source_key}]`
+                                                        : sourceInfo.source
+                                                        ? sourceInfo.source
+                                                        : `[${sourceInfo.source_key}]`}
+                                                </span>
                                             </Flex>
                                         )}
                                     </>

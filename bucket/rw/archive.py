@@ -41,8 +41,8 @@ class ArchiveRecordTuple(NamedTuple):
     point_hit_end: int
     bucket_hit_offset: int
     bucket_hit_end: int
-    test_name: str | None
-    seed: str | None
+    source: str | None
+    source_key: str | None
 
 
 DEFINITION_PATH = "definition"
@@ -128,11 +128,11 @@ class ArchiveReadout(Readout):
     def get_rec_sha(self) -> str:
         return self.record.rec_sha
 
-    def get_test_name(self) -> str | None:
-        return self.record.test_name
+    def get_source(self) -> str | None:
+        return self.record.source
 
-    def get_seed(self) -> str | None:
-        return self.record.seed
+    def get_source_key(self) -> str | None:
+        return self.record.source_key
 
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
@@ -295,8 +295,8 @@ class ArchiveWriter(Writer):
                     self.point_hit_end,
                     self.bucket_hit_offset,
                     self.bucket_hit_end,
-                    readout.get_test_name(),
-                    readout.get_seed(),
+                    readout.get_source(),
+                    readout.get_source_key(),
                 )
             ],
         )

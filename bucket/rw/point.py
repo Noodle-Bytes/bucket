@@ -24,11 +24,11 @@ class PointReader(Reader):
     """
 
     def __init__(
-        self, context_sha, test_name: str | None = None, seed: str | None = None
+        self, context_sha, source: str | None = None, source_key: str | None = None
     ):
         self._rec_sha = context_sha
-        self._test_name = test_name
-        self._seed = seed
+        self._source = source
+        self._source_key = source_key
 
     def read(self, point):
         readout = PuppetReadout()
@@ -37,20 +37,20 @@ class PointReader(Reader):
         readout.def_sha = chain.end.sha.hexdigest()
         readout.rec_sha = self._rec_sha
 
-        # Get test_name and seed: PointReader params take precedence, then Covertop attributes, then None
-        if self._test_name is not None:
-            readout.test_name = self._test_name
-        elif hasattr(point, "test_name"):
-            readout.test_name = point.test_name
+        # Get source and source_key: PointReader params take precedence, then Covertop attributes, then None
+        if self._source is not None:
+            readout.source = self._source
+        elif hasattr(point, "source"):
+            readout.source = point.source
         else:
-            readout.test_name = None
+            readout.source = None
 
-        if self._seed is not None:
-            readout.seed = self._seed
-        elif hasattr(point, "seed"):
-            readout.seed = point.seed
+        if self._source_key is not None:
+            readout.source_key = self._source_key
+        elif hasattr(point, "source_key"):
+            readout.source_key = point.source_key
         else:
-            readout.seed = None
+            readout.source_key = None
         for point_link in sorted(
             chain.index.iter(CoverBase), key=lambda link: (link.start.point, link.depth)
         ):

@@ -31,8 +31,8 @@ def check_text(
         """
         while True:
             line = next(lines_iter)
-            # Skip test information table if present (look for its title or content)
-            if "Test Information" in line:
+            # Skip source information table if present (look for its title or content)
+            if "Source Information" in line:
                 # Skip until we find the end of this table (empty line or next table)
                 while True:
                     line = next(lines_iter)
@@ -45,10 +45,14 @@ def check_text(
                     ):
                         break
                 continue
-            # Skip test info table rows
-            if "Test Name" in line or (
-                "Seed" in line and "│" in line and ("Field" in line or "Value" in line)
+            # Skip source info table rows
+            if (
+                "Source" in line
+                and "│" in line
+                and ("Field" in line or "Value" in line)
             ):
+                continue
+            if "Source Key" in line and "│" in line:
                 continue
             # skip headers etc
             if line.startswith("│") and line.endswith("│"):
