@@ -4,6 +4,7 @@
 from io import StringIO
 from typing import Iterator
 
+import pytest
 from rich.console import Console
 
 from bucket.rw import ConsoleWriter
@@ -207,74 +208,61 @@ class TestConsole:
         readout = GeneratedReadout(min_points=3, max_points=10, max_axis_values=3)
         check_readout(readout, points=True, axes=True, goals=True, summary=True)
 
-    def test_source_display_with_both(self):
+    @pytest.mark.parametrize(
+        "source,source_key,expected_in_text,expected_not_in_text",
+        [
+            (
+                "test_source",
+                "test_key_123",
+                [
+                    "Source Information",
+                    "Source",
+                    "Source Key",
+                    "test_source",
+                    "test_key_123",
+                ],
+                [],
+            ),
+            (
+                "test_source_only",
+                None,
+                [
+                    "Source Information",
+                    "Source",
+                    "Source Key",
+                    "test_source_only",
+                    "N/A",
+                ],
+                [],
+            ),
+            (
+                None,
+                "key_only_456",
+                ["Source Information", "Source", "Source Key", "key_only_456", "N/A"],
+                [],
+            ),
+            (None, None, [], ["Source Information"]),
+        ],
+    )
+    def test_source_display(
+        self, source, source_key, expected_in_text, expected_not_in_text
+    ):
         """
-        Test that source information table appears when both source and source_key are set
+        Test that source information table appears/disappears correctly based on source and source_key values
         """
         readout = GeneratedReadout(min_points=3, max_points=10)
-        readout.source = "test_source"
-        readout.source_key = "test_key_123"
+        readout.source = source
+        readout.source_key = source_key
         output = StringIO()
         console = Console(file=output, width=1000)
         writer = ConsoleWriter(console=console)
         writer.write(readout)
         text = output.getvalue()
 
-        assert "Source Information" in text
-        assert "Source" in text
-        assert "Source Key" in text
-        assert "test_source" in text
-        assert "test_key_123" in text
+        for expected in expected_in_text:
+            assert expected in text, f"Expected '{expected}' to be in output"
 
-    def test_source_display_with_source_only(self):
-        """
-        Test that source information table appears when only source is set
-        """
-        readout = GeneratedReadout(min_points=3, max_points=10)
-        readout.source = "test_source_only"
-        readout.source_key = None
-        output = StringIO()
-        console = Console(file=output, width=1000)
-        writer = ConsoleWriter(console=console)
-        writer.write(readout)
-        text = output.getvalue()
-
-        assert "Source Information" in text
-        assert "Source" in text
-        assert "Source Key" in text
-        assert "test_source_only" in text
-        assert "N/A" in text
-
-    def test_source_display_with_source_key_only(self):
-        """
-        Test that source information table appears when only source_key is set
-        """
-        readout = GeneratedReadout(min_points=3, max_points=10)
-        readout.source = None
-        readout.source_key = "key_only_456"
-        output = StringIO()
-        console = Console(file=output, width=1000)
-        writer = ConsoleWriter(console=console)
-        writer.write(readout)
-        text = output.getvalue()
-
-        assert "Source Information" in text
-        assert "Source" in text
-        assert "Source Key" in text
-        assert "key_only_456" in text
-        assert "N/A" in text
-
-    def test_source_display_with_none(self):
-        """
-        Test that source information table does not appear when both are None
-        """
-        readout = GeneratedReadout(min_points=3, max_points=10)
-        readout.source = None
-        readout.source_key = None
-        output = StringIO()
-        console = Console(file=output, width=1000)
-        writer = ConsoleWriter(console=console)
-        writer.write(readout)
-        text = output.getvalue()
-
-        assert "Source Information" not in text
+        for not_expected in expected_not_in_text:
+            assert (
+                not_expected not in text
+            ), f"Expected '{not_expected}' not to be in output"
