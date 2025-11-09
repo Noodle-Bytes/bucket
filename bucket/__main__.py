@@ -60,6 +60,8 @@ def _split_spec(spec: str) -> tuple[str | None, str, str]:
             typ = "sql"
         elif uri.endswith(".json"):
             typ = "json"
+        elif uri.endswith(".bktgz"):
+            typ = "archive"
         else:
             raise ValueError(
                 f"Could not infer reader type from '{uri}'; please specify explicitly."
@@ -88,11 +90,11 @@ def get_readouts_from_spec(*specs: str) -> Iterable[Readout]:
             reader = JSONAccessor(json_path).reader()
 
         elif typ == "archive":
-            json_path = Path(uri)
-            assert json_path.exists(), f"Archive path does not exist: {uri}"
-            assert json_path.is_dir(), f"Archive path is not a directory: {uri}"
+            archive_path = Path(uri)
+            assert archive_path.exists(), f"Archive path does not exist: {uri}"
+            assert archive_path.is_file(), f"Archive path is not a file: {uri}"
 
-            reader = ArchiveAccessor(json_path).reader()
+            reader = ArchiveAccessor(archive_path).reader()
         else:
             raise ValueError(f"Unknown reader type: {typ}")
 
@@ -122,6 +124,7 @@ def get_readouts_from_spec(*specs: str) -> Iterable[Readout]:
     <URI> is interpreted according to the <type> as follows:
         - `sql`: path to an SQL database file
         - `json`: path to a JSON file
+        - `archive`: path to a .bktgz archive
 
     Valid <type> values are: {', '.join(_VALID_READERS)}.
     """,
