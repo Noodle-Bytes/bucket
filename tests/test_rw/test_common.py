@@ -308,7 +308,7 @@ class TestCommon:
         Tests Archive read/write roundtrip
         """
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "storage"
+            path = Path(tmpdir) / "storage.bktgz"
             self.roundtrip_test(
                 ArchiveAccessor(path).writer(), ArchiveAccessor(path).reader()
             )
