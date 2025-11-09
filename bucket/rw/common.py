@@ -7,18 +7,6 @@ from typing import Any, Iterable, NamedTuple, Protocol
 from ..common.chain import Link
 from ..link import CovDef, CovRun
 
-
-def _normalize_source_value(value: str | int | None) -> str:
-    """
-    Normalize source/source_key values: convert None to empty string, int to str.
-    """
-    if value is None:
-        return ""
-    if isinstance(value, int):
-        return str(value)
-    return value
-
-
 ###############################################################################
 # Coverage information in tuple form, which is used to interface between
 # different readers and writers.
@@ -145,8 +133,8 @@ class Readout(Protocol):
 
     def get_def_sha(self) -> str: ...
     def get_rec_sha(self) -> str: ...
-    def get_source(self) -> str: ...
-    def get_source_key(self) -> str: ...
+    def get_source(self) -> str | None: ...
+    def get_source_key(self) -> str | None: ...
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
     ) -> Iterable[PointTuple]: ...
@@ -535,8 +523,8 @@ class PuppetReadout(Readout):
         self.bucket_hits: list[BucketHitTuple] = []
         self.def_sha = None
         self.rec_sha = None
-        self.source: str = ""
-        self.source_key: str = ""
+        self.source: str | None = None
+        self.source_key: str | None = None
 
     def get_def_sha(self) -> str:
         if self.def_sha is None:
@@ -548,10 +536,10 @@ class PuppetReadout(Readout):
             raise RuntimeError("rec_sha not set")
         return self.rec_sha
 
-    def get_source(self) -> str:
+    def get_source(self) -> str | None:
         return self.source
 
-    def get_source_key(self) -> str:
+    def get_source_key(self) -> str | None:
         return self.source_key
 
     def iter_points(
@@ -600,7 +588,7 @@ class MergeReadout(Readout):
         super().__init__()
         self.master = master
         self.source = f"Merged_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        self.source_key = ""
+        self.source_key = None
 
         self.bucket_hits: list[int] = []
         for bucket_hit in master.iter_bucket_hits():
@@ -623,10 +611,10 @@ class MergeReadout(Readout):
     def get_rec_sha(self) -> str:
         return self.master.get_rec_sha()
 
-    def get_source(self) -> str:
+    def get_source(self) -> str | None:
         return self.source
 
-    def get_source_key(self) -> str:
+    def get_source_key(self) -> str | None:
         return self.source_key
 
     def iter_points(

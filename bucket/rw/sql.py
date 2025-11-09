@@ -189,8 +189,8 @@ class SQLWriter(Writer):
             rec_row = RunRow(
                 definition=def_ref,
                 sha=readout.get_rec_sha(),
-                source=readout.get_source() or "",
-                source_key=readout.get_source_key() or "",
+                source=readout.get_source(),
+                source_key=readout.get_source_key(),
             )
             self.session.add(rec_row)
             self.session.commit()
@@ -222,10 +222,8 @@ class SQLReader(Reader):
             rec_st = select(RunRow).where(RunRow.run == rec_ref)
             rec_row = session.scalars(rec_st).one()
             readout.rec_sha = rec_row.sha
-            readout.source = rec_row.source if rec_row.source is not None else ""
-            readout.source_key = (
-                rec_row.source_key if rec_row.source_key is not None else ""
-            )
+            readout.source = rec_row.source
+            readout.source_key = rec_row.source_key
             def_ref = rec_row.definition
 
             def_st = select(DefinitionRow).where(DefinitionRow.definition == def_ref)

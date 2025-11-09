@@ -15,6 +15,30 @@ from bucket.rw.common import (
 from ..utils import GeneratedReadout
 
 
+def _check_column_values_in_line(column_values, line: str):
+    """
+    Check that all column values are present in a table line, handling truncation.
+
+    Args:
+        column_values: Iterable of column values to check for
+        line: The table line to search in
+    """
+    for column_value in column_values:
+        col_str = str(column_value)
+        found = False
+        for part in line.split("│"):
+            part = part.strip()
+            if part and (
+                col_str in part
+                or part.startswith(col_str)
+                or col_str.startswith(part.rstrip("…"))
+            ):
+                found = True
+                break
+        if not found:
+            raise ValueError(f"Column value '{column_value}' not found in line: {line}")
+
+
 def check_text(
     text: str,
     cov: CoverageAccess,
@@ -105,22 +129,7 @@ def check_text(
                 )
 
                 # Check that all column values are present (handle truncation)
-                for column_value in column_values:
-                    col_str = str(column_value)
-                    found = False
-                    for part in line.split("│"):
-                        part = part.strip()
-                        if part and (
-                            col_str in part
-                            or part.startswith(col_str)
-                            or col_str.startswith(part.rstrip("…"))
-                        ):
-                            found = True
-                            break
-                    if not found:
-                        raise ValueError(
-                            f"Column value '{column_value}' not found in line: {line}"
-                        )
+                _check_column_values_in_line(column_values, line)
 
     if summary:
         for point in cov.points():
@@ -143,22 +152,7 @@ def check_text(
             )
 
             # Check that all column values are present in the line (handle truncation with …)
-            for column_value in column_values:
-                col_str = str(column_value)
-                found = False
-                for part in line.split("│"):
-                    part = part.strip()
-                    if part and (
-                        col_str in part
-                        or part.startswith(col_str)
-                        or col_str.startswith(part.rstrip("…"))
-                    ):
-                        found = True
-                        break
-                if not found:
-                    raise ValueError(
-                        f"Column value '{column_value}' not found in line: {line}"
-                    )
+            _check_column_values_in_line(column_values, line)
 
 
 def check_readout(
@@ -238,7 +232,7 @@ class TestConsole:
         """
         readout = GeneratedReadout(min_points=3, max_points=10)
         readout.source = "test_source_only"
-        readout.source_key = ""
+        readout.source_key = None
         output = StringIO()
         console = Console(file=output, width=1000)
         writer = ConsoleWriter(console=console)
@@ -256,7 +250,7 @@ class TestConsole:
         Test that source information table appears when only source_key is set
         """
         readout = GeneratedReadout(min_points=3, max_points=10)
-        readout.source = ""
+        readout.source = None
         readout.source_key = "key_only_456"
         output = StringIO()
         console = Console(file=output, width=1000)
@@ -272,11 +266,11 @@ class TestConsole:
 
     def test_source_display_with_none(self):
         """
-        Test that source information table does not appear when both are empty strings
+        Test that source information table does not appear when both are None
         """
         readout = GeneratedReadout(min_points=3, max_points=10)
-        readout.source = ""
-        readout.source_key = ""
+        readout.source = None
+        readout.source_key = None
         output = StringIO()
         console = Console(file=output, width=1000)
         writer = ConsoleWriter(console=console)

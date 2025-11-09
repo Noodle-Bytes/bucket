@@ -43,8 +43,8 @@ class ArchiveRecordTuple(NamedTuple):
     point_hit_end: int
     bucket_hit_offset: int
     bucket_hit_end: int
-    source: str
-    source_key: str
+    source: str | None  # Stored as "" in CSV, converted to None when reading
+    source_key: str | None  # Stored as "" in CSV, converted to None when reading
 
 
 DEFINITION_PATH = "definition"
@@ -79,10 +79,16 @@ def _write(path: Path, values: Iterable[tuple]):
 
 
 def _read(
-    path: Path, byte_offset: int, byte_end: int, line_offset: int, line_end: int
+    path: Path,
+    byte_offset: int,
+    byte_end: int,
+    line_offset: int,
+    line_end: int,
 ) -> Iterable[tuple]:
     """
     Read a slice of values from a CSV file from a 'seeked' section of the file.
+    For record rows (8 fields), preserves empty strings for source/source_key (indices 6, 7).
+    For all other rows, converts empty strings to None.
     """
     if byte_end - byte_offset == 0:
         yield from []
@@ -94,11 +100,20 @@ def _read(
         lines = f.readlines(byte_end - byte_offset - 1)[line_offset:line_end]
 
         for row in csv.reader(lines, quoting=csv.QUOTE_NONNUMERIC):
-            # Convert empty strings to None, and convert numeric strings to ints
+            # For record rows (8 fields), convert empty strings to None for source/source_key (indices 6, 7)
+            # CSV doesn't support None, so we store "" and convert back to None when reading
+            # For all other rows, convert empty strings to None
+            is_record_row = len(row) == 8  # ArchiveRecordTuple has 8 fields
             processed_row = []
-            for x in row:
+            for idx, x in enumerate(row):
                 if x == "":
-                    processed_row.append(None)
+                    if is_record_row and idx in (
+                        6,
+                        7,
+                    ):  # source and source_key fields: "" -> None
+                        processed_row.append(None)
+                    else:
+                        processed_row.append(None)
                 elif isinstance(x, float) and x.is_integer():
                     processed_row.append(int(x))
                 else:
@@ -117,12 +132,7 @@ class ArchiveReadout(Readout):
         self._tempdir = _tempdir
 
         record_row = next(_read(self.path / RECORD_PATH, rec_ref, rec_ref + 1, 0, 1))
-        # Convert None to "" for source and source_key (last two fields)
-        record_list = list(record_row)
-        if len(record_list) >= 2:
-            record_list[-2] = record_list[-2] or ""  # source
-            record_list[-1] = record_list[-1] or ""  # source_key
-        self.record = ArchiveRecordTuple(*record_list)
+        self.record = ArchiveRecordTuple(*record_row)
 
         definition_row = next(
             _read(
@@ -141,11 +151,11 @@ class ArchiveReadout(Readout):
     def get_rec_sha(self) -> str:
         return self.record.rec_sha
 
-    def get_source(self) -> str:
-        return self.record.source or ""
+    def get_source(self) -> str | None:
+        return self.record.source
 
-    def get_source_key(self) -> str:
-        return self.record.source_key or ""
+    def get_source_key(self) -> str | None:
+        return self.record.source_key
 
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
@@ -311,6 +321,9 @@ class ArchiveWriter(Writer):
                 ],
             )
 
+            # Convert None to "" for source/source_key when writing to CSV (CSV doesn't support None)
+            source = readout.get_source()
+            source_key = readout.get_source_key()
             record_offset, _ = _write(
                 work_path / RECORD_PATH,
                 [
@@ -321,8 +334,8 @@ class ArchiveWriter(Writer):
                         point_hit_end,
                         bucket_hit_offset,
                         bucket_hit_end,
-                        readout.get_source() or "",
-                        readout.get_source_key() or "",
+                        "" if source is None else source,
+                        "" if source_key is None else source_key,
                     )
                 ],
             )

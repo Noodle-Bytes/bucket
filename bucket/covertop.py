@@ -32,17 +32,9 @@ class Covertop(Covergroup):
         source_key: str | int | None = None,
     ):
         self.config = CoverConfig(except_on_illegal=except_on_illegal)
-        # Normalize source and source_key: convert None to "", int to str
-        self.source = (
-            ""
-            if source is None
-            else (str(source) if isinstance(source, int) else source)
-        )
-        self.source_key = (
-            ""
-            if source_key is None
-            else (str(source_key) if isinstance(source_key, int) else source_key)
-        )
+        # Convert int to str, keep None as None
+        self.source = str(source) if isinstance(source, int) else source
+        self.source_key = str(source_key) if isinstance(source_key, int) else source_key
 
         if log:
             assert isinstance(
