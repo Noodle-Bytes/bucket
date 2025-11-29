@@ -1,0 +1,391 @@
+/*
+ * SPDX-License-Identifier: MIT
+ * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+ */
+
+const { app, BrowserWindow, ipcMain, dialog, Menu, protocol } = require('electron');
+const path = require('path');
+const fs = require('fs').promises;
+const { readFile, writeFile } = require('fs').promises;
+
+// Determine if we're in development mode
+// Also check if we're running from source (not from built app)
+const isDevelopment = process.env.NODE_ENV === 'development' || !app.isPackaged;
+
+// Set app name for macOS
+app.setName('Bucket');
+
+let mainWindow = null;
+let pendingFilePath = null;
+// In built app, viewer/dist is in extraResources, so it's in Resources/viewer/dist
+// In development, path is relative to electron directory
+const distPath = app.isPackaged
+  ? path.join(process.resourcesPath, 'viewer', 'dist')
+  : path.join(__dirname, '../viewer/dist');
+
+// Register custom protocol to serve files from dist directory
+function setupProtocol() {
+  protocol.registerFileProtocol('app', (request, callback) => {
+    try {
+      let url = request.url.replace('app://', '');
+      // Remove query string and hash if present
+      url = url.split('?')[0].split('#')[0];
+
+      // Handle root path
+      if (url === '' || url === '/') {
+        url = 'index-electron.html';
+      }
+
+      // Remove leading slash if present
+      if (url.startsWith('/')) {
+        url = url.substring(1);
+      }
+
+      const filePath = path.join(distPath, url);
+
+      // Check if file exists
+      fs.access(filePath, fs.constants.F_OK)
+        .then(() => {
+          if (isDevelopment) {
+            console.log('Protocol: Serving file:', filePath);
+          }
+          callback({ path: filePath });
+        })
+        .catch((err) => {
+          console.error('Protocol: File not found:', filePath, err.message);
+          callback({ error: -2 }); // FILE_NOT_FOUND
+        });
+    } catch (error) {
+      console.error('Protocol error:', error);
+      callback({ error: -2 }); // FILE_NOT_FOUND
+    }
+  });
+}
+
+function createMenu() {
+  const template = [
+    {
+      label: app.getName(),
+      submenu: [
+        { role: 'about', label: 'About Bucket' },
+        { type: 'separator' },
+        { role: 'services', label: 'Services' },
+        { type: 'separator' },
+        { role: 'hide', label: 'Hide Bucket' },
+        { role: 'hideOthers', label: 'Hide Others' },
+        { role: 'unhide', label: 'Show All' },
+        { type: 'separator' },
+        { role: 'quit', label: 'Quit Bucket' },
+      ],
+    },
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Open...',
+          accelerator: 'CmdOrCtrl+O',
+          click: async () => {
+            if (mainWindow) {
+              const result = await dialog.showOpenDialog(mainWindow, {
+                properties: ['openFile'],
+                filters: [
+                  { name: 'Bucket Archive', extensions: ['bktgz'] },
+                  { name: 'All Files', extensions: ['*'] },
+                ],
+              });
+
+              if (!result.canceled && result.filePaths.length > 0) {
+                mainWindow.webContents.send('file-opened', result.filePaths[0]);
+              }
+            }
+          },
+        },
+        { type: 'separator' },
+        { role: 'close', label: 'Close Window' },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo', label: 'Undo' },
+        { role: 'redo', label: 'Redo' },
+        { type: 'separator' },
+        { role: 'cut', label: 'Cut' },
+        { role: 'copy', label: 'Copy' },
+        { role: 'paste', label: 'Paste' },
+        { role: 'selectAll', label: 'Select All' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload', label: 'Reload' },
+        { role: 'forceReload', label: 'Force Reload' },
+        { role: 'toggleDevTools', label: 'Toggle Developer Tools' },
+        { type: 'separator' },
+        { role: 'resetZoom', label: 'Actual Size' },
+        { role: 'zoomIn', label: 'Zoom In' },
+        { role: 'zoomOut', label: 'Zoom Out' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: 'Toggle Full Screen' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize', label: 'Minimize' },
+        { role: 'close', label: 'Close' },
+      ],
+    },
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1400,
+    height: 900,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      webSecurity: false, // Required for custom app:// protocol to work
+    },
+    backgroundColor: '#ffffff',
+    frame: true, // Use standard frame to ensure window is movable
+    titleBarStyle: 'default', // Use default title bar style
+    show: false, // Don't show until ready
+  });
+
+  // Show window when ready
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+
+  // Load the React viewer
+  if (isDevelopment) {
+    // In development, load from dev server
+    mainWindow.loadURL('http://localhost:4000');
+    mainWindow.webContents.openDevTools();
+  } else {
+    // In production, load the built React viewer
+    const htmlPath = path.join(distPath, 'index.html');
+
+      // Check if dist directory exists
+      fs.access(distPath, fs.constants.F_OK)
+        .then(() => {
+          return readFile(htmlPath, 'utf8');
+        })
+        .then(html => {
+          // Add base tag to set the base URL for relative paths
+          let modifiedHtml = html;
+          if (!modifiedHtml.includes('<base')) {
+            modifiedHtml = modifiedHtml.replace('<head>', '<head>\n    <base href="app://">');
+          }
+
+          // Replace all absolute paths (starting with /) with app:// protocol
+          modifiedHtml = modifiedHtml
+            .replace(/(href|src|action)="\//g, '$1="app://')
+            .replace(/(href|src|action)='\//g, "$1='app://")
+            .replace(/url\("\//g, 'url("app://')
+            .replace(/url\('\//g, "url('app://")
+            .replace(/url\(\/\//g, 'url(app://');
+
+          // Write modified HTML to dist directory and load via app:// protocol
+          const tempHtmlPath = path.join(distPath, 'index-electron.html');
+          return writeFile(tempHtmlPath, modifiedHtml, 'utf8').then(() => {
+            mainWindow.loadURL('app://index-electron.html');
+          });
+        })
+      .catch((err) => {
+        // Show error - this helps identify issues
+        console.error('Failed to load viewer:', err.message);
+        console.error('Stack:', err.stack);
+        console.error('distPath:', distPath);
+        console.error('htmlPath:', htmlPath);
+        // Load a simple error page
+        const errorHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Error - Bucket</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 40px;
+      text-align: center;
+      background: #fff;
+      color: #333;
+    }
+    h1 { color: #d32f2f; margin-bottom: 16px; }
+    p { color: #666; line-height: 1.6; }
+    .error-detail {
+      background: #f5f5f5;
+      padding: 16px;
+      border-radius: 4px;
+      margin: 20px 0;
+      font-family: monospace;
+      font-size: 12px;
+      text-align: left;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <h1>Error Loading Viewer</h1>
+  <p>Failed to load the coverage viewer.</p>
+  <div class="error-detail">${err.message.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+  <p style="color: #999; font-size: 12px; margin-top: 20px;">Please check the console for details.</p>
+</body>
+</html>`;
+        mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
+      });
+  }
+
+  // Open dev tools in development for debugging
+  if (isDevelopment) {
+    mainWindow.webContents.openDevTools();
+  }
+
+  // Log failed resource loads and show error
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error('Failed to load:', errorCode, errorDescription, validatedURL);
+    // Only show error for main page load failures, not resource failures
+    if (validatedURL.includes('index-electron.html') || validatedURL.includes('app://')) {
+      const errorHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Error - Bucket</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 40px;
+      text-align: center;
+      background: #fff;
+      color: #333;
+    }
+    h1 { color: #d32f2f; margin-bottom: 16px; }
+    p { color: #666; line-height: 1.6; }
+    .error-detail {
+      background: #f5f5f5;
+      padding: 16px;
+      border-radius: 4px;
+      margin: 20px 0;
+      font-family: monospace;
+      font-size: 12px;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <h1>Error Loading Viewer</h1>
+  <p>Failed to load the coverage viewer.</p>
+  <div class="error-detail">
+    <div><strong>Error:</strong> ${errorDescription}</div>
+    <div><strong>Code:</strong> ${errorCode}</div>
+    <div><strong>URL:</strong> ${validatedURL}</div>
+  </div>
+  <p style="color: #999; font-size: 12px; margin-top: 20px;">Please check the console for details.</p>
+</body>
+</html>`;
+      mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
+    }
+  });
+
+  // Log console errors from renderer
+  mainWindow.webContents.on('console-message', (event, level, message) => {
+    if (level >= 2) { // Error or warning
+      console.log(`[Renderer ${level === 2 ? 'Warn' : 'Error'}]`, message);
+    }
+  });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+
+  // Handle pending file open (for macOS file association)
+  if (pendingFilePath) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      // Send file path to renderer
+      mainWindow.webContents.send('file-opened', pendingFilePath);
+      pendingFilePath = null;
+    });
+  }
+}
+
+app.whenReady().then(() => {
+  // Register custom protocol before creating window
+  setupProtocol();
+  createMenu();
+  createWindow();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+
+  // Handle file open on macOS
+  app.on('open-file', (event, filePath) => {
+    event.preventDefault();
+    if (mainWindow && mainWindow.webContents) {
+      // Window is ready, send immediately
+      mainWindow.webContents.send('file-opened', filePath);
+    } else {
+      // Window not ready yet, store for later
+      pendingFilePath = filePath;
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+// Handle file picker
+ipcMain.handle('open-file-dialog', async () => {
+  if (!mainWindow) return null;
+
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [
+      { name: 'Bucket Archive', extensions: ['bktgz'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+
+  if (result.canceled) {
+    return null;
+  }
+
+  return result.filePaths[0];
+});
+
+// Handle file reading
+ipcMain.handle('read-file', async (event, filePath) => {
+  try {
+    const buffer = await fs.readFile(filePath);
+    return Array.from(new Uint8Array(buffer));
+  } catch (error) {
+    throw new Error(`Failed to read file: ${error.message}`);
+  }
+});
+
+// Handle drag and drop
+ipcMain.handle('get-dropped-file', async (event, filePath) => {
+  try {
+    const stats = await fs.stat(filePath);
+    if (stats.isFile() && filePath.endsWith('.bktgz')) {
+      const buffer = await fs.readFile(filePath);
+      return Array.from(new Uint8Array(buffer));
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+});
