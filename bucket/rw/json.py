@@ -110,8 +110,8 @@ class JSONReader(Reader):
         definition = data.get("definitions", [])[record["def"]]
 
         readout.rec_sha = record["sha"]
-        readout.source = record.get("source")
-        readout.source_key = record.get("source_key")
+        readout.source = record.get("source", "")
+        readout.source_key = record.get("source_key", "")
         readout.def_sha = definition["sha"]
 
         readout.points = [PointTuple(*p) for p in definition["point"]]

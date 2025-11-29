@@ -48,8 +48,8 @@ class RunRow(BaseRow):
     run: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     definition: Mapped[int] = mapped_column(Integer)
     sha: Mapped[str] = mapped_column(String(64))
-    source: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    source_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    source_key: Mapped[str] = mapped_column(String(100), nullable=False, default="")
 
 
 class PointRow(BaseRow):
@@ -222,8 +222,8 @@ class SQLReader(Reader):
             rec_st = select(RunRow).where(RunRow.run == rec_ref)
             rec_row = session.scalars(rec_st).one()
             readout.rec_sha = rec_row.sha
-            readout.source = rec_row.source
-            readout.source_key = rec_row.source_key
+            readout.source = rec_row.source or ""
+            readout.source_key = rec_row.source_key or ""
             def_ref = rec_row.definition
 
             def_st = select(DefinitionRow).where(DefinitionRow.definition == def_ref)

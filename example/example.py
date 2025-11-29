@@ -8,7 +8,14 @@ from pathlib import Path
 from git.repo import Repo
 
 from bucket import CoverageContext
-from bucket.rw import ConsoleWriter, HTMLWriter, MergeReadout, PointReader, SQLAccessor
+from bucket.rw import (
+    ArchiveAccessor,
+    ConsoleWriter,
+    HTMLWriter,
+    MergeReadout,
+    PointReader,
+    SQLAccessor,
+)
 
 from .common import CatInfo, DogInfo, MadeUpStuff, PetInfo
 from .top import TopPets
@@ -194,6 +201,18 @@ def merge(log, regr_db_path, merged_db_path, ref_1, ref_2):
         log.info("To see the coverage in your browser open: index.html")
     except Exception:
         log.error("Web viewer failed")
+
+    # Export to archive format
+    log.info("Exporting all coverage to archive format")
+    try:
+        archive_path = Path("example_coverage.bktgz")
+        archive_accessor = ArchiveAccessor(archive_path)
+        archive_writer = archive_accessor.writer()
+        for readout in all_readouts_for_viewer:
+            archive_writer.write(readout)
+        log.info(f"Archive exported to: {archive_path}")
+    except Exception:
+        log.error("Archive export failed")
 
 
 def run(reg_db_path: Path = "example_regr_file_store.db"):

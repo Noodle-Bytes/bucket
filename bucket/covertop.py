@@ -28,13 +28,13 @@ class Covertop(Covergroup):
         log: logging.Logger | None = None,
         verbosity: str | int | None = None,
         except_on_illegal: bool = False,
-        source: str | int | None = None,
-        source_key: str | int | None = None,
+        source: str | int = "",
+        source_key: str | int = "",
     ):
         self.config = CoverConfig(except_on_illegal=except_on_illegal)
-        # Convert int to str, keep None as None
-        self.source = str(source) if isinstance(source, int) else source
-        self.source_key = str(source_key) if isinstance(source_key, int) else source_key
+        # Always store as string, default to empty string
+        self.source = "" if source is None else str(source)
+        self.source_key = "" if source_key is None else str(source_key)
 
         if log:
             assert isinstance(

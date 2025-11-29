@@ -43,8 +43,8 @@ class ArchiveRecordTuple(NamedTuple):
     point_hit_end: int
     bucket_hit_offset: int
     bucket_hit_end: int
-    source: str | None  # Stored as "" in CSV, converted to None when reading
-    source_key: str | None  # Stored as "" in CSV, converted to None when reading
+    source: str  # Stored as "" in CSV, always a string
+    source_key: str  # Stored as "" in CSV, always a string
 
 
 DEFINITION_PATH = "definition"
@@ -100,14 +100,19 @@ def _read(
         lines = f.readlines(byte_end - byte_offset - 1)[line_offset:line_end]
 
         for row in csv.reader(lines, quoting=csv.QUOTE_NONNUMERIC):
-            # For record rows (8 fields), convert empty strings to None for source/source_key (indices 6, 7)
-            # CSV doesn't support None, so we store "" and convert back to None when reading
+            # For record rows (8 fields), keep empty strings as empty strings for source/source_key (indices 6, 7)
+            # CSV doesn't support None, so we store "" for empty values
             # For all other rows, convert empty strings to None
             is_record_row = len(row) == 8  # ArchiveRecordTuple has 8 fields
             processed_row = []
             for idx, x in enumerate(row):
                 if x == "":
-                    processed_row.append(None)
+                    # Keep empty strings as empty strings for source/source_key in record rows
+                    # Convert to None for other fields/rows
+                    if is_record_row and idx in (6, 7):  # source and source_key indices
+                        processed_row.append("")
+                    else:
+                        processed_row.append(None)
                 elif isinstance(x, float) and x.is_integer():
                     processed_row.append(int(x))
                 else:
@@ -145,10 +150,10 @@ class ArchiveReadout(Readout):
     def get_rec_sha(self) -> str:
         return self.record.rec_sha
 
-    def get_source(self) -> str | None:
+    def get_source(self) -> str:
         return self.record.source
 
-    def get_source_key(self) -> str | None:
+    def get_source_key(self) -> str:
         return self.record.source_key
 
     def iter_points(
@@ -315,7 +320,7 @@ class ArchiveWriter(Writer):
                 ],
             )
 
-            # Convert None to "" for source/source_key when writing to CSV (CSV doesn't support None)
+            # source and source_key are always strings (empty string if not set)
             source = readout.get_source()
             source_key = readout.get_source_key()
             record_offset, _ = _write(
@@ -328,8 +333,8 @@ class ArchiveWriter(Writer):
                         point_hit_end,
                         bucket_hit_offset,
                         bucket_hit_end,
-                        "" if source is None else source,
-                        "" if source_key is None else source_key,
+                        source,
+                        source_key,
                     )
                 ],
             )
