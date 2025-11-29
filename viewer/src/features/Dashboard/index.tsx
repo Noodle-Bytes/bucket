@@ -224,7 +224,7 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
                                             Load a Bucket coverage archive file (`.bktgz`) to view coverage data.
                                         </Typography.Paragraph>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
-                                            {isElectron && onOpenFile ? (
+                                            {onOpenFile ? (
                                                 <>
                                                     <Button
                                                         type="primary"
@@ -240,9 +240,7 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
                                                 </>
                                             ) : (
                                                 <Typography.Text style={{ color: secondaryTextColor }}>
-                                                    {isElectron
-                                                        ? 'Use File > Open or drag and drop a `.bktgz` file'
-                                                        : 'Drag and drop a `.bktgz` file or use the file picker'}
+                                                    Drag and drop a `.bktgz` file here
                                                 </Typography.Text>
                                             )}
                                         </div>
