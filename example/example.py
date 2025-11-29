@@ -8,7 +8,13 @@ from pathlib import Path
 from git.repo import Repo
 
 from bucket import CoverageContext
-from bucket.rw import ConsoleWriter, HTMLWriter, MergeReadout, PointReader, SQLAccessor
+from bucket.rw import (
+    ArchiveAccessor,
+    ConsoleWriter,
+    HTMLWriter,
+    MergeReadout,
+    PointReader,
+)
 
 from .common import CatInfo, DogInfo, MadeUpStuff, PetInfo
 from .top import TopPets
@@ -49,7 +55,7 @@ def pretend_monitor(rand):
 
 
 def run_testbench(
-    db_path: Path,
+    output_path: Path,
     rand: random.Random,
     log: logging.Logger,
     apply_filters_and_logging: bool = False,
@@ -93,11 +99,13 @@ def run_testbench(
     # Read the coverage
     readout = point_reader.read(cvg)
 
-    # Create/Access a local sql database
-    sql_accessor = SQLAccessor.File(db_path)
-
-    # Write the readout into the database
-    rec_ref = sql_accessor.write(readout)
+    # Export to bucket archive format (.bktgz)
+    # Create a unique filename based on whether filters are applied
+    suffix = "_filtered" if apply_filters_and_logging else ""
+    archive_path = output_path.parent / f"{output_path.stem}{suffix}.bktgz"
+    archive_writer = ArchiveAccessor(archive_path).writer()
+    archive_writer.write(readout)
+    log.info(f"Coverage exported to archive: {archive_path}")
 
     # Output to console
     if apply_filters_and_logging:
@@ -105,7 +113,7 @@ def run_testbench(
     else:
         log.info(f"This is the coverage with {samples} samples:")
     log.info(
-        f"To view this coverage in detail please run: python -m bucket write console --sql-path example_file_store.db --points --record {rec_ref}"
+        f"To view this coverage, open the archive file in the Bucket viewer: {archive_path}"
     )
     ConsoleWriter().write(readout)
     log.info("-------------------------------------------------------")
@@ -122,72 +130,64 @@ def run_testbench(
         cvg.dogs.print_tree()
         log.info("-------------------------------------------------------")
 
-    return rec_ref
+    return archive_path
 
 
-def merge(log, regr_db_path, merged_db_path, ref_1, ref_2):
+def merge(log, archive_path_1, archive_path_2, merged_archive_path):
     log = log.getChild("merger")
 
-    # Access regression and merged sql databases
-    r_sql_accessor = SQLAccessor.File(regr_db_path)
-    m_sql_accessor = SQLAccessor.File(merged_db_path)
+    # Read from archive files
+    archive_reader_1 = ArchiveAccessor(archive_path_1).reader()
+    archive_reader_2 = ArchiveAccessor(archive_path_2).reader()
 
-    # Read back from sql
-    sql_readout_1 = r_sql_accessor.read(ref_1)
-    sql_readout_2 = r_sql_accessor.read(ref_2)
+    # Each archive contains a single record, so get the first (and only) readout
+    readout_1 = next(archive_reader_1.read_all())
+    readout_2 = next(archive_reader_2.read_all())
 
     # Merge together
-    merged_readout = MergeReadout(sql_readout_1, sql_readout_2)
+    merged_readout = MergeReadout(readout_1, readout_2)
 
-    # Write merged coverage into the merged database
-    rec_ref_merged = m_sql_accessor.write(merged_readout)
+    # Export merged coverage to bucket archive format
+    archive_writer = ArchiveAccessor(merged_archive_path).writer()
+    archive_writer.write(merged_readout)
+    log.info(f"Merged coverage exported to archive: {merged_archive_path}")
 
     log.info("This is the merged coverage from the above 2 regressions.")
     log.info(
-        f"To view this coverage in detail please run: python -m bucket write console --sql-path example_file_store.db --points --record {rec_ref_merged}"
+        f"To view this coverage, open the archive file in the Bucket viewer: {merged_archive_path}"
     )
     ConsoleWriter().write(merged_readout)
     log.info("-------------------------------------------------------")
 
-    # Read all back from sql - note as the db is not removed this will
-    # accumulate each time this example is run. This will also include
-    # merged data as well as the individual runs. It is meant as an example
-    # of how to use the command
-    merged_readout_all = MergeReadout(*r_sql_accessor.read_all())
-    log.info("This is the coverage from all the regression data so far:")
-    log.info(
-        f"(To reset please delete the files '{regr_db_path}' and '{merged_db_path}')"
-    )
-    ConsoleWriter().write(merged_readout_all)
-    log.info("-------------------------------------------------------")
-
     # Generating web viewer
-    # To generate the HTML report run:
-    # python -m bucket write html --sql-path ./example_file_store.db --output index.html
-    log.info("Generating the web viewer for all coverage")
+    log.info("Generating a local web viewer for viewing coverage")
     try:
-        HTMLWriter().write(merged_readout_all)
+        HTMLWriter().write(merged_readout)
         log.info("To see the coverage in your browser open: index.html")
     except Exception:
         log.error("Web viewer failed")
 
 
-def run(reg_db_path: Path = "example_regr_file_store.db"):
+def run(output_dir: Path = Path(".")):
     logging.basicConfig(level=logging.DEBUG)
     log = logging.getLogger("tb")
     log.setLevel(logging.DEBUG)
     rand = random.Random()
 
-    merged_db_path = "example_merged_file_store.db"
-
     # Run "testbench" once with all coverage enabled
-    ref_1 = run_testbench(reg_db_path, rand, log)
+    archive_path_1 = run_testbench(output_dir / "example_regr_file_store", rand, log)
 
     # Run "testbench" a second time with some coverage filtered
-    ref_2 = run_testbench(reg_db_path, rand, log, apply_filters_and_logging=True)
+    archive_path_2 = run_testbench(
+        output_dir / "example_regr_file_store",
+        rand,
+        log,
+        apply_filters_and_logging=True,
+    )
 
     # Merge the two runs
-    merge(log, reg_db_path, merged_db_path, ref_1, ref_2)
+    merged_archive_path = output_dir / "example_merged_file_store.bktgz"
+    merge(log, archive_path_1, archive_path_2, merged_archive_path)
 
 
 if __name__ == "__main__":

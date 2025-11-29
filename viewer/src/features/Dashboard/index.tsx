@@ -10,6 +10,7 @@
 
 import { Theme as ThemeType, themes } from "@/theme";
 import Theme from "@/providers/Theme";
+import ThemeConsumer from "@/providers/Theme";
 import type { FloatButtonProps, TreeDataNode } from "antd";
 import {
     Breadcrumb,
@@ -18,8 +19,11 @@ import {
     Segmented,
     Flex,
     FloatButton,
+    Empty,
+    Button,
+    Typography,
 } from "antd";
-import { BgColorsOutlined } from "@ant-design/icons";
+import { BgColorsOutlined, FileOutlined, FolderOpenOutlined } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 
 import Sider from "./components/Sider";
@@ -153,9 +157,10 @@ function getBreadCrumbItems({
 
 export type DashboardProps = {
     tree: Tree;
+    onOpenFile?: () => void | Promise<void>;
 };
 
-export default function Dashboard({ tree }: DashboardProps) {
+export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
     const [selectedTreeKeys, setSelectedTreeKeys] = useState<TreeKey[]>([]);
     const [expandedTreeKeys, setExpandedTreeKeys] = useState<TreeKey[]>([]);
     const [autoExpandTreeParent, setAutoExpandTreeParent] = useState(true);
@@ -188,7 +193,68 @@ export default function Dashboard({ tree }: DashboardProps) {
         });
     };
 
+    // Check if tree is empty (no coverage loaded)
+    const isEmpty = tree.getRoots().length === 0;
+    const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
+
     const selectedViewContent = useMemo(() => {
+        // Show empty state if no coverage is loaded
+        if (isEmpty) {
+            return (
+                <Theme.Consumer>
+                    {({ theme }) => {
+                        // Use theme-aware colors - check if it's a dark theme
+                        const isDark = theme.name === 'dark' || theme.name.includes('dark');
+                        const primaryTextColor = isDark
+                            ? 'rgba(255, 255, 255, 0.9)'
+                            : 'rgba(0, 0, 0, 0.85)';
+                        const secondaryTextColor = isDark
+                            ? 'rgba(255, 255, 255, 0.7)'
+                            : 'rgba(0, 0, 0, 0.65)';
+
+                        return (
+                            <Empty
+                                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                description={
+                                    <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
+                                        <Typography.Title level={4} style={{ marginBottom: '16px' }}>
+                                            No Coverage Loaded
+                                        </Typography.Title>
+                                        <Typography.Paragraph style={{ marginBottom: '24px', color: primaryTextColor }}>
+                                            Load a Bucket coverage archive file (`.bktgz`) to view coverage data.
+                                        </Typography.Paragraph>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
+                                            {isElectron && onOpenFile ? (
+                                                <>
+                                                    <Button
+                                                        type="primary"
+                                                        icon={<FolderOpenOutlined />}
+                                                        size="large"
+                                                        onClick={onOpenFile}
+                                                    >
+                                                        Open File...
+                                                    </Button>
+                                                    <Typography.Text style={{ fontSize: '12px', color: secondaryTextColor }}>
+                                                        Or drag and drop a `.bktgz` file here
+                                                    </Typography.Text>
+                                                </>
+                                            ) : (
+                                                <Typography.Text style={{ color: secondaryTextColor }}>
+                                                    {isElectron
+                                                        ? 'Use File > Open or drag and drop a `.bktgz` file'
+                                                        : 'Drag and drop a `.bktgz` file or use the file picker'}
+                                                </Typography.Text>
+                                            )}
+                                        </div>
+                                    </div>
+                                }
+                            />
+                        );
+                    }}
+                </Theme.Consumer>
+            );
+        }
+
         switch (currentContentKey) {
             case "Pivot":
                 return <LayoutOutlined />;
@@ -205,45 +271,49 @@ export default function Dashboard({ tree }: DashboardProps) {
             default:
                 throw new Error("Invalid view!?");
         }
-    }, [viewKey, currentContentKey, tree]);
+    }, [viewKey, currentContentKey, tree, isEmpty, isElectron, onOpenFile]);
 
     return (
         <ConfigProvider theme={antTheme}>
             <Layout {...view.props}>
-                <Sider
-                    tree={tree}
-                    selectedTreeKeys={selectedTreeKeys}
-                    setSelectedTreeKeys={onSelect}
-                    expandedTreeKeys={expandedTreeKeys}
-                    setExpandedTreeKeys={setExpandedTreeKeys}
-                    autoExpandTreeParent={autoExpandTreeParent}
-                    setAutoExpandTreeParent={setAutoExpandTreeParent}></Sider>
+                {!isEmpty && (
+                    <Sider
+                        tree={tree}
+                        selectedTreeKeys={selectedTreeKeys}
+                        setSelectedTreeKeys={onSelect}
+                        expandedTreeKeys={expandedTreeKeys}
+                        setExpandedTreeKeys={setExpandedTreeKeys}
+                        autoExpandTreeParent={autoExpandTreeParent}
+                        setAutoExpandTreeParent={setAutoExpandTreeParent}></Sider>
+                )}
                 <Layout {...view.body.props}>
-                    <Header {...view.body.header.props}>
-                        <Flex {...view.body.header.flex.props}>
-                            <Theme.Consumer>
-                                {/* The breadcrumb menu is placed outside of the main DOM tree
-                                    so we need to pass through the theme class */}
-                                {({ theme }) => (
-                                    <Breadcrumb
-                                        {...view.body.header.flex.breadcrumb
-                                            .props}
-                                        items={getBreadCrumbItems({
-                                            tree,
-                                            selectedTreeKeys,
-                                            onSelect,
-                                            theme,
-                                        })}></Breadcrumb>
-                                )}
-                            </Theme.Consumer>
-                            <Segmented
-                                {...view.body.header.flex.segmented.props}
-                                options={contentViews}
-                                value={currentContentKey}
-                                onChange={onViewChange}
-                            />
-                        </Flex>
-                    </Header>
+                    {!isEmpty && (
+                        <Header {...view.body.header.props}>
+                            <Flex {...view.body.header.flex.props}>
+                                <Theme.Consumer>
+                                    {/* The breadcrumb menu is placed outside of the main DOM tree
+                                        so we need to pass through the theme class */}
+                                    {({ theme }) => (
+                                        <Breadcrumb
+                                            {...view.body.header.flex.breadcrumb
+                                                .props}
+                                            items={getBreadCrumbItems({
+                                                tree,
+                                                selectedTreeKeys,
+                                                onSelect,
+                                                theme,
+                                            })}></Breadcrumb>
+                                    )}
+                                </Theme.Consumer>
+                                <Segmented
+                                    {...view.body.header.flex.segmented.props}
+                                    options={contentViews}
+                                    value={currentContentKey}
+                                    onChange={onViewChange}
+                                />
+                            </Flex>
+                        </Header>
+                    )}
                     <Content {...view.body.content.props}>
                         {selectedViewContent}
                     </Content>

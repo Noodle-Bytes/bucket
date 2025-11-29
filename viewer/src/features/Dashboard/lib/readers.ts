@@ -650,3 +650,25 @@ export async function readFileHandle(file: FileSystemFileHandle): Promise<Reader
     throw new Error("Unsupported file type");
 
 }
+
+// Electron-specific file reading
+export async function readElectronFile(bytes: number[]): Promise<Reader> {
+    const buffer = new Uint8Array(bytes);
+
+    // Try to detect file type by checking if it's a gzipped tar (archive)
+    // or JSON. For now, we'll assume .bktgz based on context, but could
+    // add more sophisticated detection.
+    try {
+        // Try parsing as archive first (most common case)
+        return ArchiveReader.fromCompressedBytes(buffer);
+    } catch (error) {
+        // If that fails, try JSON
+        try {
+            const text = new TextDecoder().decode(buffer);
+            const data: JSONData = JSON.parse(text);
+            return new JSONReader(data);
+        } catch (jsonError) {
+            throw new Error("Unsupported file type - not a valid archive or JSON");
+        }
+    }
+}
