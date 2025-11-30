@@ -8,7 +8,7 @@ import Dashboard from "@/features/Dashboard";
 import CoverageTree from "@/features/Dashboard/lib/coveragetree";
 import { readFileHandle, readElectronFile } from "@/features/Dashboard/lib/readers";
 import { useEffect, useState, useRef, useCallback } from "react";
-import { notification, Spin } from "antd";
+import { notification, Spin, Modal } from "antd";
 
 function getDefaultTree() {
     // Start with an empty tree - no mock data
@@ -27,12 +27,21 @@ export const AppRoutes = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const clearCoverage = useCallback(() => {
-        setTree(getDefaultTree());
-        setAllReadouts([]);
-        notification.info({
-            message: 'Coverage Cleared',
-            description: 'All coverage data has been cleared.',
-            duration: 2,
+        Modal.confirm({
+            title: 'Clear Coverage',
+            content: 'Are you sure you want to clear all coverage data? This action cannot be undone.',
+            okText: 'Clear',
+            okType: 'danger',
+            cancelText: 'Cancel',
+            onOk: () => {
+                setTree(getDefaultTree());
+                setAllReadouts([]);
+                notification.info({
+                    message: 'Coverage Cleared',
+                    description: 'All coverage data has been cleared.',
+                    duration: 2,
+                });
+            },
         });
     }, []);
 
