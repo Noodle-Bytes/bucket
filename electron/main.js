@@ -7,6 +7,8 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, protocol } = require('electro
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
+const packageJson = require('./package.json');
+const windowStateKeeper = require('electron-window-state');
 
 // Register app:// as a secure, standard scheme before the app is ready.
 // This lets us keep webSecurity enabled while serving the viewer from a
@@ -33,6 +35,99 @@ app.setName('Bucket');
 
 let mainWindow = null;
 let pendingFilePath = null;
+
+// Recent files management
+const MAX_RECENT_FILES = 10;
+const recentFilesPath = path.join(app.getPath('userData'), 'recent-files.json');
+
+function loadRecentFiles() {
+  try {
+    if (fs.existsSync(recentFilesPath)) {
+      const data = fs.readFileSync(recentFilesPath, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('Failed to load recent files:', error);
+  }
+  return [];
+}
+
+function saveRecentFiles(files) {
+  try {
+    fs.writeFileSync(recentFilesPath, JSON.stringify(files, null, 2), 'utf8');
+  } catch (error) {
+    console.error('Failed to save recent files:', error);
+  }
+}
+
+function addToRecentFiles(filePath) {
+  const recentFiles = loadRecentFiles();
+  // Remove if already exists
+  const filtered = recentFiles.filter(f => f.path !== filePath);
+  // Add to beginning
+  filtered.unshift({ path: filePath, name: path.basename(filePath) });
+  // Keep only MAX_RECENT_FILES
+  const trimmed = filtered.slice(0, MAX_RECENT_FILES);
+  saveRecentFiles(trimmed);
+  updateRecentFilesMenu();
+}
+
+function updateRecentFilesMenu() {
+  const recentFiles = loadRecentFiles();
+  const menu = Menu.getApplicationMenu();
+  if (!menu) return;
+
+  const fileMenu = menu.items.find(item => item.label === 'File');
+  if (!fileMenu || !fileMenu.submenu) return;
+
+  // Find or create "Open Recent" submenu
+  let openRecentItem = fileMenu.submenu.items.find(item => item.label === 'Open Recent');
+
+  if (recentFiles.length === 0) {
+    // Remove Open Recent if no files
+    if (openRecentItem) {
+      const index = fileMenu.submenu.items.indexOf(openRecentItem);
+      if (index > -1) {
+        fileMenu.submenu.items.splice(index, 1);
+      }
+    }
+  } else {
+    // Create or update Open Recent submenu
+    const recentSubmenu = recentFiles.map(file => ({
+      label: file.name,
+      click: () => {
+        if (mainWindow) {
+          mainWindow.webContents.send('file-opened', file.path);
+        }
+      },
+    }));
+
+    recentSubmenu.push({ type: 'separator' });
+    recentSubmenu.push({
+      label: 'Clear Menu',
+      click: () => {
+        saveRecentFiles([]);
+        updateRecentFilesMenu();
+      },
+    });
+
+    if (openRecentItem) {
+      openRecentItem.submenu = Menu.buildFromTemplate(recentSubmenu);
+    } else {
+      // Insert after "Open..." and before separator
+      const openIndex = fileMenu.submenu.items.findIndex(item => item.label === 'Open...');
+      const separatorIndex = fileMenu.submenu.items.findIndex((item, idx) => idx > openIndex && item.type === 'separator');
+      const insertIndex = separatorIndex > -1 ? separatorIndex : openIndex + 1;
+
+      fileMenu.submenu.insert(insertIndex, {
+        label: 'Open Recent',
+        submenu: recentSubmenu,
+      });
+    }
+  }
+
+  Menu.setApplicationMenu(menu);
+}
 // In built app, viewer/dist is in extraResources, so it's in Resources/viewer/dist
 // In development, path is relative to electron directory
 const distPath = app.isPackaged
@@ -78,12 +173,25 @@ function setupProtocol() {
   });
 }
 
+function showAboutDialog() {
+  dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    title: 'About Bucket',
+    message: 'Bucket',
+    detail: `Version ${packageJson.version}\n\n${packageJson.description}\n\nCopyright © 2023-2025 Noodle-Bytes. All Rights Reserved.\n\nLicensed under the MIT License.`,
+    buttons: ['OK'],
+  });
+}
+
 function createMenu() {
   const template = [
     {
       label: app.getName(),
       submenu: [
-        { role: 'about', label: 'About Bucket' },
+        {
+          label: 'About Bucket',
+          click: showAboutDialog,
+        },
         { type: 'separator' },
         { role: 'services', label: 'Services' },
         { type: 'separator' },
@@ -111,7 +219,9 @@ function createMenu() {
               });
 
               if (!result.canceled && result.filePaths.length > 0) {
-                mainWindow.webContents.send('file-opened', result.filePaths[0]);
+                const filePath = result.filePaths[0];
+                addToRecentFiles(filePath);
+                mainWindow.webContents.send('file-opened', filePath);
               }
             }
           },
@@ -157,12 +267,22 @@ function createMenu() {
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+  // Initialize recent files menu after menu is created
+  updateRecentFilesMenu();
 }
 
 async function createWindow() {
+  // Load window state or use defaults
+  let mainWindowState = windowStateKeeper({
+    defaultWidth: 1400,
+    defaultHeight: 900,
+  });
+
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    x: mainWindowState.x,
+    y: mainWindowState.y,
+    width: mainWindowState.width,
+    height: mainWindowState.height,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -178,6 +298,9 @@ async function createWindow() {
     titleBarStyle: 'default', // Use default title bar style
     show: false, // Don't show until ready
   });
+
+  // Let windowStateKeeper manage the window state
+  mainWindowState.manage(mainWindow);
 
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
@@ -327,10 +450,16 @@ async function createWindow() {
   if (pendingFilePath) {
     mainWindow.webContents.once('did-finish-load', () => {
       // Send file path to renderer
+      addToRecentFiles(pendingFilePath);
       mainWindow.webContents.send('file-opened', pendingFilePath);
       pendingFilePath = null;
     });
   }
+
+  // Update recent files menu after window is ready
+  mainWindow.webContents.once('did-finish-load', () => {
+    updateRecentFilesMenu();
+  });
 }
 
 app.whenReady().then(() => {
@@ -348,6 +477,7 @@ app.whenReady().then(() => {
   // Handle file open on macOS
   app.on('open-file', (event, filePath) => {
     event.preventDefault();
+    addToRecentFiles(filePath);
     if (mainWindow && mainWindow.webContents) {
       // Window is ready, send immediately
       mainWindow.webContents.send('file-opened', filePath);

@@ -157,9 +157,10 @@ function getBreadCrumbItems({
 export type DashboardProps = {
     tree: Tree;
     onOpenFile?: () => void | Promise<void>;
+    isDragging?: boolean;
 };
 
-export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
+export default function Dashboard({ tree, onOpenFile, isDragging = false }: DashboardProps) {
     const [selectedTreeKeys, setSelectedTreeKeys] = useState<TreeKey[]>([]);
     const [expandedTreeKeys, setExpandedTreeKeys] = useState<TreeKey[]>([]);
     const [autoExpandTreeParent, setAutoExpandTreeParent] = useState(true);
@@ -294,7 +295,22 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
 
     return (
         <ConfigProvider theme={antTheme}>
-            <Layout {...view.props}>
+            <Theme.Consumer>
+                {({ theme: themeContext }) => {
+                    const dragStyle = isDragging ? {
+                        border: '3px dashed',
+                        borderColor: themeContext.theme.colors.accentbg.value,
+                        backgroundColor: themeContext.theme.colors.highlightbg.value + '40', // Add transparency
+                        transition: 'all 0.2s ease-in-out',
+                    } : {};
+                    return (
+                        <Layout
+                            {...view.props}
+                            style={{
+                                ...view.props.style,
+                                ...dragStyle,
+                            }}
+                        >
                 {!isEmpty && (
                     <Sider
                         tree={tree}
@@ -350,7 +366,10 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
                         {selectedViewContent}
                     </Content>
                 </Layout>
-            </Layout>
+                        </Layout>
+                    );
+                }}
+            </Theme.Consumer>
             <ColorModeToggleButton {...view.float.theme.props} />
         </ConfigProvider>
     );
