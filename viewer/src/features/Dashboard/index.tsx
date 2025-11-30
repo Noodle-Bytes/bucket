@@ -199,8 +199,12 @@ export default function Dashboard({ tree, onOpenFile, onClearCoverage, isDraggin
     // Get logo path - in Electron production, use app:// protocol
     // Check if we're using app:// protocol (Electron production) or http:// (dev)
     const isElectronProduction = typeof window !== 'undefined' && window.location.protocol === 'app:';
+    // For file:// protocol (browser opening HTML directly), use relative path
+    const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
     const logoSrc = isElectronProduction
         ? 'app://logo.svg'
+        : isFileProtocol
+        ? './logo.svg'
         : `${import.meta.env.BASE_URL}logo.svg`;
     // Get source and source_key from the currently selected node's readout
     const sourceInfo = useMemo(() => {
