@@ -72,55 +72,32 @@ function addToRecentFiles(filePath) {
   updateRecentFilesMenu();
 }
 
-function getFileMenuItems() {
+function updateRecentFilesMenu() {
   const recentFiles = loadRecentFiles();
-  const fileMenuItems = [
-    {
-      label: 'Open...',
-      accelerator: 'CmdOrCtrl+O',
-      click: async () => {
-        if (mainWindow) {
-          const result = await dialog.showOpenDialog(mainWindow, {
-            properties: ['openFile', 'multiSelections'],
-            filters: [
-              { name: 'Bucket Archive', extensions: ['bktgz'] },
-              { name: 'All Files', extensions: ['*'] },
-            ],
-          });
+  const menu = Menu.getApplicationMenu();
+  if (!menu) return;
 
-          if (!result.canceled && result.filePaths.length > 0) {
-            // Add all files to recent files
-            result.filePaths.forEach(filePath => addToRecentFiles(filePath));
-            // Ensure the window is ready before sending the event
-            if (mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-              // Wait for the page to be ready if it's still loading
-              if (mainWindow.webContents.isLoading()) {
-                mainWindow.webContents.once('did-finish-load', () => {
-                  mainWindow.webContents.send('files-opened', result.filePaths);
-                });
-              } else {
-                mainWindow.webContents.send('files-opened', result.filePaths);
-              }
-            }
-          }
-        }
-      },
-    },
-  ];
+  const fileMenu = menu.items.find(item => item.label === 'File');
+  if (!fileMenu || !fileMenu.submenu) return;
 
-  // Add "Open Recent" submenu if there are recent files
-  if (recentFiles.length > 0) {
+  // Find or create "Open Recent" submenu
+  let openRecentItem = fileMenu.submenu.items.find(item => item.label === 'Open Recent');
+
+  if (recentFiles.length === 0) {
+    // Remove Open Recent if no files
+    if (openRecentItem) {
+      const index = fileMenu.submenu.items.indexOf(openRecentItem);
+      if (index > -1) {
+        fileMenu.submenu.items.splice(index, 1);
+      }
+    }
+  } else {
+    // Create or update Open Recent submenu
     const recentSubmenu = recentFiles.map(file => ({
       label: file.name,
       click: () => {
-        if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-          if (mainWindow.webContents.isLoading()) {
-            mainWindow.webContents.once('did-finish-load', () => {
-              mainWindow.webContents.send('files-opened', [file.path]);
-            });
-          } else {
-            mainWindow.webContents.send('files-opened', [file.path]);
-          }
+        if (mainWindow) {
+          mainWindow.webContents.send('file-opened', file.path);
         }
       },
     }));
@@ -134,37 +111,22 @@ function getFileMenuItems() {
       },
     });
 
-    fileMenuItems.push({
-      label: 'Open Recent',
-      submenu: recentSubmenu,
-    });
+    if (openRecentItem) {
+      openRecentItem.submenu = Menu.buildFromTemplate(recentSubmenu);
+    } else {
+      // Insert after "Open..." and before separator
+      const openIndex = fileMenu.submenu.items.findIndex(item => item.label === 'Open...');
+      const separatorIndex = fileMenu.submenu.items.findIndex((item, idx) => idx > openIndex && item.type === 'separator');
+      const insertIndex = separatorIndex > -1 ? separatorIndex : openIndex + 1;
+
+      fileMenu.submenu.insert(insertIndex, {
+        label: 'Open Recent',
+        submenu: recentSubmenu,
+      });
+    }
   }
 
-  fileMenuItems.push({ type: 'separator' });
-  fileMenuItems.push({
-    label: 'Clear Coverage',
-    accelerator: 'CmdOrCtrl+K',
-    click: () => {
-      if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-        if (mainWindow.webContents.isLoading()) {
-          mainWindow.webContents.once('did-finish-load', () => {
-            mainWindow.webContents.send('clear-coverage');
-          });
-        } else {
-          mainWindow.webContents.send('clear-coverage');
-        }
-      }
-    },
-  });
-  fileMenuItems.push({ type: 'separator' });
-  fileMenuItems.push({ role: 'close', label: 'Close Window' });
-
-  return fileMenuItems;
-}
-
-function updateRecentFilesMenu() {
-  // Rebuild the entire menu to include updated recent files
-  createMenu();
+  Menu.setApplicationMenu(menu);
 }
 // In built app, viewer/dist is in extraResources, so it's in Resources/viewer/dist
 // In development, path is relative to electron directory
@@ -242,7 +204,31 @@ function createMenu() {
     },
     {
       label: 'File',
-      submenu: getFileMenuItems(),
+      submenu: [
+        {
+          label: 'Open...',
+          accelerator: 'CmdOrCtrl+O',
+          click: async () => {
+            if (mainWindow) {
+              const result = await dialog.showOpenDialog(mainWindow, {
+                properties: ['openFile'],
+                filters: [
+                  { name: 'Bucket Archive', extensions: ['bktgz'] },
+                  { name: 'All Files', extensions: ['*'] },
+                ],
+              });
+
+              if (!result.canceled && result.filePaths.length > 0) {
+                const filePath = result.filePaths[0];
+                addToRecentFiles(filePath);
+                mainWindow.webContents.send('file-opened', filePath);
+              }
+            }
+          },
+        },
+        { type: 'separator' },
+        { role: 'close', label: 'Close Window' },
+      ],
     },
     {
       label: 'Edit',
@@ -281,6 +267,8 @@ function createMenu() {
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+  // Initialize recent files menu after menu is created
+  updateRecentFilesMenu();
 }
 
 async function createWindow() {
@@ -463,7 +451,7 @@ async function createWindow() {
     mainWindow.webContents.once('did-finish-load', () => {
       // Send file path to renderer
       addToRecentFiles(pendingFilePath);
-      mainWindow.webContents.send('files-opened', [pendingFilePath]);
+      mainWindow.webContents.send('file-opened', pendingFilePath);
       pendingFilePath = null;
     });
   }
@@ -492,7 +480,7 @@ app.whenReady().then(() => {
     addToRecentFiles(filePath);
     if (mainWindow && mainWindow.webContents) {
       // Window is ready, send immediately
-      mainWindow.webContents.send('files-opened', [filePath]);
+      mainWindow.webContents.send('file-opened', filePath);
     } else {
       // Window not ready yet, store for later
       pendingFilePath = filePath;
@@ -511,7 +499,7 @@ ipcMain.handle('open-file-dialog', async () => {
   if (!mainWindow) return null;
 
   const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile', 'multiSelections'],
+    properties: ['openFile'],
     filters: [
       { name: 'Bucket Archive', extensions: ['bktgz'] },
       { name: 'All Files', extensions: ['*'] },
@@ -522,7 +510,7 @@ ipcMain.handle('open-file-dialog', async () => {
     return null;
   }
 
-  return result.filePaths;
+  return result.filePaths[0];
 });
 
 // Handle file reading
@@ -536,22 +524,15 @@ ipcMain.handle('read-file', async (event, filePath) => {
 });
 
 // Handle drag and drop
-ipcMain.handle('get-dropped-files', async (event, filePaths) => {
-  const results = [];
-  for (const filePath of filePaths) {
-    try {
-      const stats = await fsp.stat(filePath);
-      if (stats.isFile() && filePath.endsWith('.bktgz')) {
-        const buffer = await fsp.readFile(filePath);
-        results.push({
-          path: filePath,
-          bytes: Array.from(new Uint8Array(buffer))
-        });
-      }
-    } catch (error) {
-      // Skip invalid files
-      continue;
+ipcMain.handle('get-dropped-file', async (event, filePath) => {
+  try {
+    const stats = await fsp.stat(filePath);
+    if (stats.isFile() && filePath.endsWith('.bktgz')) {
+      const buffer = await fsp.readFile(filePath);
+      return Array.from(new Uint8Array(buffer));
     }
+    return null;
+  } catch (error) {
+    return null;
   }
-  return results;
 });

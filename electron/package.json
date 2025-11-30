@@ -11,6 +11,9 @@
   },
   "author": "Noodle-Bytes",
   "license": "MIT",
+  "dependencies": {
+    "electron-window-state": "^5.0.3"
+  },
   "devDependencies": {
     "electron": "^28.0.0",
     "electron-builder": "^24.9.1"
@@ -23,7 +26,9 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64"]
+          "arch": [
+            "arm64"
+          ]
         }
       ],
       "icon": "../viewer/public/pwa-512x512.png",
@@ -33,7 +38,9 @@
             "CFBundleTypeName": "Bucket Archive",
             "CFBundleTypeRole": "Viewer",
             "CFBundleTypeIconFile": "pwa-512x512.png",
-            "LSItemContentTypes": ["com.noodlebytes.bktgz"],
+            "LSItemContentTypes": [
+              "com.noodlebytes.bktgz"
+            ],
             "LSHandlerRank": "Owner"
           }
         ],
@@ -42,8 +49,12 @@
             "UTTypeIdentifier": "com.noodlebytes.bktgz",
             "UTTypeDescription": "Bucket Coverage Archive",
             "UTTypeTagSpecification": {
-              "public.filename-extension": ["bktgz"],
-              "public.mime-type": ["application/gzip"]
+              "public.filename-extension": [
+                "bktgz"
+              ],
+              "public.mime-type": [
+                "application/gzip"
+              ]
             }
           }
         ]
@@ -57,7 +68,9 @@
       {
         "from": "../viewer/dist",
         "to": "viewer/dist",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "directories": {
