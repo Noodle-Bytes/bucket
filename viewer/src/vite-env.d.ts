@@ -11,10 +11,10 @@
 /// <reference types="vite/client" />
 
 interface ElectronAPI {
-  openFileDialog: () => Promise<string | null>;
+  openFileDialog: () => Promise<string[] | null>;
   readFile: (filePath: string) => Promise<number[]>;
-  getDroppedFile: (filePath: string) => Promise<number[] | null>;
-  onFileOpened: (callback: (filePath: string) => void) => void;
+  getDroppedFiles: (filePaths: string[]) => Promise<Array<{ path: string; bytes: number[] }>>;
+  onFilesOpened: (callback: (filePaths: string[]) => void) => void;
   onClearCoverage: (callback: () => void) => void;
 }
 

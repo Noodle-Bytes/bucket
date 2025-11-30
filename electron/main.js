@@ -81,7 +81,7 @@ function getFileMenuItems() {
       click: async () => {
         if (mainWindow) {
           const result = await dialog.showOpenDialog(mainWindow, {
-            properties: ['openFile'],
+            properties: ['openFile', 'multiSelections'],
             filters: [
               { name: 'Bucket Archive', extensions: ['bktgz'] },
               { name: 'All Files', extensions: ['*'] },
@@ -89,17 +89,17 @@ function getFileMenuItems() {
           });
 
           if (!result.canceled && result.filePaths.length > 0) {
-            const filePath = result.filePaths[0];
-            addToRecentFiles(filePath);
+            // Add all files to recent files
+            result.filePaths.forEach(filePath => addToRecentFiles(filePath));
             // Ensure the window is ready before sending the event
             if (mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
               // Wait for the page to be ready if it's still loading
               if (mainWindow.webContents.isLoading()) {
                 mainWindow.webContents.once('did-finish-load', () => {
-                  mainWindow.webContents.send('file-opened', filePath);
+                  mainWindow.webContents.send('files-opened', result.filePaths);
                 });
               } else {
-                mainWindow.webContents.send('file-opened', filePath);
+                mainWindow.webContents.send('files-opened', result.filePaths);
               }
             }
           }
@@ -116,10 +116,10 @@ function getFileMenuItems() {
         if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
           if (mainWindow.webContents.isLoading()) {
             mainWindow.webContents.once('did-finish-load', () => {
-              mainWindow.webContents.send('file-opened', file.path);
+              mainWindow.webContents.send('files-opened', [file.path]);
             });
           } else {
-            mainWindow.webContents.send('file-opened', file.path);
+            mainWindow.webContents.send('files-opened', [file.path]);
           }
         }
       },
@@ -463,7 +463,7 @@ async function createWindow() {
     mainWindow.webContents.once('did-finish-load', () => {
       // Send file path to renderer
       addToRecentFiles(pendingFilePath);
-      mainWindow.webContents.send('file-opened', pendingFilePath);
+      mainWindow.webContents.send('files-opened', [pendingFilePath]);
       pendingFilePath = null;
     });
   }
@@ -492,7 +492,7 @@ app.whenReady().then(() => {
     addToRecentFiles(filePath);
     if (mainWindow && mainWindow.webContents) {
       // Window is ready, send immediately
-      mainWindow.webContents.send('file-opened', filePath);
+      mainWindow.webContents.send('files-opened', [filePath]);
     } else {
       // Window not ready yet, store for later
       pendingFilePath = filePath;
@@ -511,7 +511,7 @@ ipcMain.handle('open-file-dialog', async () => {
   if (!mainWindow) return null;
 
   const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile'],
+    properties: ['openFile', 'multiSelections'],
     filters: [
       { name: 'Bucket Archive', extensions: ['bktgz'] },
       { name: 'All Files', extensions: ['*'] },
@@ -522,7 +522,7 @@ ipcMain.handle('open-file-dialog', async () => {
     return null;
   }
 
-  return result.filePaths[0];
+  return result.filePaths;
 });
 
 // Handle file reading
@@ -536,15 +536,22 @@ ipcMain.handle('read-file', async (event, filePath) => {
 });
 
 // Handle drag and drop
-ipcMain.handle('get-dropped-file', async (event, filePath) => {
-  try {
-    const stats = await fsp.stat(filePath);
-    if (stats.isFile() && filePath.endsWith('.bktgz')) {
-      const buffer = await fsp.readFile(filePath);
-      return Array.from(new Uint8Array(buffer));
+ipcMain.handle('get-dropped-files', async (event, filePaths) => {
+  const results = [];
+  for (const filePath of filePaths) {
+    try {
+      const stats = await fsp.stat(filePath);
+      if (stats.isFile() && filePath.endsWith('.bktgz')) {
+        const buffer = await fsp.readFile(filePath);
+        results.push({
+          path: filePath,
+          bytes: Array.from(new Uint8Array(buffer))
+        });
+      }
+    } catch (error) {
+      // Skip invalid files
+      continue;
     }
-    return null;
-  } catch (error) {
-    return null;
   }
+  return results;
 });
