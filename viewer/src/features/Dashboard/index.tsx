@@ -19,7 +19,6 @@ import {
     Segmented,
     Flex,
     FloatButton,
-    Empty,
     Button,
     Typography,
 } from "antd";
@@ -206,7 +205,6 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
         : isFileProtocol
         ? './logo.svg'
         : `${import.meta.env.BASE_URL}logo.svg`;
-
     // Get source and source_key from the currently selected node's readout
     const sourceInfo = useMemo(() => {
         // Don't show source info when at root level
@@ -250,40 +248,40 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
                             : 'rgba(0, 0, 0, 0.65)';
 
                         return (
-                            <Empty
-                                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                                description={
-                                    <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
-                                        <Typography.Title level={4} style={{ marginBottom: '16px' }}>
-                                            No Coverage Loaded
-                                        </Typography.Title>
-                                        <Typography.Paragraph style={{ marginBottom: '24px', color: primaryTextColor }}>
-                                            Load a Bucket coverage archive file (`.bktgz`) to view coverage data.
-                                        </Typography.Paragraph>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
-                                            {onOpenFile ? (
-                                                <>
-                                                    <Button
-                                                        type="primary"
-                                                        icon={<FolderOpenOutlined />}
-                                                        size="large"
-                                                        onClick={onOpenFile}
-                                                    >
-                                                        Open File...
-                                                    </Button>
-                                                    <Typography.Text style={{ fontSize: '12px', color: secondaryTextColor }}>
-                                                        Or drag and drop a `.bktgz` file here
-                                                    </Typography.Text>
-                                                </>
-                                            ) : (
-                                                <Typography.Text style={{ color: secondaryTextColor }}>
-                                                    Drag and drop a `.bktgz` file here
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px', padding: '40px 20px' }}>
+                                <div style={{ marginBottom: '40px', display: 'flex', justifyContent: 'center' }}>
+                                    <img src={logoSrc} alt="Bucket" style={{ width: '120px', height: 'auto', opacity: 0.8 }} />
+                                </div>
+                                <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
+                                    <Typography.Title level={4} style={{ marginBottom: '16px', marginTop: 0 }}>
+                                        No Coverage Loaded
+                                    </Typography.Title>
+                                    <Typography.Paragraph style={{ marginBottom: '24px', color: primaryTextColor }}>
+                                        Load a Bucket coverage archive file (`.bktgz`) to view coverage data.
+                                    </Typography.Paragraph>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
+                                        {onOpenFile ? (
+                                            <>
+                                                <Button
+                                                    type="primary"
+                                                    icon={<FolderOpenOutlined />}
+                                                    size="large"
+                                                    onClick={onOpenFile}
+                                                >
+                                                    Open File...
+                                                </Button>
+                                                <Typography.Text style={{ fontSize: '12px', color: secondaryTextColor }}>
+                                                    Or drag and drop a `.bktgz` file here
                                                 </Typography.Text>
-                                            )}
-                                        </div>
+                                            </>
+                                        ) : (
+                                            <Typography.Text style={{ color: secondaryTextColor }}>
+                                                Drag and drop a `.bktgz` file here
+                                            </Typography.Text>
+                                        )}
                                     </div>
-                                }
-                            />
+                                </div>
+                            </div>
                         );
                     }}
                 </Theme.Consumer>
