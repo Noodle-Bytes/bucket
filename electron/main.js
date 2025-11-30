@@ -65,18 +65,12 @@ function setupProtocol() {
 
       const filePath = path.join(distPath, url);
 
-      // Check if file exists
-      fsp.access(filePath, fs.constants.F_OK)
-        .then(() => {
-          if (isDevelopment) {
-            console.log('Protocol: Serving file:', filePath);
-          }
-          callback({ path: filePath });
-        })
-        .catch((err) => {
-          console.error('Protocol: File not found:', filePath, err.message);
-          callback({ error: -2 }); // FILE_NOT_FOUND
-        });
+      // Pass path directly to Electron - it will handle file not found errors
+      // This avoids race conditions from checking existence separately
+      if (isDevelopment) {
+        console.log('Protocol: Serving file:', filePath);
+      }
+      callback({ path: filePath });
     } catch (error) {
       console.error('Protocol error:', error);
       callback({ error: -2 }); // FILE_NOT_FOUND
@@ -165,7 +159,7 @@ function createMenu() {
   Menu.setApplicationMenu(menu);
 }
 
-function createWindow() {
+async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -199,38 +193,37 @@ function createWindow() {
     // In production, load the built React viewer
     const htmlPath = path.join(distPath, 'index.html');
 
-    // Check if dist directory exists
-    fsp.access(distPath, fs.constants.F_OK)
-      .then(() => fsp.readFile(htmlPath, 'utf8'))
-      .then((html) => {
-        // Add base tag to set the base URL for relative paths
-        let modifiedHtml = html;
-        if (!modifiedHtml.includes('<base')) {
-          modifiedHtml = modifiedHtml.replace('<head>', '<head>\n    <base href="app://">');
-        }
+    try {
+      // Read file directly - handle errors if file doesn't exist
+      // This avoids race conditions from checking existence separately
+      const html = await fsp.readFile(htmlPath, 'utf8');
 
-        // Replace all absolute paths (starting with /) with app:// protocol
-        modifiedHtml = modifiedHtml
-          .replace(/(href|src|action)="\//g, '$1="app://')
-          .replace(/(href|src|action)='\//g, "$1='app://")
-          .replace(/url\("\//g, 'url("app://')
-          .replace(/url\('\//g, "url('app://")
-          .replace(/url\(\/\//g, 'url(app://');
+      // Add base tag to set the base URL for relative paths
+      let modifiedHtml = html;
+      if (!modifiedHtml.includes('<base')) {
+        modifiedHtml = modifiedHtml.replace('<head>', '<head>\n    <base href="app://">');
+      }
 
-        // Write modified HTML to dist directory and load via app:// protocol
-        const tempHtmlPath = path.join(distPath, 'index-electron.html');
-        return fsp.writeFile(tempHtmlPath, modifiedHtml, 'utf8').then(() => {
-          mainWindow.loadURL('app://index-electron.html');
-        });
-      })
-      .catch((err) => {
-        // Show error - this helps identify issues
-        console.error('Failed to load viewer:', err.message);
-        console.error('Stack:', err.stack);
-        console.error('distPath:', distPath);
-        console.error('htmlPath:', htmlPath);
-        // Load a simple error page
-        const errorHtml = `<!DOCTYPE html>
+      // Replace all absolute paths (starting with /) with app:// protocol
+      modifiedHtml = modifiedHtml
+        .replace(/(href|src|action)="\//g, '$1="app://')
+        .replace(/(href|src|action)='\//g, "$1='app://")
+        .replace(/url\("\//g, 'url("app://')
+        .replace(/url\('\//g, "url('app://")
+        .replace(/url\(\/\//g, 'url(app://');
+
+      // Write modified HTML to dist directory and load via app:// protocol
+      const tempHtmlPath = path.join(distPath, 'index-electron.html');
+      await fsp.writeFile(tempHtmlPath, modifiedHtml, 'utf8');
+      mainWindow.loadURL('app://index-electron.html');
+    } catch (err) {
+      // Show error - this helps identify issues
+      console.error('Failed to load viewer:', err.message);
+      console.error('Stack:', err.stack);
+      console.error('distPath:', distPath);
+      console.error('htmlPath:', htmlPath);
+      // Load a simple error page
+      const errorHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -264,8 +257,8 @@ function createWindow() {
   <p style="color: #999; font-size: 12px; margin-top: 20px;">Please check the console for details.</p>
 </body>
 </html>`;
-        mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
-      });
+      mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
+    }
   }
 
   // Open dev tools in development for debugging

@@ -33,7 +33,7 @@ export const AppRoutes = () => {
             }
             console.log('Readouts loaded:', readouts.length);
             if (readouts.length === 0) {
-                alert('File loaded but contains no coverage data.');
+                alert('The loaded .bktgz file contains no coverage data. Please ensure the file was exported correctly from a Bucket coverage run.');
                 return;
             }
             const newTree = CoverageTree.fromReadouts(readouts);

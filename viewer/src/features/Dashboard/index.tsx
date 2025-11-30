@@ -10,7 +10,6 @@
 
 import { Theme as ThemeType, themes } from "@/theme";
 import Theme from "@/providers/Theme";
-import ThemeConsumer from "@/providers/Theme";
 import type { FloatButtonProps, TreeDataNode } from "antd";
 import {
     Breadcrumb,
