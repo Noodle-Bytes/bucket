@@ -19,4 +19,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       callback(filePaths);
     });
   },
+  onClearCoverage: (callback) => {
+    // Remove any existing listeners to avoid duplicates
+    ipcRenderer.removeAllListeners('clear-coverage');
+    // Set up the new listener
+    ipcRenderer.on('clear-coverage', () => {
+      callback();
+    });
+  },
 });
