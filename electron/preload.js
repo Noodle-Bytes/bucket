@@ -10,13 +10,13 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
-  getDroppedFile: (filePath) => ipcRenderer.invoke('get-dropped-file', filePath),
-  onFileOpened: (callback) => {
+  getDroppedFiles: (filePaths) => ipcRenderer.invoke('get-dropped-files', filePaths),
+  onFilesOpened: (callback) => {
     // Remove any existing listeners to avoid duplicates
-    ipcRenderer.removeAllListeners('file-opened');
+    ipcRenderer.removeAllListeners('files-opened');
     // Set up the new listener
-    ipcRenderer.on('file-opened', (event, filePath) => {
-      callback(filePath);
+    ipcRenderer.on('files-opened', (event, filePaths) => {
+      callback(filePaths);
     });
   },
 });
