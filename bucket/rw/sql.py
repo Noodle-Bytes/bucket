@@ -48,6 +48,8 @@ class RunRow(BaseRow):
     run: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     definition: Mapped[int] = mapped_column(Integer)
     sha: Mapped[str] = mapped_column(String(64))
+    source: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    source_key: Mapped[str] = mapped_column(String(100), nullable=False, default="")
 
 
 class PointRow(BaseRow):
@@ -184,7 +186,12 @@ class SQLWriter(Writer):
             for bucket_goal in readout.iter_bucket_goals():
                 self.session.add(BucketGoalRow.from_tuple(def_ref, bucket_goal))
 
-            rec_row = RunRow(definition=def_ref, sha=readout.get_rec_sha())
+            rec_row = RunRow(
+                definition=def_ref,
+                sha=readout.get_rec_sha(),
+                source=readout.get_source(),
+                source_key=readout.get_source_key(),
+            )
             self.session.add(rec_row)
             self.session.commit()
             rec_ref = rec_row.run
@@ -215,6 +222,8 @@ class SQLReader(Reader):
             rec_st = select(RunRow).where(RunRow.run == rec_ref)
             rec_row = session.scalars(rec_st).one()
             readout.rec_sha = rec_row.sha
+            readout.source = rec_row.source or ""
+            readout.source_key = rec_row.source_key or ""
             def_ref = rec_row.definition
 
             def_st = select(DefinitionRow).where(DefinitionRow.definition == def_ref)

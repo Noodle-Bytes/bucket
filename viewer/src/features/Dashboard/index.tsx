@@ -22,7 +22,7 @@ import {
     Button,
     Typography,
 } from "antd";
-import { BgColorsOutlined, FileOutlined, FolderOpenOutlined } from "@ant-design/icons";
+import { BgColorsOutlined, FolderOpenOutlined } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 
 import Sider from "./components/Sider";
@@ -195,6 +195,28 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
     // Check if tree is empty (no coverage loaded)
     const isEmpty = tree.getRoots().length === 0;
     const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
+    // Get source and source_key from the currently selected node's readout
+    const sourceInfo = useMemo(() => {
+        // Don't show source info when at root level
+        if (viewKey === Tree.ROOT) {
+            return { source: null, source_key: null };
+        }
+
+        const currentNode = tree.getNodeByKey(viewKey);
+        if (currentNode?.data?.readout) {
+            const readout = currentNode.data.readout;
+            try {
+                return {
+                    source: readout.get_source?.() ?? null,
+                    source_key: readout.get_source_key?.() ?? null,
+                };
+            } catch (error) {
+                // Fallback if methods don't exist (old readout format)
+                return { source: null, source_key: null };
+            }
+        }
+        return { source: null, source_key: null };
+    }, [tree, viewKey]);
 
     const selectedViewContent = useMemo(() => {
         // Show empty state if no coverage is loaded
@@ -291,15 +313,28 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
                                     {/* The breadcrumb menu is placed outside of the main DOM tree
                                         so we need to pass through the theme class */}
                                     {({ theme }) => (
-                                        <Breadcrumb
-                                            {...view.body.header.flex.breadcrumb
-                                                .props}
-                                            items={getBreadCrumbItems({
-                                                tree,
-                                                selectedTreeKeys,
-                                                onSelect,
-                                                theme,
-                                            })}></Breadcrumb>
+                                        <>
+                                            <Breadcrumb
+                                                {...view.body.header.flex.breadcrumb
+                                                    .props}
+                                                items={getBreadCrumbItems({
+                                                    tree,
+                                                    selectedTreeKeys,
+                                                    onSelect,
+                                                    theme,
+                                                })}></Breadcrumb>
+                                            {(sourceInfo.source || sourceInfo.source_key) && (
+                                                <Flex gap="small" style={{ marginLeft: '16px' }}>
+                                                    <span style={{ color: theme.theme.colors.primarytxt.value }}>
+                                                        {sourceInfo.source && sourceInfo.source_key
+                                                            ? `${sourceInfo.source}[${sourceInfo.source_key}]`
+                                                            : sourceInfo.source
+                                                            ? sourceInfo.source
+                                                            : `[${sourceInfo.source_key}]`}
+                                                    </span>
+                                                </Flex>
+                                            )}
+                                        </>
                                     )}
                                 </Theme.Consumer>
                                 <Segmented

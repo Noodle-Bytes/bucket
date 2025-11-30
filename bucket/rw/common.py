@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
 
+from datetime import datetime
 from typing import Any, Iterable, NamedTuple, Protocol
 
 from ..common.chain import Link
@@ -132,6 +133,8 @@ class Readout(Protocol):
 
     def get_def_sha(self) -> str: ...
     def get_rec_sha(self) -> str: ...
+    def get_source(self) -> str: ...
+    def get_source_key(self) -> str: ...
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
     ) -> Iterable[PointTuple]: ...
@@ -520,6 +523,8 @@ class PuppetReadout(Readout):
         self.bucket_hits: list[BucketHitTuple] = []
         self.def_sha = None
         self.rec_sha = None
+        self._source: str = ""
+        self._source_key: str = ""
 
     def get_def_sha(self) -> str:
         if self.def_sha is None:
@@ -530,6 +535,28 @@ class PuppetReadout(Readout):
         if self.rec_sha is None:
             raise RuntimeError("rec_sha not set")
         return self.rec_sha
+
+    @property
+    def source(self) -> str:
+        return self._source
+
+    @source.setter
+    def source(self, value: str | None):
+        self._source = "" if value is None else str(value)
+
+    @property
+    def source_key(self) -> str:
+        return self._source_key
+
+    @source_key.setter
+    def source_key(self, value: str | None):
+        self._source_key = "" if value is None else str(value)
+
+    def get_source(self) -> str:
+        return self._source
+
+    def get_source_key(self) -> str:
+        return self._source_key
 
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
@@ -576,6 +603,8 @@ class MergeReadout(Readout):
     def __init__(self, master: Readout, *others: Readout):
         super().__init__()
         self.master = master
+        self.source = f"Merged_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.source_key = ""
 
         self.bucket_hits: list[int] = []
         for bucket_hit in master.iter_bucket_hits():
@@ -597,6 +626,12 @@ class MergeReadout(Readout):
 
     def get_rec_sha(self) -> str:
         return self.master.get_rec_sha()
+
+    def get_source(self) -> str:
+        return self.source
+
+    def get_source_key(self) -> str:
+        return self.source_key
 
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0

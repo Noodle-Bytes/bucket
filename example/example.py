@@ -59,6 +59,8 @@ def run_testbench(
     rand: random.Random,
     log: logging.Logger,
     apply_filters_and_logging: bool = False,
+    source: str | None = None,
+    source_key: str | None = None,
 ):
     samples = 250
 
@@ -74,14 +76,20 @@ def run_testbench(
         if apply_filters_and_logging:
             # except_on_illegal is set here as an example, but the filtered coverage
             # is not expected to hit any illegal buckets
-            cvg = TopPets(log=log, verbosity=logging.DEBUG, except_on_illegal=True)
+            cvg = TopPets(
+                log=log,
+                verbosity=logging.DEBUG,
+                except_on_illegal=True,
+                source=source,
+                source_key=source_key,
+            )
             # If apply_filters_and_logging is passed in, apply filters to the coverage
             # Filtered coverage will only activate the selected coverpoints
             # but remain compatible with the full coverage for merging
             cvg.include_by_name("toys_by_name")
             cvg.exclude_by_name(["group_b", "group_2"])
         else:
-            cvg = TopPets()
+            cvg = TopPets(source=source, source_key=source_key)
 
     log.info("Run the 'test'...")
     for _ in range(samples):
@@ -152,7 +160,7 @@ def merge(log, archive_path_1, archive_path_2, merged_archive_path):
     archive_writer.write(merged_readout)
     log.info(f"Merged coverage exported to archive: {merged_archive_path}")
 
-    log.info("This is the merged coverage from the above 2 regressions.")
+    log.info("This is the accumulated merged coverage from 2 test(s).")
     log.info(
         f"To view this coverage, open the archive file in the Bucket viewer: {merged_archive_path}"
     )
@@ -175,14 +183,24 @@ def run(output_dir: Path = Path(".")):
     rand = random.Random()
 
     # Run "testbench" once with all coverage enabled
-    archive_path_1 = run_testbench(output_dir / "example_regr_file_store", rand, log)
+    source_key_1 = str(rand.randint(1, 1000000))
+    archive_path_1 = run_testbench(
+        output_dir / "example_regr_file_store",
+        rand,
+        log,
+        source="test_full_coverage",
+        source_key=source_key_1,
+    )
 
     # Run "testbench" a second time with some coverage filtered
+    source_key_2 = str(rand.randint(1, 1000000))
     archive_path_2 = run_testbench(
         output_dir / "example_regr_file_store",
         rand,
         log,
         apply_filters_and_logging=True,
+        source="test_filtered_coverage",
+        source_key=source_key_2,
     )
 
     # Merge the two runs
