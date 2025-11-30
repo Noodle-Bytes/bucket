@@ -12,6 +12,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
   getDroppedFile: (filePath) => ipcRenderer.invoke('get-dropped-file', filePath),
   onFileOpened: (callback) => {
-    ipcRenderer.on('file-opened', (event, filePath) => callback(filePath));
+    // Remove any existing listeners to avoid duplicates
+    ipcRenderer.removeAllListeners('file-opened');
+    // Set up the new listener
+    ipcRenderer.on('file-opened', (event, filePath) => {
+      callback(filePath);
+    });
   },
 });
