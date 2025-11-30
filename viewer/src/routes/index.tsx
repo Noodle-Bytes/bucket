@@ -7,7 +7,7 @@ import { useRoutes } from "react-router-dom";
 import Dashboard from "@/features/Dashboard";
 import CoverageTree from "@/features/Dashboard/lib/coveragetree";
 import { readFileHandle, readElectronFile } from "@/features/Dashboard/lib/readers";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { notification, Spin } from "antd";
 
 function getDefaultTree() {
@@ -21,9 +21,20 @@ const isElectron = typeof window !== 'undefined' && window.electronAPI !== undef
 export const AppRoutes = () => {
 
     const [tree, setTree] = useState(getDefaultTree());
+    const [allReadouts, setAllReadouts] = useState<Readout[]>([]);
     const [loading, setLoading] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const clearCoverage = useCallback(() => {
+        setTree(getDefaultTree());
+        setAllReadouts([]);
+        notification.info({
+            message: 'Coverage Cleared',
+            description: 'All coverage data has been cleared.',
+            duration: 2,
+        });
+    }, []);
 
     const loadFileFromBytes = async (bytes: number[]) => {
         setLoading(true);
@@ -51,15 +62,20 @@ export const AppRoutes = () => {
                 setLoading(false);
                 return;
             }
-            const newTree = CoverageTree.fromReadouts(readouts);
-            if (process.env.NODE_ENV === 'development') {
-                console.log('Tree created, roots:', newTree.getRoots().length);
-            }
-            setTree(newTree);
-            notification.success({
-                message: 'File Loaded',
-                description: `Successfully loaded ${readouts.length} coverage readout(s).`,
-                duration: 3,
+            // Merge new readouts with existing ones
+            setAllReadouts(prevReadouts => {
+                const mergedReadouts = [...prevReadouts, ...readouts];
+                const newTree = CoverageTree.fromReadouts(mergedReadouts);
+                if (process.env.NODE_ENV === 'development') {
+                    console.log('Tree created, roots:', newTree.getRoots().length);
+                }
+                setTree(newTree);
+                notification.success({
+                    message: 'File Loaded',
+                    description: `Successfully loaded ${readouts.length} coverage readout(s). Total: ${mergedReadouts.length} readout(s).`,
+                    duration: 3,
+                });
+                return mergedReadouts;
             });
         } catch (error) {
             console.error("Failed to load file:", error);
@@ -214,6 +230,7 @@ export const AppRoutes = () => {
             };
 
             window.electronAPI.onFileOpened(handleFileOpened);
+            window.electronAPI.onClearCoverage(clearCoverage);
 
             // Cleanup: Note - ipcRenderer.on listeners persist, but we register it here
             // The listener will be active for the lifetime of the window
@@ -225,7 +242,7 @@ export const AppRoutes = () => {
             rootElement.removeEventListener('dragenter', handleDragEnter);
             rootElement.removeEventListener('dragleave', handleDragLeave);
         };
-    }, [])
+    }, [clearCoverage])
 
     const element = useRoutes([{
         path: "*",
@@ -240,7 +257,7 @@ export const AppRoutes = () => {
                     style={{ display: 'none' }}
                 />
                 <Spin spinning={loading} size="large" tip="Loading coverage data...">
-                    <Dashboard tree={tree} onOpenFile={openFileDialog} isDragging={isDragging} />
+                    <Dashboard tree={tree} onOpenFile={openFileDialog} onClearCoverage={clearCoverage} isDragging={isDragging} />
                 </Spin>
             </>
         )

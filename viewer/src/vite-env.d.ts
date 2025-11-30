@@ -15,6 +15,7 @@ interface ElectronAPI {
   readFile: (filePath: string) => Promise<number[]>;
   getDroppedFile: (filePath: string) => Promise<number[] | null>;
   onFileOpened: (callback: (filePath: string) => void) => void;
+  onClearCoverage: (callback: () => void) => void;
 }
 
 interface Window {

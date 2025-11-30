@@ -22,7 +22,7 @@ import {
     Button,
     Typography,
 } from "antd";
-import { BgColorsOutlined, FolderOpenOutlined } from "@ant-design/icons";
+import { BgColorsOutlined, FolderOpenOutlined, ClearOutlined, FileAddOutlined } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 
 import Sider from "./components/Sider";
@@ -157,10 +157,11 @@ function getBreadCrumbItems({
 export type DashboardProps = {
     tree: Tree;
     onOpenFile?: () => void | Promise<void>;
+    onClearCoverage?: () => void;
     isDragging?: boolean;
 };
 
-export default function Dashboard({ tree, onOpenFile, isDragging = false }: DashboardProps) {
+export default function Dashboard({ tree, onOpenFile, onClearCoverage, isDragging = false }: DashboardProps) {
     const [selectedTreeKeys, setSelectedTreeKeys] = useState<TreeKey[]>([]);
     const [expandedTreeKeys, setExpandedTreeKeys] = useState<TreeKey[]>([]);
     const [autoExpandTreeParent, setAutoExpandTreeParent] = useState(true);
@@ -353,12 +354,34 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
                                         </>
                                     )}
                                 </Theme.Consumer>
-                                <Segmented
-                                    {...view.body.header.flex.segmented.props}
-                                    options={contentViews}
-                                    value={currentContentKey}
-                                    onChange={onViewChange}
-                                />
+                                <Flex gap="small" align="center">
+                                    <Segmented
+                                        {...view.body.header.flex.segmented.props}
+                                        options={contentViews}
+                                        value={currentContentKey}
+                                        onChange={onViewChange}
+                                    />
+                                    {onOpenFile && (
+                                        <Button
+                                            icon={<FileAddOutlined />}
+                                            onClick={onOpenFile}
+                                            size="small"
+                                            type="primary"
+                                        >
+                                            Load
+                                        </Button>
+                                    )}
+                                    {onClearCoverage && (
+                                        <Button
+                                            icon={<ClearOutlined />}
+                                            onClick={onClearCoverage}
+                                            size="small"
+                                            danger
+                                        >
+                                            Clear
+                                        </Button>
+                                    )}
+                                </Flex>
                             </Flex>
                         </Header>
                     )}

@@ -141,6 +141,22 @@ function getFileMenuItems() {
   }
 
   fileMenuItems.push({ type: 'separator' });
+  fileMenuItems.push({
+    label: 'Clear Coverage',
+    accelerator: 'CmdOrCtrl+K',
+    click: () => {
+      if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+        if (mainWindow.webContents.isLoading()) {
+          mainWindow.webContents.once('did-finish-load', () => {
+            mainWindow.webContents.send('clear-coverage');
+          });
+        } else {
+          mainWindow.webContents.send('clear-coverage');
+        }
+      }
+    },
+  });
+  fileMenuItems.push({ type: 'separator' });
   fileMenuItems.push({ role: 'close', label: 'Close Window' });
 
   return fileMenuItems;
