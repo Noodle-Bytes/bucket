@@ -7,7 +7,7 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from example import example
+from examples.pets import example
 
 
 def test_example():

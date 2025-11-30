@@ -268,57 +268,93 @@ class ArchiveWriter(Writer):
             self.path.parent.mkdir(parents=True, exist_ok=True)
             work_path.mkdir(parents=True, exist_ok=True)
 
+            # Check if definition already exists
+            existing_def = None
+            existing_def_offset = None
             if self.path.exists():
                 with tarfile.open(self.path, mode="r:gz") as tar:
                     tar.extractall(work_path, filter="data")
 
-            # Write tables and get byte offsets/ends
-            point_offset, point_end = _write(
-                work_path / POINT_PATH, readout.iter_points()
-            )
+                # Check if a definition with the same def_sha already exists
+                def_path = work_path / DEFINITION_PATH
+                if def_path.exists():
+                    def_rows = list(_read(def_path, 0, None, 0, None))
+                    for offset, def_row in enumerate(def_rows):
+                        candidate_def = ArchiveDefinitionTuple(*def_row)
+                        if candidate_def.def_sha == readout.get_def_sha():
+                            existing_def = candidate_def
+                            existing_def_offset = offset
+                            break
+
+            # Only write definition data if it doesn't already exist
+            if existing_def_offset is None:
+                # Write tables and get byte offsets/ends
+                point_offset, point_end = _write(
+                    work_path / POINT_PATH, readout.iter_points()
+                )
+
+                # For non-point tables, skip the first column (offset) as it can be reconstructed
+                # when reading back.
+                axis_offset, axis_end = _write(
+                    work_path / AXIS_PATH, (a[1:] for a in readout.iter_axes())
+                )
+                axis_value_offset, axis_value_end = _write(
+                    work_path / AXIS_VALUE_PATH,
+                    (av[1:] for av in readout.iter_axis_values()),
+                )
+                goal_offset, goal_end = _write(
+                    work_path / GOAL_PATH, (bg[1:] for bg in readout.iter_goals())
+                )
+                bucket_goal_offset, bucket_goal_end = _write(
+                    work_path / BUCKET_GOAL_PATH,
+                    (bg[1:] for bg in readout.iter_bucket_goals()),
+                )
+            else:
+                # Use existing definition offsets
+                point_offset = existing_def.point_offset
+                point_end = existing_def.point_end
+                axis_offset = existing_def.axis_offset
+                axis_end = existing_def.axis_end
+                axis_value_offset = existing_def.axis_value_offset
+                axis_value_end = existing_def.axis_value_end
+                goal_offset = existing_def.goal_offset
+                goal_end = existing_def.goal_end
+                bucket_goal_offset = existing_def.bucket_goal_offset
+                bucket_goal_end = existing_def.bucket_goal_end
+
+            # Always write hit data (unique per readout)
             point_hit_offset, point_hit_end = _write(
                 work_path / POINT_HIT_PATH, readout.iter_point_hits()
-            )
-
-            # For non-point tables, skip the first column (offset) as it can be reconstructed
-            # when reading back.
-            axis_offset, axis_end = _write(
-                work_path / AXIS_PATH, (a[1:] for a in readout.iter_axes())
-            )
-            axis_value_offset, axis_value_end = _write(
-                work_path / AXIS_VALUE_PATH,
-                (av[1:] for av in readout.iter_axis_values()),
-            )
-            goal_offset, goal_end = _write(
-                work_path / GOAL_PATH, (bg[1:] for bg in readout.iter_goals())
-            )
-            bucket_goal_offset, bucket_goal_end = _write(
-                work_path / BUCKET_GOAL_PATH,
-                (bg[1:] for bg in readout.iter_bucket_goals()),
             )
             bucket_hit_offset, bucket_hit_end = _write(
                 work_path / BUCKET_HIT_PATH,
                 (bh[1:] for bh in readout.iter_bucket_hits()),
             )
+
             # Store offsets in definition and record tables so we can seek later
-            definition_offset, _ = _write(
-                work_path / DEFINITION_PATH,
-                [
-                    ArchiveDefinitionTuple(
-                        readout.get_def_sha(),
-                        point_offset,
-                        point_end,
-                        axis_offset,
-                        axis_end,
-                        axis_value_offset,
-                        axis_value_end,
-                        goal_offset,
-                        goal_end,
-                        bucket_goal_offset,
-                        bucket_goal_end,
-                    )
-                ],
-            )
+            if existing_def_offset is None:
+                # Write new definition entry
+                definition_offset, _ = _write(
+                    work_path / DEFINITION_PATH,
+                    [
+                        ArchiveDefinitionTuple(
+                            readout.get_def_sha(),
+                            point_offset,
+                            point_end,
+                            axis_offset,
+                            axis_end,
+                            axis_value_offset,
+                            axis_value_end,
+                            goal_offset,
+                            goal_end,
+                            bucket_goal_offset,
+                            bucket_goal_end,
+                        )
+                    ],
+                )
+            else:
+                # Reuse existing definition offset
+                definition_offset = existing_def_offset
 
             # source and source_key are always strings (empty string if not set)
             source = readout.get_source()

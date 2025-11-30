@@ -15,8 +15,8 @@ To run
 ```
 # Install UV if not already installed: https://docs.astral.sh/uv/getting-started/installation/
 $ uv sync
-$ source .venv/bin/activate  # or use: uv run python -m example.example
-$ python -m example.example
+$ source .venv/bin/activate  # or use: uv run python -m examples.pets.example
+$ python -m examples.pets.example
 # (On mac)
 $ brew install npm
 $ npm install

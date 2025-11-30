@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+
+# SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2024 Vypercore. All Rights Reserved
 
 from bucket import Covertop
@@ -21,4 +24,3 @@ class TopPets(Covertop):
     def setup(self, ctx):
         self.add_covergroup(TopDogs())
         self.add_covergroup(TopCats())
-

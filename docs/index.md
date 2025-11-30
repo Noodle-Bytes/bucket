@@ -9,10 +9,10 @@ To run the example, which includes a coverage tree along with some randomised da
 
 ```
 $ ./bin/shell
-$ python -m example.example
+$ python -m examples.pets.example
 ```
 
-Below describes how to use Bucket to create a coverage tree, sample your data and then merge the results. Examples of coverpoints in use can be seen in [cats.py](https://github.com/VyperCore/bucket/blob/main/example/cats.py) and [dogs.py](https://github.com/VyperCore/bucket/blob/main/example/dogs.py).
+Below describes how to use Bucket to create a coverage tree, sample your data and then merge the results. Examples of coverpoints in use can be seen in [cats.py](https://github.com/VyperCore/bucket/blob/main/examples/pets/cats.py) and [dogs.py](https://github.com/VyperCore/bucket/blob/main/examples/pets/dogs.py).
 
 # Contents
 1. [Introduction](introduction.md)
