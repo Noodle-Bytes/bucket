@@ -1,12 +1,14 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
 const { app, BrowserWindow, ipcMain, dialog, Menu, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
+const packageJson = require('./package.json');
+const windowStateKeeper = require('electron-window-state');
 
 // Register app:// as a secure, standard scheme before the app is ready.
 // This lets us keep webSecurity enabled while serving the viewer from a
@@ -33,6 +35,121 @@ app.setName('Bucket');
 
 let mainWindow = null;
 let pendingFilePath = null;
+
+// Recent files management
+const MAX_RECENT_FILES = 10;
+const recentFilesPath = path.join(app.getPath('userData'), 'recent-files.json');
+
+function loadRecentFiles() {
+  try {
+    if (fs.existsSync(recentFilesPath)) {
+      const data = fs.readFileSync(recentFilesPath, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('Failed to load recent files:', error);
+  }
+  return [];
+}
+
+function saveRecentFiles(files) {
+  try {
+    fs.writeFileSync(recentFilesPath, JSON.stringify(files, null, 2), 'utf8');
+  } catch (error) {
+    console.error('Failed to save recent files:', error);
+  }
+}
+
+function addToRecentFiles(filePath) {
+  const recentFiles = loadRecentFiles();
+  // Remove if already exists
+  const filtered = recentFiles.filter(f => f.path !== filePath);
+  // Add to beginning
+  filtered.unshift({ path: filePath, name: path.basename(filePath) });
+  // Keep only MAX_RECENT_FILES
+  const trimmed = filtered.slice(0, MAX_RECENT_FILES);
+  saveRecentFiles(trimmed);
+  updateRecentFilesMenu();
+}
+
+function getFileMenuItems() {
+  const recentFiles = loadRecentFiles();
+  const fileMenuItems = [
+    {
+      label: 'Open...',
+      accelerator: 'CmdOrCtrl+O',
+      click: async () => {
+        if (mainWindow) {
+          const result = await dialog.showOpenDialog(mainWindow, {
+            properties: ['openFile'],
+            filters: [
+              { name: 'Bucket Archive', extensions: ['bktgz'] },
+              { name: 'All Files', extensions: ['*'] },
+            ],
+          });
+
+          if (!result.canceled && result.filePaths.length > 0) {
+            const filePath = result.filePaths[0];
+            addToRecentFiles(filePath);
+            // Ensure the window is ready before sending the event
+            if (mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+              // Wait for the page to be ready if it's still loading
+              if (mainWindow.webContents.isLoading()) {
+                mainWindow.webContents.once('did-finish-load', () => {
+                  mainWindow.webContents.send('file-opened', filePath);
+                });
+              } else {
+                mainWindow.webContents.send('file-opened', filePath);
+              }
+            }
+          }
+        }
+      },
+    },
+  ];
+
+  // Add "Open Recent" submenu if there are recent files
+  if (recentFiles.length > 0) {
+    const recentSubmenu = recentFiles.map(file => ({
+      label: file.name,
+      click: () => {
+        if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+          if (mainWindow.webContents.isLoading()) {
+            mainWindow.webContents.once('did-finish-load', () => {
+              mainWindow.webContents.send('file-opened', file.path);
+            });
+          } else {
+            mainWindow.webContents.send('file-opened', file.path);
+          }
+        }
+      },
+    }));
+
+    recentSubmenu.push({ type: 'separator' });
+    recentSubmenu.push({
+      label: 'Clear Menu',
+      click: () => {
+        saveRecentFiles([]);
+        updateRecentFilesMenu();
+      },
+    });
+
+    fileMenuItems.push({
+      label: 'Open Recent',
+      submenu: recentSubmenu,
+    });
+  }
+
+  fileMenuItems.push({ type: 'separator' });
+  fileMenuItems.push({ role: 'close', label: 'Close Window' });
+
+  return fileMenuItems;
+}
+
+function updateRecentFilesMenu() {
+  // Rebuild the entire menu to include updated recent files
+  createMenu();
+}
 // In built app, viewer/dist is in extraResources, so it's in Resources/viewer/dist
 // In development, path is relative to electron directory
 const distPath = app.isPackaged
@@ -65,22 +182,26 @@ function setupProtocol() {
 
       const filePath = path.join(distPath, url);
 
-      // Check if file exists
-      fsp.access(filePath, fs.constants.F_OK)
-        .then(() => {
-          if (isDevelopment) {
-            console.log('Protocol: Serving file:', filePath);
-          }
-          callback({ path: filePath });
-        })
-        .catch((err) => {
-          console.error('Protocol: File not found:', filePath, err.message);
-          callback({ error: -2 }); // FILE_NOT_FOUND
-        });
+      // Pass path directly to Electron - it will handle file not found errors
+      // This avoids race conditions from checking existence separately
+      if (isDevelopment) {
+        console.log('Protocol: Serving file:', filePath);
+      }
+      callback({ path: filePath });
     } catch (error) {
       console.error('Protocol error:', error);
       callback({ error: -2 }); // FILE_NOT_FOUND
     }
+  });
+}
+
+function showAboutDialog() {
+  dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    title: 'About Bucket',
+    message: 'Bucket',
+    detail: `Version ${packageJson.version}\n\n${packageJson.description}\n\nCopyright © 2023-2025 Noodle-Bytes. All Rights Reserved.\n\nLicensed under the MIT License.`,
+    buttons: ['OK'],
   });
 }
 
@@ -89,7 +210,10 @@ function createMenu() {
     {
       label: app.getName(),
       submenu: [
-        { role: 'about', label: 'About Bucket' },
+        {
+          label: 'About Bucket',
+          click: showAboutDialog,
+        },
         { type: 'separator' },
         { role: 'services', label: 'Services' },
         { type: 'separator' },
@@ -102,29 +226,7 @@ function createMenu() {
     },
     {
       label: 'File',
-      submenu: [
-        {
-          label: 'Open...',
-          accelerator: 'CmdOrCtrl+O',
-          click: async () => {
-            if (mainWindow) {
-              const result = await dialog.showOpenDialog(mainWindow, {
-                properties: ['openFile'],
-                filters: [
-                  { name: 'Bucket Archive', extensions: ['bktgz'] },
-                  { name: 'All Files', extensions: ['*'] },
-                ],
-              });
-
-              if (!result.canceled && result.filePaths.length > 0) {
-                mainWindow.webContents.send('file-opened', result.filePaths[0]);
-              }
-            }
-          },
-        },
-        { type: 'separator' },
-        { role: 'close', label: 'Close Window' },
-      ],
+      submenu: getFileMenuItems(),
     },
     {
       label: 'Edit',
@@ -165,10 +267,18 @@ function createMenu() {
   Menu.setApplicationMenu(menu);
 }
 
-function createWindow() {
+async function createWindow() {
+  // Load window state or use defaults
+  let mainWindowState = windowStateKeeper({
+    defaultWidth: 1400,
+    defaultHeight: 900,
+  });
+
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    x: mainWindowState.x,
+    y: mainWindowState.y,
+    width: mainWindowState.width,
+    height: mainWindowState.height,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -185,6 +295,9 @@ function createWindow() {
     show: false, // Don't show until ready
   });
 
+  // Let windowStateKeeper manage the window state
+  mainWindowState.manage(mainWindow);
+
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
@@ -199,38 +312,37 @@ function createWindow() {
     // In production, load the built React viewer
     const htmlPath = path.join(distPath, 'index.html');
 
-    // Check if dist directory exists
-    fsp.access(distPath, fs.constants.F_OK)
-      .then(() => fsp.readFile(htmlPath, 'utf8'))
-      .then((html) => {
-        // Add base tag to set the base URL for relative paths
-        let modifiedHtml = html;
-        if (!modifiedHtml.includes('<base')) {
-          modifiedHtml = modifiedHtml.replace('<head>', '<head>\n    <base href="app://">');
-        }
+    try {
+      // Read file directly - handle errors if file doesn't exist
+      // This avoids race conditions from checking existence separately
+      const html = await fsp.readFile(htmlPath, 'utf8');
 
-        // Replace all absolute paths (starting with /) with app:// protocol
-        modifiedHtml = modifiedHtml
-          .replace(/(href|src|action)="\//g, '$1="app://')
-          .replace(/(href|src|action)='\//g, "$1='app://")
-          .replace(/url\("\//g, 'url("app://')
-          .replace(/url\('\//g, "url('app://")
-          .replace(/url\(\/\//g, 'url(app://');
+      // Add base tag to set the base URL for relative paths
+      let modifiedHtml = html;
+      if (!modifiedHtml.includes('<base')) {
+        modifiedHtml = modifiedHtml.replace('<head>', '<head>\n    <base href="app://">');
+      }
 
-        // Write modified HTML to dist directory and load via app:// protocol
-        const tempHtmlPath = path.join(distPath, 'index-electron.html');
-        return fsp.writeFile(tempHtmlPath, modifiedHtml, 'utf8').then(() => {
-          mainWindow.loadURL('app://index-electron.html');
-        });
-      })
-      .catch((err) => {
-        // Show error - this helps identify issues
-        console.error('Failed to load viewer:', err.message);
-        console.error('Stack:', err.stack);
-        console.error('distPath:', distPath);
-        console.error('htmlPath:', htmlPath);
-        // Load a simple error page
-        const errorHtml = `<!DOCTYPE html>
+      // Replace all absolute paths (starting with /) with app:// protocol
+      modifiedHtml = modifiedHtml
+        .replace(/(href|src|action)="\//g, '$1="app://')
+        .replace(/(href|src|action)='\//g, "$1='app://")
+        .replace(/url\("\//g, 'url("app://')
+        .replace(/url\('\//g, "url('app://")
+        .replace(/url\(\/\//g, 'url(app://');
+
+      // Write modified HTML to dist directory and load via app:// protocol
+      const tempHtmlPath = path.join(distPath, 'index-electron.html');
+      await fsp.writeFile(tempHtmlPath, modifiedHtml, 'utf8');
+      mainWindow.loadURL('app://index-electron.html');
+    } catch (err) {
+      // Show error - this helps identify issues
+      console.error('Failed to load viewer:', err.message);
+      console.error('Stack:', err.stack);
+      console.error('distPath:', distPath);
+      console.error('htmlPath:', htmlPath);
+      // Load a simple error page
+      const errorHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -264,8 +376,8 @@ function createWindow() {
   <p style="color: #999; font-size: 12px; margin-top: 20px;">Please check the console for details.</p>
 </body>
 </html>`;
-        mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
-      });
+      mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
+    }
   }
 
   // Open dev tools in development for debugging
@@ -334,10 +446,16 @@ function createWindow() {
   if (pendingFilePath) {
     mainWindow.webContents.once('did-finish-load', () => {
       // Send file path to renderer
+      addToRecentFiles(pendingFilePath);
       mainWindow.webContents.send('file-opened', pendingFilePath);
       pendingFilePath = null;
     });
   }
+
+  // Update recent files menu after window is ready
+  mainWindow.webContents.once('did-finish-load', () => {
+    updateRecentFilesMenu();
+  });
 }
 
 app.whenReady().then(() => {
@@ -355,6 +473,7 @@ app.whenReady().then(() => {
   // Handle file open on macOS
   app.on('open-file', (event, filePath) => {
     event.preventDefault();
+    addToRecentFiles(filePath);
     if (mainWindow && mainWindow.webContents) {
       // Window is ready, send immediately
       mainWindow.webContents.send('file-opened', filePath);

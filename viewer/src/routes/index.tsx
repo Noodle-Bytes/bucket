@@ -126,16 +126,21 @@ export const AppRoutes = () => {
         rootElement.addEventListener('drop', handleDrop);
         rootElement.addEventListener('dragover', handleDragOver);
 
-        // Electron-specific: Handle file opened via app.open-file (macOS)
+        // Electron-specific: Handle file opened via app.open-file (macOS) or menu
         if (isElectron && window.electronAPI) {
-            window.electronAPI.onFileOpened(async (filePath: string) => {
+            const handleFileOpened = async (filePath: string) => {
                 try {
                     const bytes = await window.electronAPI.readFile(filePath);
                     await loadFileFromBytes(bytes);
                 } catch (error) {
                     console.error("Failed to open file:", error);
                 }
-            });
+            };
+
+            window.electronAPI.onFileOpened(handleFileOpened);
+
+            // Cleanup: Note - ipcRenderer.on listeners persist, but we register it here
+            // The listener will be active for the lifetime of the window
         }
 
         return () => {
