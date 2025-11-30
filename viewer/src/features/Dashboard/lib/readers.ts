@@ -12,6 +12,8 @@ type JSONDefinition = {
 type JSONRecord = {
     def: number,
     sha: string,
+    source?: string | null,
+    source_key?: string | null,
 } & {[key:string]: (string | number)[][]};
 
 type JSONTables = Record<string, string[]>;
@@ -37,6 +39,12 @@ export class JSONReadout implements Readout {
     }
     get_rec_sha(): string {
         return this.record.sha;
+    }
+    get_source(): string | null {
+        return this.record.source ?? null;
+    }
+    get_source_key(): string | null {
+        return this.record.source_key ?? null;
     }
     private *iter_def_table(table: string, start: number=0, end: number | null=null) {
         const keys = this.tables[table];
@@ -151,6 +159,8 @@ type ArchiveRecord = {
     point_hit_end: number;
     bucket_hit_offset: number;
     bucket_hit_end: number;
+    source: string | null;  // Stored as "" in CSV, converted to null when reading
+    source_key: string | null;  // Stored as "" in CSV, converted to null when reading
 };
 
 type ArchiveTableMap = Record<ArchiveTableName, ArchiveTable>;
@@ -232,6 +242,14 @@ export class ArchiveReadout implements Readout {
 
     get_rec_sha(): string {
         return this.record.rec_sha;
+    }
+
+    get_source(): string | null {
+        return this.record.source;
+    }
+
+    get_source_key(): string | null {
+        return this.record.source_key;
     }
 
     *iter_points(
@@ -455,7 +473,9 @@ function toArchiveRecord(row: (string | number)[]): ArchiveRecord {
         point_hit_offset,
         point_hit_end,
         bucket_hit_offset,
-        bucket_hit_end
+        bucket_hit_end,
+        source,
+        source_key
     ] = row;
     return {
         rec_sha: toString(rec_sha),
@@ -464,6 +484,9 @@ function toArchiveRecord(row: (string | number)[]): ArchiveRecord {
         point_hit_end: toNumber(point_hit_end),
         bucket_hit_offset: toNumber(bucket_hit_offset),
         bucket_hit_end: toNumber(bucket_hit_end),
+        // Convert empty strings to null for source/source_key (CSV stores "" but we use null internally)
+        source: source === "" ? null : toString(source),
+        source_key: source_key === "" ? null : toString(source_key),
     };
 }
 

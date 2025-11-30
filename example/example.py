@@ -8,7 +8,14 @@ from pathlib import Path
 from git.repo import Repo
 
 from bucket import CoverageContext
-from bucket.rw import ConsoleWriter, HTMLWriter, MergeReadout, PointReader, SQLAccessor
+from bucket.rw import (
+    ArchiveAccessor,
+    ConsoleWriter,
+    HTMLWriter,
+    MergeReadout,
+    PointReader,
+    SQLAccessor,
+)
 
 from .common import CatInfo, DogInfo, MadeUpStuff, PetInfo
 from .top import TopPets
@@ -53,6 +60,8 @@ def run_testbench(
     rand: random.Random,
     log: logging.Logger,
     apply_filters_and_logging: bool = False,
+    source: str | None = None,
+    source_key: str | None = None,
 ):
     samples = 250
 
@@ -68,14 +77,20 @@ def run_testbench(
         if apply_filters_and_logging:
             # except_on_illegal is set here as an example, but the filtered coverage
             # is not expected to hit any illegal buckets
-            cvg = TopPets(log=log, verbosity=logging.DEBUG, except_on_illegal=True)
+            cvg = TopPets(
+                log=log,
+                verbosity=logging.DEBUG,
+                except_on_illegal=True,
+                source=source,
+                source_key=source_key,
+            )
             # If apply_filters_and_logging is passed in, apply filters to the coverage
             # Filtered coverage will only activate the selected coverpoints
             # but remain compatible with the full coverage for merging
             cvg.include_by_name("toys_by_name")
             cvg.exclude_by_name(["group_b", "group_2"])
         else:
-            cvg = TopPets()
+            cvg = TopPets(source=source, source_key=source_key)
 
     log.info("Run the 'test'...")
     for _ in range(samples):
@@ -132,17 +147,28 @@ def merge(log, regr_db_path, merged_db_path, ref_1, ref_2):
     r_sql_accessor = SQLAccessor.File(regr_db_path)
     m_sql_accessor = SQLAccessor.File(merged_db_path)
 
-    # Read back from sql
-    sql_readout_1 = r_sql_accessor.read(ref_1)
-    sql_readout_2 = r_sql_accessor.read(ref_2)
+    # Read all test data from regression database and filter out merged entries
+    all_readouts = list(r_sql_accessor.read_all())
+    # Filter out merged entries (those with source starting with "Merged_")
+    test_readouts = [
+        readout
+        for readout in all_readouts
+        if not (readout.get_source() and readout.get_source().startswith("Merged_"))
+    ]
 
-    # Merge together
-    merged_readout = MergeReadout(sql_readout_1, sql_readout_2)
+    if not test_readouts:
+        log.warning("No test readouts found to merge")
+        return
+
+    # Merge all test data together (accumulated merge)
+    merged_readout = MergeReadout(*test_readouts)
 
     # Write merged coverage into the merged database
     rec_ref_merged = m_sql_accessor.write(merged_readout)
 
-    log.info("This is the merged coverage from the above 2 regressions.")
+    log.info(
+        f"This is the accumulated merged coverage from {len(test_readouts)} test(s)."
+    )
     log.info(
         f"To view this coverage in detail please run: python -m bucket write console --sql-path example_file_store.db --points --record {rec_ref_merged}"
     )
@@ -153,7 +179,8 @@ def merge(log, regr_db_path, merged_db_path, ref_1, ref_2):
     # accumulate each time this example is run. This will also include
     # merged data as well as the individual runs. It is meant as an example
     # of how to use the command
-    merged_readout_all = MergeReadout(*r_sql_accessor.read_all())
+    all_readouts = list(r_sql_accessor.read_all())
+    merged_readout_all = MergeReadout(*all_readouts)
     log.info("This is the coverage from all the regression data so far:")
     log.info(
         f"(To reset please delete the files '{regr_db_path}' and '{merged_db_path}')"
@@ -164,12 +191,28 @@ def merge(log, regr_db_path, merged_db_path, ref_1, ref_2):
     # Generating web viewer
     # To generate the HTML report run:
     # python -m bucket write html --sql-path ./example_file_store.db --output index.html
+    # Pass all individual readouts plus merged readouts so the viewer can show each test separately
     log.info("Generating the web viewer for all coverage")
     try:
-        HTMLWriter().write(merged_readout_all)
+        # Include readouts from both regression and merged databases
+        merged_readouts = list(m_sql_accessor.read_all())
+        all_readouts_for_viewer = all_readouts + merged_readouts
+        HTMLWriter().write(all_readouts_for_viewer)
         log.info("To see the coverage in your browser open: index.html")
     except Exception:
         log.error("Web viewer failed")
+
+    # Export to archive format
+    log.info("Exporting all coverage to archive format")
+    try:
+        archive_path = Path("example_coverage.bktgz")
+        archive_accessor = ArchiveAccessor(archive_path)
+        archive_writer = archive_accessor.writer()
+        for readout in all_readouts_for_viewer:
+            archive_writer.write(readout)
+        log.info(f"Archive exported to: {archive_path}")
+    except Exception:
+        log.error("Archive export failed")
 
 
 def run(reg_db_path: Path = "example_regr_file_store.db"):
@@ -181,10 +224,21 @@ def run(reg_db_path: Path = "example_regr_file_store.db"):
     merged_db_path = "example_merged_file_store.db"
 
     # Run "testbench" once with all coverage enabled
-    ref_1 = run_testbench(reg_db_path, rand, log)
+    source_key_1 = str(rand.randint(1, 1000000))
+    ref_1 = run_testbench(
+        reg_db_path, rand, log, source="test_full_coverage", source_key=source_key_1
+    )
 
     # Run "testbench" a second time with some coverage filtered
-    ref_2 = run_testbench(reg_db_path, rand, log, apply_filters_and_logging=True)
+    source_key_2 = str(rand.randint(1, 1000000))
+    ref_2 = run_testbench(
+        reg_db_path,
+        rand,
+        log,
+        apply_filters_and_logging=True,
+        source="test_filtered_coverage",
+        source_key=source_key_2,
+    )
 
     # Merge the two runs
     merge(log, reg_db_path, merged_db_path, ref_1, ref_2)
