@@ -5,8 +5,24 @@
 
 const { app, BrowserWindow, ipcMain, dialog, Menu, protocol } = require('electron');
 const path = require('path');
-const fs = require('fs').promises;
-const { readFile, writeFile } = require('fs').promises;
+const fs = require('fs');
+const fsp = fs.promises;
+
+// Register app:// as a secure, standard scheme before the app is ready.
+// This lets us keep webSecurity enabled while serving the viewer from a
+// custom protocol.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'app',
+    privileges: {
+      secure: true,
+      standard: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
 
 // Determine if we're in development mode
 // Also check if we're running from source (not from built app)
@@ -28,8 +44,14 @@ function setupProtocol() {
   protocol.registerFileProtocol('app', (request, callback) => {
     try {
       let url = request.url.replace('app://', '');
+
       // Remove query string and hash if present
       url = url.split('?')[0].split('#')[0];
+
+      // Normalise trailing slash, e.g. "index-electron.html/" -> "index-electron.html"
+      if (url.endsWith('/')) {
+        url = url.slice(0, -1);
+      }
 
       // Handle root path
       if (url === '' || url === '/') {
@@ -44,7 +66,7 @@ function setupProtocol() {
       const filePath = path.join(distPath, url);
 
       // Check if file exists
-      fs.access(filePath, fs.constants.F_OK)
+      fsp.access(filePath, fs.constants.F_OK)
         .then(() => {
           if (isDevelopment) {
             console.log('Protocol: Serving file:', filePath);
@@ -151,7 +173,11 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false, // Required for custom app:// protocol to work
+      // webSecurity can remain enabled because app:// is registered as a
+      // privileged, secure scheme (see protocol.registerSchemesAsPrivileged
+      // at the top of this file). This lets us load the viewer via app://
+      // while keeping Chromium's normal security checks.
+      webSecurity: true,
     },
     backgroundColor: '#ffffff',
     frame: true, // Use standard frame to ensure window is movable
@@ -173,32 +199,30 @@ function createWindow() {
     // In production, load the built React viewer
     const htmlPath = path.join(distPath, 'index.html');
 
-      // Check if dist directory exists
-      fs.access(distPath, fs.constants.F_OK)
-        .then(() => {
-          return readFile(htmlPath, 'utf8');
-        })
-        .then(html => {
-          // Add base tag to set the base URL for relative paths
-          let modifiedHtml = html;
-          if (!modifiedHtml.includes('<base')) {
-            modifiedHtml = modifiedHtml.replace('<head>', '<head>\n    <base href="app://">');
-          }
+    // Check if dist directory exists
+    fsp.access(distPath, fs.constants.F_OK)
+      .then(() => fsp.readFile(htmlPath, 'utf8'))
+      .then((html) => {
+        // Add base tag to set the base URL for relative paths
+        let modifiedHtml = html;
+        if (!modifiedHtml.includes('<base')) {
+          modifiedHtml = modifiedHtml.replace('<head>', '<head>\n    <base href="app://">');
+        }
 
-          // Replace all absolute paths (starting with /) with app:// protocol
-          modifiedHtml = modifiedHtml
-            .replace(/(href|src|action)="\//g, '$1="app://')
-            .replace(/(href|src|action)='\//g, "$1='app://")
-            .replace(/url\("\//g, 'url("app://')
-            .replace(/url\('\//g, "url('app://")
-            .replace(/url\(\/\//g, 'url(app://');
+        // Replace all absolute paths (starting with /) with app:// protocol
+        modifiedHtml = modifiedHtml
+          .replace(/(href|src|action)="\//g, '$1="app://')
+          .replace(/(href|src|action)='\//g, "$1='app://")
+          .replace(/url\("\//g, 'url("app://')
+          .replace(/url\('\//g, "url('app://")
+          .replace(/url\(\/\//g, 'url(app://');
 
-          // Write modified HTML to dist directory and load via app:// protocol
-          const tempHtmlPath = path.join(distPath, 'index-electron.html');
-          return writeFile(tempHtmlPath, modifiedHtml, 'utf8').then(() => {
-            mainWindow.loadURL('app://index-electron.html');
-          });
-        })
+        // Write modified HTML to dist directory and load via app:// protocol
+        const tempHtmlPath = path.join(distPath, 'index-electron.html');
+        return fsp.writeFile(tempHtmlPath, modifiedHtml, 'utf8').then(() => {
+          mainWindow.loadURL('app://index-electron.html');
+        });
+      })
       .catch((err) => {
         // Show error - this helps identify issues
         console.error('Failed to load viewer:', err.message);
@@ -250,10 +274,10 @@ function createWindow() {
   }
 
   // Log failed resource loads and show error
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-    console.error('Failed to load:', errorCode, errorDescription, validatedURL);
-    // Only show error for main page load failures, not resource failures
-    if (validatedURL.includes('index-electron.html') || validatedURL.includes('app://')) {
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    console.error('Failed to load:', errorCode, errorDescription, validatedURL, 'isMainFrame:', isMainFrame);
+    // Only show error for main page (top-level) load failures, not subresources
+    if (isMainFrame) {
       const errorHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -369,7 +393,7 @@ ipcMain.handle('open-file-dialog', async () => {
 // Handle file reading
 ipcMain.handle('read-file', async (event, filePath) => {
   try {
-    const buffer = await fs.readFile(filePath);
+    const buffer = await fsp.readFile(filePath);
     return Array.from(new Uint8Array(buffer));
   } catch (error) {
     throw new Error(`Failed to read file: ${error.message}`);
@@ -379,9 +403,9 @@ ipcMain.handle('read-file', async (event, filePath) => {
 // Handle drag and drop
 ipcMain.handle('get-dropped-file', async (event, filePath) => {
   try {
-    const stats = await fs.stat(filePath);
+    const stats = await fsp.stat(filePath);
     if (stats.isFile() && filePath.endsWith('.bktgz')) {
-      const buffer = await fs.readFile(filePath);
+      const buffer = await fsp.readFile(filePath);
       return Array.from(new Uint8Array(buffer));
     }
     return null;
