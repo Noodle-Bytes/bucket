@@ -8,7 +8,9 @@
   ~ Copyright (c) 2023-2024 Vypercore. All Rights Reserved
   -->
 
-<img alt="Bucket logo" src="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Logo-192x192.png">
+<div align="center">
+  <img alt="Bucket logo" src="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Logo-192x192.png">
+</div>
 
 # Bucket
 
