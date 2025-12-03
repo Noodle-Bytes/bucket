@@ -31,4 +31,4 @@ if [ ! -d "node_modules" ]; then
 fi
 npm run build:mac
 echo ""
-echo "Build complete! Check the dist/ directory for the DMG file."
+echo "Build complete! Check the dist/ directory for the .app bundle."

@@ -1,13 +1,15 @@
 <!--
   ~ SPDX-License-Identifier: MIT
-  ~ Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+  ~ Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
   -->
 
 # Bucket Mac App
 
 This is the Electron-based Mac application for viewing Bucket coverage archive files (`.bktgz`).
 
-## Development
+## Development Only
+
+If you are just wanting to build the app for local use, please skip this section
 
 ### Prerequisites
 
@@ -41,8 +43,18 @@ This is the Electron-based Mac application for viewing Bucket coverage archive f
 
 ## Building the Mac App
 
-To build a distributable Mac app, you can use the build script which automatically handles all dependencies:
+To build a local Mac app, you can use the build script which automatically handles all dependencies:
 
+First make sure you have installed uv and npm
+```bash
+brew install uv
+brew install npm
+```
+Then start a bucket shell
+```bash
+./bin/shell
+```
+Then run the build script
 ```bash
 ./electron/build.sh
 ```
@@ -61,7 +73,7 @@ npm install
 npm run build:mac
 ```
 
-This will create DMG files in the `electron/dist` directory that can be distributed.
+This will create a `.app` bundle in the `electron/dist/mac-arm64` directory that can be used directly (no code signing required).
 
 **Note**: The built app is completely standalone and does not require a web server to run. It loads the viewer from the bundled files.
 
