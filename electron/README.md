@@ -73,6 +73,8 @@ npm install
 npm run build:mac
 ```
 
+This will create a `.app` bundle in the `electron/dist/mac-arm64` directory that can be used directly (no code signing required).
+
 **Note**: The built app is completely standalone and does not require a web server to run. It loads the viewer from the bundled files.
 
 ## Features

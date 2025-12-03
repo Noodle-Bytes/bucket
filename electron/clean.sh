@@ -20,7 +20,7 @@ fi
 echo "Cleaning Electron build artifacts..."
 echo ""
 
-# Remove dist directory (contains built DMG files and app bundles)
+# Remove dist directory (contains built .app bundles)
 if [ -d "$SCRIPT_DIR/dist" ]; then
     echo "Removing dist/ directory..."
     rm -rf "$SCRIPT_DIR/dist"
