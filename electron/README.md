@@ -7,7 +7,9 @@
 
 This is the Electron-based Mac application for viewing Bucket coverage archive files (`.bktgz`).
 
-## Development
+## Development Only
+
+If you are just wanting to build the app for local use, please skip this section
 
 ### Prerequisites
 
@@ -41,7 +43,17 @@ This is the Electron-based Mac application for viewing Bucket coverage archive f
 
 ## Building the Mac App
 
-To build a distributable Mac app, you can use the build script which automatically handles all dependencies:
+To build a local Mac app, you can use the build script which automatically handles all dependencies:
+
+First make sure you have installed uv and npm
+```bash
+brew install uv
+brew install npm
+```
+Then start a bucket shell
+```bash
+./bin/shell
+```
 
 ```bash
 ./electron/build.sh
@@ -60,8 +72,6 @@ cd ../electron
 npm install
 npm run build:mac
 ```
-
-This will create DMG files in the `electron/dist` directory that can be distributed.
 
 **Note**: The built app is completely standalone and does not require a web server to run. It loads the viewer from the bundled files.
 
