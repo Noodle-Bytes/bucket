@@ -54,7 +54,7 @@ Then start a bucket shell
 ```bash
 ./bin/shell
 ```
-
+Then run the build script
 ```bash
 ./electron/build.sh
 ```
