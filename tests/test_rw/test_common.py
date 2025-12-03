@@ -243,6 +243,34 @@ class TestCommon:
         with pytest.raises(RuntimeError):
             readout.get_rec_sha()
 
+    def test_different_covertrees_have_different_hashes(self):
+        """
+        Tests that two different covertrees produce different hashes
+        """
+        # Different def_seed should produce different def_sha
+        readout_a = GeneratedReadout(def_seed=1, rec_seed=1)
+        readout_b = GeneratedReadout(def_seed=2, rec_seed=1)
+        assert readout_a.get_def_sha() != readout_b.get_def_sha()
+        assert readout_a.get_rec_sha() != readout_b.get_rec_sha()
+
+        # Different structure parameters should produce different def_sha
+        readout_c = GeneratedReadout(def_seed=1, rec_seed=1, min_goals=1, max_goals=5)
+        readout_d = GeneratedReadout(def_seed=1, rec_seed=1, min_goals=2, max_goals=6)
+        assert readout_c.get_def_sha() != readout_d.get_def_sha()
+        assert readout_c.get_rec_sha() != readout_d.get_rec_sha()
+
+        # Different min_axes should produce different def_sha
+        readout_e = GeneratedReadout(def_seed=1, rec_seed=1, min_axes=1, max_axes=3)
+        readout_f = GeneratedReadout(def_seed=1, rec_seed=1, min_axes=2, max_axes=4)
+        assert readout_e.get_def_sha() != readout_f.get_def_sha()
+        assert readout_e.get_rec_sha() != readout_f.get_rec_sha()
+
+        # Same parameters should produce same hashes
+        readout_g = GeneratedReadout(def_seed=5, rec_seed=5, min_goals=1, max_goals=3)
+        readout_h = GeneratedReadout(def_seed=5, rec_seed=5, min_goals=1, max_goals=3)
+        assert readout_g.get_def_sha() == readout_h.get_def_sha()
+        assert readout_g.get_rec_sha() == readout_h.get_rec_sha()
+
     def test_illegal_merge(self):
         """
         Tests merging incompatable coverage
@@ -389,3 +417,232 @@ class TestCommon:
         assert merged.get_source().startswith("Merged_")
         # Verify source_key is empty string
         assert merged.get_source_key() == ""
+
+    def test_merge_files_sql(self):
+        """
+        Tests SQL merge_files functionality
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create multiple SQL files with compatible readouts
+            path1 = Path(tmpdir) / "file1.db"
+            path2 = Path(tmpdir) / "file2.db"
+            path3 = Path(tmpdir) / "file3.db"
+
+            # Write readouts with same def_sha and rec_sha (compatible for merging)
+            readout1 = GeneratedReadout(def_seed=1, rec_seed=1, min_hits=1, max_hits=2)
+            readout2 = GeneratedReadout(def_seed=1, rec_seed=1, min_hits=2, max_hits=3)
+            readout3 = GeneratedReadout(def_seed=1, rec_seed=1, min_hits=3, max_hits=4)
+
+            SQLAccessor.File(path1).writer().write(readout1)
+            SQLAccessor.File(path2).writer().write(readout2)
+            SQLAccessor.File(path3).writer().write(readout3)
+
+            # Test variadic arguments
+            merged = SQLAccessor.merge_files(path1, path2, path3)
+            assert merged is not None
+            assert merged.get_def_sha() == readout1.get_def_sha()
+            assert merged.get_rec_sha() == readout1.get_rec_sha()
+
+            # Test list argument
+            merged2 = SQLAccessor.merge_files([path1, path2, path3])
+            assert merged2 is not None
+            assert merged2.get_def_sha() == readout1.get_def_sha()
+
+            # Verify bucket hits are accumulated
+            original_hits = {}
+            for bh in readout1.iter_bucket_hits():
+                original_hits[bh.start] = bh.hits
+            for bh in readout2.iter_bucket_hits():
+                original_hits[bh.start] = original_hits.get(bh.start, 0) + bh.hits
+            for bh in readout3.iter_bucket_hits():
+                original_hits[bh.start] = original_hits.get(bh.start, 0) + bh.hits
+
+            merged_hits = {}
+            for bh in merged.iter_bucket_hits():
+                merged_hits[bh.start] = bh.hits
+
+            assert merged_hits == original_hits
+
+    def test_merge_files_json(self):
+        """
+        Tests JSON merge_files functionality
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create multiple JSON files with compatible readouts
+            path1 = Path(tmpdir) / "file1.json"
+            path2 = Path(tmpdir) / "file2.json"
+            path3 = Path(tmpdir) / "file3.json"
+
+            # Write readouts with same def_sha and rec_sha (compatible for merging)
+            readout1 = GeneratedReadout(def_seed=1, rec_seed=1, min_hits=1, max_hits=2)
+            readout2 = GeneratedReadout(def_seed=1, rec_seed=1, min_hits=2, max_hits=3)
+            readout3 = GeneratedReadout(def_seed=1, rec_seed=1, min_hits=3, max_hits=4)
+
+            JSONAccessor(path1).writer().write(readout1)
+            JSONAccessor(path2).writer().write(readout2)
+            JSONAccessor(path3).writer().write(readout3)
+
+            # Test variadic arguments
+            merged = JSONAccessor.merge_files(path1, path2, path3)
+            assert merged is not None
+            assert merged.get_def_sha() == readout1.get_def_sha()
+            assert merged.get_rec_sha() == readout1.get_rec_sha()
+
+            # Test list argument
+            merged2 = JSONAccessor.merge_files([path1, path2, path3])
+            assert merged2 is not None
+            assert merged2.get_def_sha() == readout1.get_def_sha()
+
+            # Verify bucket hits are accumulated
+            original_hits = {}
+            for bh in readout1.iter_bucket_hits():
+                original_hits[bh.start] = bh.hits
+            for bh in readout2.iter_bucket_hits():
+                original_hits[bh.start] = original_hits.get(bh.start, 0) + bh.hits
+            for bh in readout3.iter_bucket_hits():
+                original_hits[bh.start] = original_hits.get(bh.start, 0) + bh.hits
+
+            merged_hits = {}
+            for bh in merged.iter_bucket_hits():
+                merged_hits[bh.start] = bh.hits
+
+            assert merged_hits == original_hits
+
+    def test_merge_files_archive(self):
+        """
+        Tests Archive merge_files functionality
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create multiple archive files with compatible readouts
+            path1 = Path(tmpdir) / "file1.bktgz"
+            path2 = Path(tmpdir) / "file2.bktgz"
+            path3 = Path(tmpdir) / "file3.bktgz"
+
+            # Write readouts with same def_sha and rec_sha (compatible for merging)
+            readout1 = GeneratedReadout(def_seed=1, rec_seed=1, min_hits=1, max_hits=2)
+            readout2 = GeneratedReadout(def_seed=1, rec_seed=1, min_hits=2, max_hits=3)
+            readout3 = GeneratedReadout(def_seed=1, rec_seed=1, min_hits=3, max_hits=4)
+
+            ArchiveAccessor(path1).writer().write(readout1)
+            ArchiveAccessor(path2).writer().write(readout2)
+            ArchiveAccessor(path3).writer().write(readout3)
+
+            # Test variadic arguments
+            merged = ArchiveAccessor.merge_files(path1, path2, path3)
+            assert merged is not None
+            assert merged.get_def_sha() == readout1.get_def_sha()
+            assert merged.get_rec_sha() == readout1.get_rec_sha()
+
+            # Test list argument
+            merged2 = ArchiveAccessor.merge_files([path1, path2, path3])
+            assert merged2 is not None
+            assert merged2.get_def_sha() == readout1.get_def_sha()
+
+            # Verify bucket hits are accumulated
+            original_hits = {}
+            for bh in readout1.iter_bucket_hits():
+                original_hits[bh.start] = bh.hits
+            for bh in readout2.iter_bucket_hits():
+                original_hits[bh.start] = original_hits.get(bh.start, 0) + bh.hits
+            for bh in readout3.iter_bucket_hits():
+                original_hits[bh.start] = original_hits.get(bh.start, 0) + bh.hits
+
+            merged_hits = {}
+            for bh in merged.iter_bucket_hits():
+                merged_hits[bh.start] = bh.hits
+
+            assert merged_hits == original_hits
+
+    def test_merge_files_single_file(self):
+        """
+        Tests merge_files with a single file (should still work)
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "single.json"
+            readout = GeneratedReadout(def_seed=1, rec_seed=1)
+            JSONAccessor(path).writer().write(readout)
+
+            merged = JSONAccessor.merge_files(path)
+            assert merged is not None
+            assert merged.get_def_sha() == readout.get_def_sha()
+            assert merged.get_rec_sha() == readout.get_rec_sha()
+
+            # Single file merge should have same hits as original
+            original_hits = {bh.start: bh.hits for bh in readout.iter_bucket_hits()}
+            merged_hits = {bh.start: bh.hits for bh in merged.iter_bucket_hits()}
+            assert merged_hits == original_hits
+
+    def test_merge_files_multiple_records(self):
+        """
+        Tests merge_files with files containing multiple records
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path1 = Path(tmpdir) / "file1.json"
+            path2 = Path(tmpdir) / "file2.json"
+
+            # Create files with multiple records (same def_sha, rec_sha for compatibility)
+            accessor1 = JSONAccessor(path1)
+            accessor2 = JSONAccessor(path2)
+
+            readout1a = GeneratedReadout(def_seed=1, rec_seed=1, min_hits=1, max_hits=1)
+            readout1b = GeneratedReadout(def_seed=1, rec_seed=1, min_hits=2, max_hits=2)
+            readout2a = GeneratedReadout(def_seed=1, rec_seed=1, min_hits=3, max_hits=3)
+            readout2b = GeneratedReadout(def_seed=1, rec_seed=1, min_hits=4, max_hits=4)
+
+            accessor1.writer().write(readout1a)
+            accessor1.writer().write(readout1b)
+            accessor2.writer().write(readout2a)
+            accessor2.writer().write(readout2b)
+
+            # Merge should combine all records from both files
+            merged = JSONAccessor.merge_files(path1, path2)
+            assert merged is not None
+
+            # Verify all hits are accumulated
+            original_hits = {}
+            for readout in [readout1a, readout1b, readout2a, readout2b]:
+                for bh in readout.iter_bucket_hits():
+                    original_hits[bh.start] = original_hits.get(bh.start, 0) + bh.hits
+
+            merged_hits = {bh.start: bh.hits for bh in merged.iter_bucket_hits()}
+            assert merged_hits == original_hits
+
+    def test_merge_files_empty_json(self):
+        """
+        Tests merge_files with empty JSON file (should skip it)
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path1 = Path(tmpdir) / "empty.json"
+            path2 = Path(tmpdir) / "file2.json"
+
+            # Create empty JSON file (just initialize it)
+            JSONAccessor(path1).writer()  # Creates empty structure
+
+            # Write a real readout to path2
+            readout = GeneratedReadout(def_seed=1, rec_seed=1)
+            JSONAccessor(path2).writer().write(readout)
+
+            # Merge should work, skipping empty file
+            merged = JSONAccessor.merge_files(path1, path2)
+            assert merged is not None
+            assert merged.get_def_sha() == readout.get_def_sha()
+
+    def test_merge_files_empty_sql(self):
+        """
+        Tests merge_files with empty SQL file (should skip it)
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path1 = Path(tmpdir) / "empty.db"
+            path2 = Path(tmpdir) / "file2.db"
+
+            # Create empty SQL file
+            SQLAccessor.File(path1)  # Creates empty DB
+
+            # Write a real readout to path2
+            readout = GeneratedReadout(def_seed=1, rec_seed=1)
+            SQLAccessor.File(path2).writer().write(readout)
+
+            # Merge should work, skipping empty file
+            merged = SQLAccessor.merge_files(path1, path2)
+            assert merged is not None
+            assert merged.get_def_sha() == readout.get_def_sha()
