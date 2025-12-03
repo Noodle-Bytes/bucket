@@ -3,7 +3,7 @@
 
 import json
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, overload
 
 from .common import (
     Accessor,
@@ -12,6 +12,7 @@ from .common import (
     BucketGoalTuple,
     BucketHitTuple,
     GoalTuple,
+    MergeReadout,
     PointHitTuple,
     PointTuple,
     PuppetReadout,
@@ -148,3 +149,24 @@ class JSONAccessor(Accessor):
 
     def writer(self):
         return JSONWriter(self.path)
+
+    @overload
+    @classmethod
+    def merge_files(cls, json_paths: list[str | Path], /): ...
+    @overload
+    @classmethod
+    def merge_files(cls, *json_paths: str | Path): ...
+    @classmethod
+    def merge_files(cls, *json_paths):
+        if len(json_paths) == 1 and not isinstance(json_paths[0], (str, Path)):
+            json_paths = json_paths[0]
+        merged_readout = None
+        for json_path in json_paths:
+            json_accessor = cls(json_path)
+            readout_iter = iter(json_accessor.reader().read_all())
+            if merged_readout is None:
+                if (first_readout := next(readout_iter, None)) is None:
+                    continue
+                merged_readout = MergeReadout(first_readout)
+            merged_readout.merge(*readout_iter)
+        return merged_readout
