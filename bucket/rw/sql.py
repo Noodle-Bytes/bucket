@@ -328,7 +328,7 @@ class SQLAccessor(Accessor):
         merged_readout = None
         for db_path in db_paths:
             sql_accessor = cls.File(db_path)
-            readout_iter = iter(sql_accessor.read_all())
+            readout_iter = iter(sql_accessor.reader().read_all())
             if merged_readout is None:
                 if (first_readout := next(readout_iter, None)) is None:
                     continue
