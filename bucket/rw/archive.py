@@ -5,7 +5,7 @@ import csv
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Iterable, NamedTuple
+from typing import Iterable, NamedTuple, overload
 
 from .common import (
     Accessor,
@@ -14,6 +14,7 @@ from .common import (
     BucketGoalTuple,
     BucketHitTuple,
     GoalTuple,
+    MergeReadout,
     PointHitTuple,
     PointTuple,
     Reader,
@@ -398,3 +399,24 @@ class ArchiveAccessor(Accessor):
 
     def writer(self):
         return ArchiveWriter(self.path)
+
+    @overload
+    @classmethod
+    def merge_files(cls, archive_paths: list[str | Path], /): ...
+    @overload
+    @classmethod
+    def merge_files(cls, *archive_paths: str | Path): ...
+    @classmethod
+    def merge_files(cls, *archive_paths):
+        if len(archive_paths) == 1 and not isinstance(archive_paths[0], (str, Path)):
+            archive_paths = archive_paths[0]
+        merged_readout = None
+        for archive_path in archive_paths:
+            archive_accessor = cls(archive_path)
+            readout_iter = iter(archive_accessor.reader().read_all())
+            if merged_readout is None:
+                if (first_readout := next(readout_iter, None)) is None:
+                    continue
+                merged_readout = MergeReadout(first_readout)
+            merged_readout.merge(*readout_iter)
+        return merged_readout
