@@ -168,9 +168,11 @@ export default function Dashboard({ tree, onOpenFile, onClearCoverage, isDraggin
         {} as { [key: TreeKey]: string | number },
     );
 
+    // Check if tree is empty (no coverage loaded)
+    const isEmpty = tree.getRoots().length === 0;
+
     // Reset selected keys when tree becomes empty or selected key no longer exists (e.g., after clearing coverage)
     useEffect(() => {
-        const isEmpty = tree.getRoots().length === 0;
         if (isEmpty) {
             if (selectedTreeKeys.length > 0) {
                 setSelectedTreeKeys([]);
