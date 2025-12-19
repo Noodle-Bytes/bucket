@@ -897,6 +897,8 @@ def generate(
 
         json_merge_time = None
         archive_merge_time = None
+        direct_merge_time = None
+        python_merge_time = None
 
         if not skip_json and json_paths:
             merged_json_path = stress_output_dir / "riscv_stress_merged.json"
@@ -904,9 +906,6 @@ def generate(
             json_merge_time = merge_json_tests(
                 log, test_outputs_dir, len(json_paths), merged_json_path
             )
-
-        direct_merge_time = None
-        python_merge_time = None
 
         if sql_paths:
             if not skip_sql_direct:
