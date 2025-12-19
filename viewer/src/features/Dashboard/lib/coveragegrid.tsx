@@ -12,6 +12,29 @@ import { natCompare, numCompare } from "./compare";
 import Color from "colorjs.io";
 import Theme from "@/providers/Theme";
 
+type CoverageRecord = {
+    key: number;
+    target: number;
+    hits: number;
+    hit_ratio: number;
+    goal_name: string;
+    [axisName: string]: string | number; // Dynamic axis names
+};
+
+type SummaryRecord = {
+    key: TreeKey;
+    path: string;
+    desc: string;
+    target: number;
+    hits: number;
+    target_buckets: number;
+    hit_buckets: number;
+    full_buckets: number;
+    hit_ratio: number;
+    buckets_hit_ratio: number;
+    buckets_full_ratio: number;
+};
+
 export type PointGridProps = {
     node: PointNode;
 };
@@ -31,7 +54,7 @@ function getCoverageColumnConfig(theme: ThemeType, columnKey: string) {
             }
             return `${(Math.min(ratio, 1) * 100).toFixed(1)}%`;
         },
-        onCell: (record: any) => {
+        onCell: (record: CoverageRecord) => {
             const ratio = record[columnKey];
             let backgroundColor = "unset";
             let fontWeight = "unset";
@@ -63,19 +86,19 @@ function getCoverageColumnConfig(theme: ThemeType, columnKey: string) {
 }
 
 function getColumnMixedCompare(columnKey: string) {
-    return (a:any,b:any) => natCompare(a[columnKey], b[columnKey]);
+    return (a: CoverageRecord | SummaryRecord, b: CoverageRecord | SummaryRecord) => natCompare(a[columnKey], b[columnKey]);
 }
 
 
 function getColumnNumCompare(columnKey: string) {
-    return (a:any,b:any) => numCompare(a[columnKey], b[columnKey]);
+    return (a: CoverageRecord | SummaryRecord, b: CoverageRecord | SummaryRecord) => numCompare(a[columnKey], b[columnKey]);
 }
 
 
 export function PointGrid({node}: PointGridProps) {
     const pointData = node.data;
     const readout = pointData.readout;
-    let dataSource: {}[] = [];
+    let dataSource: CoverageRecord[] = [];
     const {
         axis_start,
         axis_end,
@@ -211,7 +234,7 @@ export function PointGrid({node}: PointGridProps) {
     )) {
         const bucket_hit = bucket_hits.next().value;
         const goal = goals[bucket_goal.goal - goal_start];
-        const datum: any = {
+        const datum: CoverageRecord = {
             key: bucket_hit.start,
             target: goal.target,
             hits: bucket_hit.hits,
@@ -330,7 +353,7 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
             ]
         }
     ];
-    const dataSource: {}[] = [];
+    const dataSource: SummaryRecord[] = [];
 
     const gather = (n: PointNode):PointNode[] => [n].concat(...n.children?.map(gather) ?? [])
 

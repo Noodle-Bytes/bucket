@@ -2,7 +2,7 @@
 __pycache__/
 
 # Distribution / packaging
-poetry.lock
+uv.lock
 
 # pyenv
 .python-version
@@ -17,3 +17,10 @@ example_file_store.db
 
 dist/
 dev-dist/
+index.html
+
+# macOS
+.DS_Store
+
+# Node modules
+electron/node_modules/

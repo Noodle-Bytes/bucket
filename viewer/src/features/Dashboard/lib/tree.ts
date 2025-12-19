@@ -1,5 +1,10 @@
 /*
  * SPDX-License-Identifier: MIT
+ * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+ */
+
+/*
+ * SPDX-License-Identifier: MIT
  * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
  */
 
@@ -60,8 +65,11 @@ export default abstract class Tree<T = any> {
         return this.ancestorsByKey[key] ?? [];
     }
 
-    getNodeByKey(key: TreeKey): TreeNode<T> {
+    getNodeByKey(key: TreeKey): TreeNode<T> | undefined {
         const ancestors = this.ancestorsByKey[key];
+        if (!ancestors || ancestors.length === 0) {
+            return undefined;
+        }
         return ancestors[ancestors.length - 1];
     }
 
