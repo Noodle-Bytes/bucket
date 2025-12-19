@@ -214,8 +214,6 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
         });
     };
 
-    // Check if tree is empty (no coverage loaded)
-    const isEmpty = tree.getRoots().length === 0;
     const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
     // Get logo path - in Electron production, use app:// protocol
     // Check if we're using app:// protocol (Electron production) or http:// (dev)
@@ -310,6 +308,12 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
             );
         }
 
+        const currentNode = tree.getNodeByKey(viewKey);
+        if (!currentNode) {
+            // Node doesn't exist (e.g., after clearing coverage), show empty state
+            return null;
+        }
+
         switch (currentContentKey) {
             case "Pivot":
                 return <LayoutOutlined />;
@@ -317,12 +321,12 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
                 return (
                     <PointSummaryGrid
                         tree={tree}
-                        node={tree.getNodeByKey(viewKey)}
+                        node={currentNode}
                         setSelectedTreeKeys={onSelect}
                     />
                 );
             case "Point":
-                return <PointGrid node={tree.getNodeByKey(viewKey)} />;
+                return <PointGrid node={currentNode} />;
             default:
                 throw new Error("Invalid view!?");
         }
