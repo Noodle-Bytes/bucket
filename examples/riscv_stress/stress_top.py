@@ -3,18 +3,34 @@
 
 from bucket import Covertop
 
-from .stress_modules import (
-    module_00,
-    module_01,
-    module_02,
-    module_03,
-    module_04,
-    module_05,
-    module_06,
-    module_07,
-    module_08,
-    module_09,
-)
+# Handle both relative imports (when run as module) and absolute imports (when run directly)
+try:
+    from .stress_modules import (
+        module_00,
+        module_01,
+        module_02,
+        module_03,
+        module_04,
+        module_05,
+        module_06,
+        module_07,
+        module_08,
+        module_09,
+    )
+except ImportError:
+    # Running directly, use absolute imports
+    from stress_modules import (
+        module_00,
+        module_01,
+        module_02,
+        module_03,
+        module_04,
+        module_05,
+        module_06,
+        module_07,
+        module_08,
+        module_09,
+    )
 
 
 class StressTop(Covertop):

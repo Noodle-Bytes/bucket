@@ -81,23 +81,26 @@ def _write(path: Path, values: Iterable[tuple]):
 def _read(
     path: Path,
     byte_offset: int,
-    byte_end: int,
+    byte_end: int | None,
     line_offset: int,
-    line_end: int,
+    line_end: int | None,
 ) -> Iterable[tuple]:
     """
     Read a slice of values from a CSV file from a 'seeked' section of the file.
     For record rows (8 fields), preserves empty strings for source/source_key (indices 6, 7).
     For all other rows, converts empty strings to None.
     """
-    if byte_end - byte_offset == 0:
+    if byte_end is not None and byte_end - byte_offset == 0:
         yield from []
         return
 
     with path.open("r", newline="") as f:
         f.seek(byte_offset)
 
-        lines = f.readlines(byte_end - byte_offset - 1)[line_offset:line_end]
+        if byte_end is not None:
+            lines = f.readlines(byte_end - byte_offset - 1)[line_offset:line_end]
+        else:
+            lines = f.readlines()[line_offset:line_end]
 
         for row in csv.reader(lines, quoting=csv.QUOTE_NONNUMERIC):
             # For record rows (8 fields), keep empty strings as empty strings for source/source_key (indices 6, 7)
@@ -118,6 +121,33 @@ def _read(
                 else:
                     processed_row.append(x)
             yield tuple(processed_row)
+
+
+def _read_bucket_hits_fast(
+    path: Path,
+    byte_offset: int,
+    byte_end: int | None,
+) -> Iterable[int]:
+    """
+    Fast path for reading bucket hits - just parse integers directly.
+    Bucket hit CSV has only one column (hits), so we can skip CSV parsing overhead.
+    """
+    with path.open("r") as f:
+        f.seek(byte_offset)
+
+        if byte_end is not None:
+            data = f.read(byte_end - byte_offset - 1)
+        else:
+            data = f.read()
+
+        # Parse lines directly - bucket_hit CSV is just one integer per line
+        for line in data.splitlines():
+            line = line.strip()
+            if line:
+                # Handle quoted numbers from csv.QUOTE_NONNUMERIC
+                if line.startswith('"') and line.endswith('"'):
+                    line = line[1:-1]
+                yield int(float(line))  # float first to handle "123.0" format
 
 
 class ArchiveReadout(Readout):
@@ -434,3 +464,227 @@ class ArchiveAccessor(Accessor):
 
     def writer(self):
         return ArchiveWriter(self.path)
+
+
+def merge_archive_direct(
+    output_path: Path,
+    *input_paths: Path,
+    source: str | None = None,
+    source_key: str | None = None,
+    parallel: bool = True,
+    batch_size: int | None = None,
+) -> int:
+    """
+    Directly merge multiple archive files by only aggregating bucket hits.
+    Much faster than loading full Readout objects.
+
+    Parameters:
+        output_path: Path where merged archive will be created
+        input_paths: Archive files to merge
+        source: Optional source identifier (defaults to "Merged_TIMESTAMP")
+        source_key: Optional source key (defaults to "")
+        parallel: If True, aggregate hits in parallel (default: True)
+        batch_size: Optional batch size for hierarchical merging (default: None = no batching)
+
+    Returns:
+        Record offset in merged archive
+    """
+    from collections import defaultdict
+    from datetime import datetime
+
+    if not input_paths:
+        raise ValueError("At least one input archive path must be provided")
+
+    # Auto-enable hierarchical batching for very large file counts
+    # This prevents memory exhaustion with 10k+ files
+    if batch_size is None and len(input_paths) > 2000:
+        batch_size = 1000
+
+    # Treat batch_size=0 as None (no batching)
+    if batch_size == 0:
+        batch_size = None
+
+    # Hierarchical batching for large numbers of files
+    if batch_size is not None and batch_size > 0 and len(input_paths) > batch_size:
+        import logging
+        import tempfile as tmp_module
+
+        log = logging.getLogger("bucket")
+        num_batches = (len(input_paths) + batch_size - 1) // batch_size
+        log.info(
+            f"Hierarchical batching: {len(input_paths)} files → {num_batches} batches of ~{batch_size} files each"
+        )
+
+        temp_archives = []
+        temp_dir = tmp_module.TemporaryDirectory()
+
+        try:
+            # Process in batches and create intermediate merged archives
+            for batch_num, i in enumerate(range(0, len(input_paths), batch_size), 1):
+                batch = input_paths[i : i + batch_size]
+                log.info(
+                    f"  Processing batch {batch_num}/{num_batches} ({len(batch)} files)..."
+                )
+                batch_output = Path(temp_dir.name) / f"batch_{i}.bktgz"
+                merge_archive_direct(
+                    batch_output,
+                    *batch,
+                    source=None,  # Don't set source for intermediate merges
+                    source_key=None,
+                    parallel=parallel,
+                    batch_size=None,  # Don't batch recursively
+                )
+                temp_archives.append(batch_output)
+                log.info(f"  Batch {batch_num}/{num_batches} complete")
+
+            # Recursively merge the batch results
+            log.info(f"Merging {len(temp_archives)} intermediate batch files...")
+            return merge_archive_direct(
+                output_path,
+                *temp_archives,
+                source=source,
+                source_key=source_key,
+                parallel=parallel,
+                batch_size=batch_size if len(temp_archives) > batch_size else None,
+            )
+        finally:
+            temp_dir.cleanup()
+
+    # Validate inputs
+    for path in input_paths:
+        if not path.exists():
+            raise ValueError(f"Input archive does not exist: {path}")
+        if not path.is_file():
+            raise ValueError(f"Input path is not a file: {path}")
+
+    # Read first archive fully for definition data
+    first_reader = ArchiveReader(input_paths[0])
+    first_readout = first_reader.read(0)
+
+    # Aggregate bucket hits from all archives
+    aggregated_hits = defaultdict(int)
+
+    def aggregate_archive_hits(archive_path: Path) -> dict[int, int]:
+        """Extract and aggregate bucket hits from one archive"""
+        hits = {}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            work_path = Path(tmpdir)
+            with tarfile.open(archive_path, mode="r:gz") as tar:
+                # Only extract the files we need
+                tar.extract(RECORD_PATH, work_path, filter="data")
+                tar.extract(BUCKET_HIT_PATH, work_path, filter="data")
+
+            # Read record to get bucket_hit offsets
+            record_path = work_path / RECORD_PATH
+            record_row = next(_read(record_path, 0, 1, 0, 1))
+            record = ArchiveRecordTuple(*record_row)
+
+            # Read and aggregate bucket hits using fast path
+            bucket_idx = 0
+            for bucket_hits in _read_bucket_hits_fast(
+                work_path / BUCKET_HIT_PATH,
+                record.bucket_hit_offset,
+                record.bucket_hit_end,
+            ):
+                hits[bucket_idx] = hits.get(bucket_idx, 0) + bucket_hits
+                bucket_idx += 1
+
+        return hits
+
+    # Aggregate hits from all archives
+    if parallel and len(input_paths) > 1:
+        import concurrent.futures
+        import os
+
+        max_workers = min(os.cpu_count() or 1, 8)
+
+        # Stream results as they complete to avoid memory buildup
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            futures = {
+                executor.submit(aggregate_archive_hits, path): path
+                for path in input_paths
+            }
+
+            # Process results as they complete (streaming, not accumulating)
+            for future in concurrent.futures.as_completed(futures):
+                hits_dict = future.result()
+                for bucket_idx, hits in hits_dict.items():
+                    aggregated_hits[bucket_idx] += hits
+                # Release memory immediately
+                del hits_dict
+    else:
+        # Serial aggregation
+        for archive_path in input_paths:
+            hits_dict = aggregate_archive_hits(archive_path)
+            for bucket_idx, hits in hits_dict.items():
+                aggregated_hits[bucket_idx] += hits
+
+    # Recompute point hits from aggregated bucket hits
+    from .common import PuppetReadout
+
+    merged_readout = PuppetReadout()
+    merged_readout.def_sha = first_readout.get_def_sha()
+    merged_readout.rec_sha = first_readout.get_rec_sha()
+    merged_readout.source = (
+        source or f"Merged_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    )
+    merged_readout.source_key = source_key or ""
+
+    # Copy definition data
+    merged_readout.points = list(first_readout.iter_points())
+    merged_readout.axes = list(first_readout.iter_axes())
+    merged_readout.axis_values = list(first_readout.iter_axis_values())
+    merged_readout.goals = list(first_readout.iter_goals())
+    merged_readout.bucket_goals = list(first_readout.iter_bucket_goals())
+
+    # Build bucket goal lookup
+    bucket_goal_map = {}
+    goal_target_map = {}
+
+    for goal in merged_readout.goals:
+        goal_target_map[goal.start] = goal.target
+
+    for bg in merged_readout.bucket_goals:
+        bucket_goal_map[bg.start] = goal_target_map.get(bg.goal, 10)
+
+    # Recompute point hits
+    point_hits = []
+    for point in merged_readout.points:
+        hits = 0
+        hit_buckets = 0
+        full_buckets = 0
+
+        for bucket_idx in range(point.bucket_start, point.bucket_end):
+            bucket_target = bucket_goal_map.get(bucket_idx, 10)
+            bucket_hits = aggregated_hits.get(bucket_idx, 0)
+
+            if bucket_target > 0:
+                capped_hits = min(bucket_hits, bucket_target)
+                if bucket_hits > 0:
+                    hit_buckets += 1
+                    if capped_hits == bucket_target:
+                        full_buckets += 1
+                hits += capped_hits
+
+        point_hits.append(
+            PointHitTuple(
+                start=point.start,
+                depth=point.depth,
+                hits=hits,
+                hit_buckets=hit_buckets,
+                full_buckets=full_buckets,
+            )
+        )
+
+    merged_readout.point_hits = point_hits
+
+    # Set bucket hits
+    merged_readout.bucket_hits = [
+        BucketHitTuple(start=idx, hits=hits)
+        for idx, hits in sorted(aggregated_hits.items())
+    ]
+
+    # Write merged archive
+    writer = ArchiveWriter(output_path)
+    return writer.write(merged_readout)

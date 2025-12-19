@@ -8,6 +8,7 @@ import click
 
 from .rw import ArchiveAccessor, ConsoleWriter, HTMLWriter, JSONAccessor, SQLAccessor
 from .rw.common import MergeReadout, Readout
+from .rw.sql import merge_sql_direct
 
 
 @click.group()
@@ -226,6 +227,110 @@ def console(
     writer = ConsoleWriter(axes=axes, goals=goals, points=points, summary=summary)
     for readout in readouts:
         writer.write(readout)
+
+
+@cli.command()
+@click.option(
+    "--input",
+    "-i",
+    "input_paths",
+    multiple=True,
+    required=True,
+    type=click.Path(exists=True, readable=True, path_type=Path),
+    help="SQLite database file to merge. Can be specified multiple times.",
+)
+@click.option(
+    "--output",
+    "-o",
+    required=True,
+    type=click.Path(path_type=Path),
+    help="Path where the merged SQLite database will be created.",
+)
+@click.option(
+    "--source",
+    "-s",
+    default=None,
+    type=str,
+    help="Source identifier for the merged run (default: 'Merged_TIMESTAMP').",
+)
+@click.option(
+    "--source-key",
+    "-k",
+    default=None,
+    type=str,
+    help="Source key for the merged run (default: empty string).",
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Enable verbose logging.",
+)
+def merge_sql(
+    input_paths: tuple[Path, ...],
+    output: Path,
+    source: str | None,
+    source_key: str | None,
+    verbose: bool,
+):
+    """
+    Directly merge multiple SQLite coverage databases into a single database.
+
+    This command efficiently combines coverage data from multiple SQLite databases
+    without loading everything into Python memory. It's optimized for large-scale
+    regression merges with many test runs.
+
+    All input databases must have:
+    - The same coverage definition (same SHA)
+    - Valid bucket coverage database schema
+
+    The merge process:
+    1. Validates SHA compatibility across all databases
+    2. Copies definition data (once, since it's identical)
+    3. Sums bucket hit counts across all runs
+    4. Recomputes point hit statistics from merged buckets
+    5. Creates a single merged run record
+
+    Example usage:
+        bucket merge-sql -i test1.db -i test2.db -i test3.db -o merged.db
+        bucket merge-sql -i db/*.db -o merged.db --source "Nightly_Regression"
+    """
+    import logging
+
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+
+    if len(input_paths) < 1:
+        raise click.UsageError("At least one input database must be specified")
+
+    # Validate all inputs are SQLite files
+    for path in input_paths:
+        if not str(path).endswith(".db"):
+            click.echo(
+                f"Warning: {path} does not have .db extension, may not be a SQLite database",
+                err=True,
+            )
+
+    try:
+        click.echo(f"Merging {len(input_paths)} databases...")
+        run_id = merge_sql_direct(
+            output,
+            *input_paths,
+            source=source,
+            source_key=source_key,
+        )
+        click.echo(f"✓ Successfully merged into {output}")
+        click.echo(f"  Run ID: {run_id}")
+        if source:
+            click.echo(f"  Source: {source}")
+        if source_key:
+            click.echo(f"  Source Key: {source_key}")
+    except Exception as e:
+        click.echo(f"✗ Merge failed: {e}", err=True)
+        raise click.Abort()
 
 
 if __name__ == "__main__":
