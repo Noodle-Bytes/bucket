@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+
+# SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2025 Vypercore. All Rights Reserved
 
 import hashlib
@@ -75,11 +78,14 @@ class Covergroup(CoverBase):
 
     def _update_tags_and_tiers(self):
         """
-        Update covergroup with child tiers and tags
+        Update covergroup with child tiers and tags.
+        If no children exist, tier remains None (indicating no coverage points).
         """
         for child in self.iter_children():
-            if self._tier is None or child._tier < self._tier:
-                self._tier = child._tier
+            # Skip children with None tier (empty covergroups)
+            if child._tier is not None:
+                if self._tier is None or child._tier < self._tier:
+                    self._tier = child._tier
             for tag in child._tags:
                 if tag not in self._tags:
                     self._tags.append(tag)
@@ -99,6 +105,7 @@ class Covergroup(CoverBase):
         any_children_active = False
         for child in self.iter_children():
             any_children_active |= child._set_tier_level(tier)
+        # Empty covergroups (no children) remain inactive
         self._tier_active = any_children_active
         return self._tier_active
 
@@ -111,12 +118,19 @@ class Covergroup(CoverBase):
 
     def _match_by_tier(self, tier: int):
         def matcher(cp: CoverBase):
+            # Empty covergroups have None tier and should not match
+            if cp._tier is None:
+                return False
             return cp._tier <= tier
 
         return matcher
 
     def _match_by_tags(self, tags: TagStrs, match_all: bool = False):
         def matcher(cp: CoverBase):
+            # Import locally to avoid circular import at module level
+            from .coverpoint import Coverpoint
+
+            # Only match Coverpoints, not Covergroups
             if not isinstance(cp, Coverpoint):
                 return False
             if match_all:
@@ -228,21 +242,24 @@ class Covergroup(CoverBase):
         def fmt_active(active):
             return "A" if active else "-"
 
+        def fmt_tier(tier):
+            return "-" if tier is None else str(tier)
+
         if indent == 0:
             self.info("COVERAGE_TREE")
             self.info(
-                f"[{fmt_active(self._active)}]({self._tier}) {self._name}: {self._description} -- Tags:{self._tags}"
+                f"[{fmt_active(self._active)}]({fmt_tier(self._tier)}) {self._name}: {self._description} -- Tags:{self._tags}"
             )
         indent += 1
         indentation = "    " * indent
         for cp in self._coverpoints.values():
             self.info(
-                f"[{fmt_active(cp._active)}]({cp._tier}) {indentation}|-- {cp._name}: {cp._description} -- Tags:{cp._tags}"
+                f"[{fmt_active(cp._active)}]({fmt_tier(cp._tier)}) {indentation}|-- {cp._name}: {cp._description} -- Tags:{cp._tags}"
             )
 
         for cg in self._covergroups.values():
             self.info(
-                f"[{fmt_active(cg._active)}]({cg._tier}) {indentation}|-- {cg._name}: {cg._description} -- Tags:{cg._tags}"
+                f"[{fmt_active(cg._active)}]({fmt_tier(cg._tier)}) {indentation}|-- {cg._name}: {cg._description} -- Tags:{cg._tags}"
             )
             cg.print_tree(indent + 1)
 
