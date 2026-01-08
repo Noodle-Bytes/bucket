@@ -1,5 +1,10 @@
 <!--
   ~ SPDX-License-Identifier: MIT
+  ~ Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+  -->
+
+<!--
+  ~ SPDX-License-Identifier: MIT
   ~ Copyright (c) 2023-2024 Vypercore. All Rights Reserved
   -->
 
@@ -89,14 +94,19 @@ Each goal is created during `setup()`, normally after the axes have been defined
 If goals have been created, then they must be applied to the relevant buckets. To do this the `apply_goals()` method must be overridden, which will be automatically called at the end of the setup phase. After filtering which buckets are to have a goal applied, the new goal should be returned. The default target is otherwise applied.
 <br>
 
-NOTE: The **name** of the axis value is used, not the original value. For strings this should make no difference, but for values, you will need to convert them back to int/float/etc. (Ranges will need to be referenced by name. However setting all ranges to a particular goal could match against "->" for example).
+NOTE: Each bucket axis provides both `.name` (the string representation) and `.value` (the actual value). For simple values like integers, `.value` gives you the numeric value directly without conversion. For ranges, `.value` is a list `[min, max]`. For strings, `.name` and `.value` are typically the same.
 
 ``` Python
     def apply_goals(self, bucket, goals):
-        if bucket.my_axis_1 == "1" and bucket.my_axis_3 in ["red", "yellow"]:
+        # Using .name for string comparisons
+        if bucket.my_axis_1.name == "1" and bucket.my_axis_3.name in ["red", "yellow"]:
             return goals.MOULDY_CHEESE
-        elif int(bucket.my_axis_2) > 8:
+        # Using .value for direct numeric comparisons (no conversion needed!)
+        elif bucket.my_axis_2.value > 8:
             return goals.OPTMISTIC_CHEESE
+        # Check if a value is a range
+        elif isinstance(bucket.my_axis_1.value, list):
+            return goals.RANGE_GOAL
 ```
 ---
 Finally, a `sample()` method needs to be defined. This method will be passed the trace data to be sampled. A trace object can be of any type, but is intended to be a class containing all information to be covered (accumulated from monitors, models, etc). Each coverpoint can then sample the relevant information. This could be as simple as directly assigning values to each axis, processing the values into something more useful and/or storing values for the next time the coverpoint is called.

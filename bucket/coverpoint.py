@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+
+# SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2025 Vypercore. All Rights Reserved
 
 import hashlib
@@ -112,9 +115,14 @@ class Coverpoint(CoverBase):
         self._axis_names = [x.name for x in self._axes]
         goals = SimpleNamespace(**self._goal_dict)
         for combination in self._all_axis_value_combinations():
-            bucket = SimpleNamespace(
-                **dict(zip(self._axis_names, combination, strict=True))
-            )
+            # Create bucket with both name and value for each axis
+            bucket_dict = {}
+            for axis, value_name in zip(self._axes, combination, strict=True):
+                actual_value = axis.values[value_name]
+                bucket_dict[axis.name] = SimpleNamespace(
+                    name=value_name, value=actual_value
+                )
+            bucket = SimpleNamespace(**bucket_dict)
             if goal := self.apply_goals(bucket, goals):
                 self._cvg_goals[combination] = goal
             else:
