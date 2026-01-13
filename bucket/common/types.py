@@ -22,6 +22,10 @@ MatchStrs = Annotated[str | list[str], AfterValidator(list_of_lower_str_validato
 TagStrs = Annotated[str | list[str], AfterValidator(list_of_lower_str_validator)]
 
 
+class BucketValCompError(TypeError):
+    """Exception when BucketVal is used in a comparison"""
+
+
 @dataclass(frozen=True)
 class BucketVal:
     """
@@ -33,27 +37,31 @@ class BucketVal:
     name: str
     value: Any
 
+    # Note: The `is` operator cannot be overridden in Python (it's a built-in identity check
+    # at the interpreter level), so it's not included here. Users should use .name or .value
+    # for value comparisons rather than relying on `is`.
+
     def __eq__(self, other: object) -> bool:
-        raise TypeError(
+        raise BucketValCompError(
             "BucketVal should not be compared directly, use the .name or .value properties!"
         )
 
     def __lt__(self, other: object) -> bool:
-        raise TypeError(
+        raise BucketValCompError(
             "BucketVal should not be compared directly, use the .name or .value properties!"
         )
 
     def __le__(self, other: object) -> bool:
-        raise TypeError(
+        raise BucketValCompError(
             "BucketVal should not be compared directly, use the .name or .value properties!"
         )
 
     def __gt__(self, other: object) -> bool:
-        raise TypeError(
+        raise BucketValCompError(
             "BucketVal should not be compared directly, use the .name or .value properties!"
         )
 
     def __ge__(self, other: object) -> bool:
-        raise TypeError(
+        raise BucketValCompError(
             "BucketVal should not be compared directly, use the .name or .value properties!"
         )

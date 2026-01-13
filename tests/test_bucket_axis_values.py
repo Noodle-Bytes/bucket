@@ -6,6 +6,7 @@ Test that bucket axes provide both .name and .value in apply_goals
 """
 
 from bucket import Coverpoint, Covertop
+from bucket.common.types import BucketValCompError
 
 
 class TestBucketAxisStructure:
@@ -354,36 +355,66 @@ class TestBucketValProtection:
 
         TopCoverage()
 
-        # Verify that direct comparison raises TypeError
+        # Verify that direct comparison raises BucketValCompError
         try:
             _ = captured_bucket.age == captured_bucket.age
-            assert False, "Expected TypeError for == comparison"
-        except TypeError as e:
-            assert "BucketVal should not be compared directly" in str(e)
+            assert False, "Expected BucketValCompError for == comparison"
+        except BucketValCompError:
+            pass  # Expected
 
         try:
             _ = captured_bucket.age < captured_bucket.age
-            assert False, "Expected TypeError for < comparison"
-        except TypeError as e:
-            assert "BucketVal should not be compared directly" in str(e)
+            assert False, "Expected BucketValCompError for < comparison"
+        except BucketValCompError:
+            pass  # Expected
 
         try:
             _ = captured_bucket.age <= captured_bucket.age
-            assert False, "Expected TypeError for <= comparison"
-        except TypeError as e:
-            assert "BucketVal should not be compared directly" in str(e)
+            assert False, "Expected BucketValCompError for <= comparison"
+        except BucketValCompError:
+            pass  # Expected
 
         try:
             _ = captured_bucket.age > captured_bucket.age
-            assert False, "Expected TypeError for > comparison"
-        except TypeError as e:
-            assert "BucketVal should not be compared directly" in str(e)
+            assert False, "Expected BucketValCompError for > comparison"
+        except BucketValCompError:
+            pass  # Expected
 
         try:
             _ = captured_bucket.age >= captured_bucket.age
-            assert False, "Expected TypeError for >= comparison"
-        except TypeError as e:
-            assert "BucketVal should not be compared directly" in str(e)
+            assert False, "Expected BucketValCompError for >= comparison"
+        except BucketValCompError:
+            pass  # Expected
+
+    def test_is_operator_works_normally(self):
+        """Test that the `is` operator works normally (identity check)"""
+        captured_buckets = []
+
+        class TestCoverpoint(Coverpoint):
+            def setup(self, ctx):
+                self.add_axis(name="age", values=[1, 2], description="Age")
+
+            def apply_goals(self, bucket, goals):
+                nonlocal captured_buckets
+                captured_buckets.append(bucket)
+                return None
+
+            def sample(self, trace):
+                pass
+
+        class TopCoverage(Covertop):
+            def setup(self, ctx):
+                self.add_coverpoint(TestCoverpoint())
+
+        TopCoverage()
+
+        # The `is` operator checks object identity, which works normally
+        # Same bucket object should be identical to itself
+        assert captured_buckets[0].age is captured_buckets[0].age
+
+        # Different bucket objects with same values are not identical
+        # (each bucket is a new SimpleNamespace with new BucketVal instances)
+        assert captured_buckets[0].age is not captured_buckets[1].age
 
     def test_bucketval_is_frozen(self):
         """Test that BucketVal is frozen and cannot be modified"""
