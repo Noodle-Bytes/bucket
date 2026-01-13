@@ -1,7 +1,16 @@
 <!--
   ~ SPDX-License-Identifier: MIT
+  ~ Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+  -->
+
+<!--
+  ~ SPDX-License-Identifier: MIT
   ~ Copyright (c) 2023-2024 Vypercore. All Rights Reserved
   -->
+
+<div align="center">
+  <img alt="Bucket logo" src="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Logo-192x192.png">
+</div>
 
 # Bucket
 

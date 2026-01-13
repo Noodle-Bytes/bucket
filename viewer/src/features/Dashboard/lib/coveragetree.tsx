@@ -72,6 +72,15 @@ export default class CoverageTree extends Tree<PointData> {
 
     getViewsByKey(key: TreeKey): View[] {
         const node = this.getNodeByKey(key);
+        if (!node) {
+            // Return default views if node doesn't exist
+            return [
+                {
+                    value: "Summary",
+                    icon: <TableOutlined />,
+                },
+            ];
+        }
         if (node.children?.length) {
             return [
                 {

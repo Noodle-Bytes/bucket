@@ -64,4 +64,9 @@ class HTMLWriter(Writer):
                 raise RuntimeError("Could not build html bundle!")
 
             shutil.copy(html_path, self.output)
+            # Also copy logo.svg if it exists (needed for browser file:// protocol)
+            logo_src = self.web_path / "public" / "logo.svg"
+            if logo_src.exists():
+                logo_dst = self.output.parent / "logo.svg"
+                shutil.copy(logo_src, logo_dst)
         self.written = True

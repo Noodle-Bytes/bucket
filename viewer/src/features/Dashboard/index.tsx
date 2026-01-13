@@ -18,13 +18,15 @@ import {
     Segmented,
     Flex,
     FloatButton,
+    Button,
+    Typography,
 } from "antd";
-import { BgColorsOutlined } from "@ant-design/icons";
+import { BgColorsOutlined, FolderOpenOutlined, ClearOutlined, FileAddOutlined } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 
 import Sider from "./components/Sider";
 import { antTheme, view } from "./theme";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
 import { LayoutOutlined } from "@ant-design/icons";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
@@ -153,15 +155,40 @@ function getBreadCrumbItems({
 
 export type DashboardProps = {
     tree: Tree;
+    onOpenFile?: () => void | Promise<void>;
+    onClearCoverage?: () => void;
+    isDragging?: boolean;
 };
 
-export default function Dashboard({ tree }: DashboardProps) {
+export default function Dashboard({ tree, onOpenFile, onClearCoverage, isDragging = false }: DashboardProps) {
     const [selectedTreeKeys, setSelectedTreeKeys] = useState<TreeKey[]>([]);
     const [expandedTreeKeys, setExpandedTreeKeys] = useState<TreeKey[]>([]);
     const [autoExpandTreeParent, setAutoExpandTreeParent] = useState(true);
     const [treeKeyContentKey, setTreeKeyContentKey] = useState(
         {} as { [key: TreeKey]: string | number },
     );
+
+    // Check if tree is empty (no coverage loaded)
+    const isEmpty = tree.getRoots().length === 0;
+
+    // Reset selected keys when tree becomes empty or selected key no longer exists (e.g., after clearing coverage)
+    useEffect(() => {
+        if (isEmpty) {
+            if (selectedTreeKeys.length > 0) {
+                setSelectedTreeKeys([]);
+                setExpandedTreeKeys([]);
+                setTreeKeyContentKey({});
+            }
+        } else if (selectedTreeKeys.length > 0) {
+            // Check if the selected key still exists in the tree
+            const viewKey = selectedTreeKeys[0];
+            if (viewKey !== Tree.ROOT && !tree.getNodeByKey(viewKey)) {
+                // Selected key no longer exists, reset to root
+                setSelectedTreeKeys([]);
+                setExpandedTreeKeys([]);
+            }
+        }
+    }, [tree, selectedTreeKeys]);
 
     const onSelect = (newSelectedKeys: TreeKey[]) => {
         const newExpandedKeys = new Set<TreeKey>(expandedTreeKeys);
@@ -188,6 +215,17 @@ export default function Dashboard({ tree }: DashboardProps) {
         });
     };
 
+    const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
+    // Get logo path - in Electron production, use app:// protocol
+    // Check if we're using app:// protocol (Electron production) or http:// (dev)
+    const isElectronProduction = typeof window !== 'undefined' && window.location.protocol === 'app:';
+    // For file:// protocol (browser opening HTML directly), use relative path
+    const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
+    const logoSrc = isElectronProduction
+        ? 'app://logo.svg'
+        : isFileProtocol
+        ? './logo.svg'
+        : `${import.meta.env.BASE_URL}logo.svg`;
     // Get source and source_key from the currently selected node's readout
     const sourceInfo = useMemo(() => {
         // Don't show source info when at root level
@@ -212,6 +250,67 @@ export default function Dashboard({ tree }: DashboardProps) {
     }, [tree, viewKey]);
 
     const selectedViewContent = useMemo(() => {
+        // Show empty state if no coverage is loaded
+        if (isEmpty) {
+            return (
+                <Theme.Consumer>
+                    {({ theme }) => {
+                        // Use theme-aware colors - check if it's a dark theme
+                        const isDark = theme.name === 'dark' || theme.name.includes('dark');
+                        const primaryTextColor = isDark
+                            ? 'rgba(255, 255, 255, 0.9)'
+                            : 'rgba(0, 0, 0, 0.85)';
+                        const secondaryTextColor = isDark
+                            ? 'rgba(255, 255, 255, 0.7)'
+                            : 'rgba(0, 0, 0, 0.65)';
+
+                        return (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px', padding: '40px 20px' }}>
+                                <div style={{ marginBottom: '40px', display: 'flex', justifyContent: 'center' }}>
+                                    <img src={logoSrc} alt="Bucket" style={{ width: '120px', height: 'auto', opacity: 0.8 }} />
+                                </div>
+                                <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
+                                    <Typography.Title level={4} style={{ marginBottom: '16px', marginTop: 0 }}>
+                                        No Coverage Loaded
+                                    </Typography.Title>
+                                    <Typography.Paragraph style={{ marginBottom: '24px', color: primaryTextColor }}>
+                                        Load a Bucket coverage archive file (`.bktgz`) to view coverage data.
+                                    </Typography.Paragraph>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
+                                        {onOpenFile ? (
+                                            <>
+                                                <Button
+                                                    type="primary"
+                                                    icon={<FolderOpenOutlined />}
+                                                    size="large"
+                                                    onClick={onOpenFile}
+                                                >
+                                                    Open File...
+                                                </Button>
+                                                <Typography.Text style={{ fontSize: '12px', color: secondaryTextColor }}>
+                                                    Or drag and drop a `.bktgz` file here
+                                                </Typography.Text>
+                                            </>
+                                        ) : (
+                                            <Typography.Text style={{ color: secondaryTextColor }}>
+                                                Drag and drop a `.bktgz` file here
+                                            </Typography.Text>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }}
+                </Theme.Consumer>
+            );
+        }
+
+        const currentNode = tree.getNodeByKey(viewKey);
+        if (!currentNode) {
+            // Node doesn't exist (e.g., after clearing coverage), show empty state
+            return null;
+        }
+
         switch (currentContentKey) {
             case "Pivot":
                 return <LayoutOutlined />;
@@ -219,72 +318,116 @@ export default function Dashboard({ tree }: DashboardProps) {
                 return (
                     <PointSummaryGrid
                         tree={tree}
-                        node={tree.getNodeByKey(viewKey)}
+                        node={currentNode}
                         setSelectedTreeKeys={onSelect}
                     />
                 );
             case "Point":
-                return <PointGrid node={tree.getNodeByKey(viewKey)} />;
+                return <PointGrid node={currentNode} />;
             default:
                 throw new Error("Invalid view!?");
         }
-    }, [viewKey, currentContentKey, tree]);
+    }, [viewKey, currentContentKey, tree, isEmpty, isElectron, onOpenFile]);
 
     return (
         <ConfigProvider theme={antTheme}>
-            <Layout {...view.props}>
-                <Sider
-                    tree={tree}
-                    selectedTreeKeys={selectedTreeKeys}
-                    setSelectedTreeKeys={onSelect}
-                    expandedTreeKeys={expandedTreeKeys}
-                    setExpandedTreeKeys={setExpandedTreeKeys}
-                    autoExpandTreeParent={autoExpandTreeParent}
-                    setAutoExpandTreeParent={setAutoExpandTreeParent}></Sider>
+            <Theme.Consumer>
+                {({ theme: themeContext }) => {
+                    const dragStyle = isDragging ? {
+                        border: '3px dashed',
+                        borderColor: themeContext.theme.colors.accentbg.value,
+                        backgroundColor: themeContext.theme.colors.highlightbg.value + '40', // Add transparency
+                        transition: 'all 0.2s ease-in-out',
+                    } : {};
+                    return (
+                        <Layout
+                            {...view.props}
+                            style={{
+                                ...view.props.style,
+                                ...dragStyle,
+                            }}
+                        >
+                {!isEmpty && (
+                    <Sider
+                        tree={tree}
+                        selectedTreeKeys={selectedTreeKeys}
+                        setSelectedTreeKeys={onSelect}
+                        expandedTreeKeys={expandedTreeKeys}
+                        setExpandedTreeKeys={setExpandedTreeKeys}
+                        autoExpandTreeParent={autoExpandTreeParent}
+                        setAutoExpandTreeParent={setAutoExpandTreeParent}></Sider>
+                )}
                 <Layout {...view.body.props}>
-                    <Header {...view.body.header.props}>
-                        <Flex {...view.body.header.flex.props}>
-                            <Theme.Consumer>
-                                {/* The breadcrumb menu is placed outside of the main DOM tree
-                                    so we need to pass through the theme class */}
-                                {({ theme }) => (
-                                    <>
-                                        <Breadcrumb
-                                            {...view.body.header.flex.breadcrumb
-                                                .props}
-                                            items={getBreadCrumbItems({
-                                                tree,
-                                                selectedTreeKeys,
-                                                onSelect,
-                                                theme,
-                                            })}></Breadcrumb>
-                                        {(sourceInfo.source || sourceInfo.source_key) && (
-                                            <Flex gap="small" style={{ marginLeft: '16px' }}>
-                                                <span style={{ color: theme.theme.colors.primarytxt.value }}>
-                                                    {sourceInfo.source && sourceInfo.source_key
-                                                        ? `${sourceInfo.source}[${sourceInfo.source_key}]`
-                                                        : sourceInfo.source
-                                                        ? sourceInfo.source
-                                                        : `[${sourceInfo.source_key}]`}
-                                                </span>
-                                            </Flex>
-                                        )}
-                                    </>
-                                )}
-                            </Theme.Consumer>
-                            <Segmented
-                                {...view.body.header.flex.segmented.props}
-                                options={contentViews}
-                                value={currentContentKey}
-                                onChange={onViewChange}
-                            />
-                        </Flex>
-                    </Header>
+                    {!isEmpty && (
+                        <Header {...view.body.header.props}>
+                            <Flex {...view.body.header.flex.props}>
+                                <Theme.Consumer>
+                                    {/* The breadcrumb menu is placed outside of the main DOM tree
+                                        so we need to pass through the theme class */}
+                                    {({ theme }) => (
+                                        <>
+                                            <Breadcrumb
+                                                {...view.body.header.flex.breadcrumb
+                                                    .props}
+                                                items={getBreadCrumbItems({
+                                                    tree,
+                                                    selectedTreeKeys,
+                                                    onSelect,
+                                                    theme,
+                                                })}></Breadcrumb>
+                                            {(sourceInfo.source || sourceInfo.source_key) && (
+                                                <Flex gap="small" style={{ marginLeft: '16px' }}>
+                                                    <span style={{ color: theme.theme.colors.primarytxt.value }}>
+                                                        {sourceInfo.source && sourceInfo.source_key
+                                                            ? `${sourceInfo.source}[${sourceInfo.source_key}]`
+                                                            : sourceInfo.source
+                                                            ? sourceInfo.source
+                                                            : `[${sourceInfo.source_key}]`}
+                                                    </span>
+                                                </Flex>
+                                            )}
+                                        </>
+                                    )}
+                                </Theme.Consumer>
+                                <Flex gap="small" align="center">
+                                    <Segmented
+                                        {...view.body.header.flex.segmented.props}
+                                        options={contentViews}
+                                        value={currentContentKey}
+                                        onChange={onViewChange}
+                                    />
+                                    {onOpenFile && (
+                                        <Button
+                                            icon={<FileAddOutlined />}
+                                            onClick={onOpenFile}
+                                            size="small"
+                                            type="primary"
+                                        >
+                                            Load
+                                        </Button>
+                                    )}
+                                    {onClearCoverage && (
+                                        <Button
+                                            icon={<ClearOutlined />}
+                                            onClick={onClearCoverage}
+                                            size="small"
+                                            danger
+                                        >
+                                            Clear
+                                        </Button>
+                                    )}
+                                </Flex>
+                            </Flex>
+                        </Header>
+                    )}
                     <Content {...view.body.content.props}>
                         {selectedViewContent}
                     </Content>
                 </Layout>
-            </Layout>
+                        </Layout>
+                    );
+                }}
+            </Theme.Consumer>
             <ColorModeToggleButton {...view.float.theme.props} />
         </ConfigProvider>
     );

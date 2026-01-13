@@ -1,0 +1,80 @@
+{
+  "name": "bucket-electron",
+  "version": "0.1.0",
+  "description": "Bucket Coverage Viewer - Mac App",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "dev": "NODE_ENV=development electron ."
+  },
+  "author": "Noodle-Bytes",
+  "license": "MIT",
+  "dependencies": {
+    "electron-window-state": "^5.0.3"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.noodlebytes.bucket",
+    "productName": "Bucket",
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "../viewer/public/pwa-512x512.png",
+      "extendInfo": {
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Bucket Archive",
+            "CFBundleTypeRole": "Viewer",
+            "CFBundleTypeIconFile": "pwa-512x512.png",
+            "LSItemContentTypes": [
+              "com.noodlebytes.bktgz"
+            ],
+            "LSHandlerRank": "Owner"
+          }
+        ],
+        "UTExportedTypeDeclarations": [
+          {
+            "UTTypeIdentifier": "com.noodlebytes.bktgz",
+            "UTTypeDescription": "Bucket Coverage Archive",
+            "UTTypeTagSpecification": {
+              "public.filename-extension": [
+                "bktgz"
+              ],
+              "public.mime-type": [
+                "application/gzip"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "files": [
+      "main.js",
+      "preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "../viewer/dist",
+        "to": "viewer/dist",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "directories": {
+      "buildResources": "."
+    }
+  }
+}
