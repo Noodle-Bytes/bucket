@@ -326,3 +326,80 @@ class TestApplyGoalsWithValues:
         # but is not stored in _cvg_goals
         assert ("5",) not in cp._cvg_goals
         assert ("10",) not in cp._cvg_goals
+
+
+class TestBucketValProtection:
+    """Test that BucketVal prevents accidental direct comparison and modification"""
+
+    def test_direct_comparison_raises_error(self):
+        """Test that direct comparison of BucketVal raises TypeError"""
+        captured_bucket = None
+
+        class TestCoverpoint(Coverpoint):
+            def setup(self, ctx):
+                self.add_axis(name="age", values=[1, 2, 3], description="Age")
+
+            def apply_goals(self, bucket, goals):
+                nonlocal captured_bucket
+                if captured_bucket is None:
+                    captured_bucket = bucket
+                return None
+
+            def sample(self, trace):
+                pass
+
+        class TopCoverage(Covertop):
+            def setup(self, ctx):
+                self.add_coverpoint(TestCoverpoint())
+
+        TopCoverage()
+
+        # Verify that direct comparison raises TypeError
+        try:
+            _ = captured_bucket.age == captured_bucket.age
+            assert False, "Expected TypeError for == comparison"
+        except TypeError as e:
+            assert "BucketVal should not be compared directly" in str(e)
+
+        try:
+            _ = captured_bucket.age < captured_bucket.age
+            assert False, "Expected TypeError for < comparison"
+        except TypeError as e:
+            assert "BucketVal should not be compared directly" in str(e)
+
+        try:
+            _ = captured_bucket.age <= captured_bucket.age
+            assert False, "Expected TypeError for <= comparison"
+        except TypeError as e:
+            assert "BucketVal should not be compared directly" in str(e)
+
+        try:
+            _ = captured_bucket.age > captured_bucket.age
+            assert False, "Expected TypeError for > comparison"
+        except TypeError as e:
+            assert "BucketVal should not be compared directly" in str(e)
+
+        try:
+            _ = captured_bucket.age >= captured_bucket.age
+            assert False, "Expected TypeError for >= comparison"
+        except TypeError as e:
+            assert "BucketVal should not be compared directly" in str(e)
+
+    def test_bucketval_is_frozen(self):
+        """Test that BucketVal is frozen and cannot be modified"""
+        from bucket.common.types import BucketVal
+
+        val = BucketVal(name="test", value=42)
+
+        # Verify it's frozen - should raise FrozenInstanceError on modification
+        try:
+            val.name = "modified"
+            assert False, "Expected FrozenInstanceError or AttributeError"
+        except (AttributeError, Exception):
+            pass  # Expected - dataclass is frozen
+
+        try:
+            val.value = 100
+            assert False, "Expected FrozenInstanceError or AttributeError"
+        except (AttributeError, Exception):
+            pass  # Expected - dataclass is frozen

@@ -18,7 +18,7 @@ from .axis import Axis
 from .base import CoverBase
 from .bucket import Bucket
 from .common.chain import Link, OpenLink
-from .common.types import TagStrs
+from .common.types import BucketVal, TagStrs
 from .context import CoverageContext
 from .goal import GoalItem
 from .link import CovDef, CovRun
@@ -119,9 +119,7 @@ class Coverpoint(CoverBase):
             bucket_dict = {}
             for axis, value_name in zip(self._axes, combination, strict=True):
                 actual_value = axis.values[value_name]
-                bucket_dict[axis.name] = SimpleNamespace(
-                    name=value_name, value=actual_value
-                )
+                bucket_dict[axis.name] = BucketVal(name=value_name, value=actual_value)
             bucket = SimpleNamespace(**bucket_dict)
             if goal := self.apply_goals(bucket, goals):
                 self._cvg_goals[combination] = goal
