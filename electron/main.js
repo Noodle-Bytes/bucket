@@ -119,10 +119,13 @@ function updateRecentFilesMenu() {
       const separatorIndex = fileMenu.submenu.items.findIndex((item, idx) => idx > openIndex && item.type === 'separator');
       const insertIndex = separatorIndex > -1 ? separatorIndex : openIndex + 1;
 
-      fileMenu.submenu.insert(insertIndex, {
+      // Build the menu item from template first
+      const openRecentMenuItem = Menu.buildFromTemplate([{
         label: 'Open Recent',
         submenu: recentSubmenu,
-      });
+      }])[0];
+
+      fileMenu.submenu.insert(insertIndex, openRecentMenuItem);
     }
   }
 
