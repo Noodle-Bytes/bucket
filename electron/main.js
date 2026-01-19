@@ -97,7 +97,7 @@ function updateRecentFilesMenu() {
       label: file.name,
       click: () => {
         if (mainWindow) {
-          mainWindow.webContents.send('file-opened', file.path);
+          mainWindow.webContents.send('files-opened', [file.path]);
         }
       },
     }));
@@ -221,7 +221,7 @@ function createMenu() {
               if (!result.canceled && result.filePaths.length > 0) {
                 const filePath = result.filePaths[0];
                 addToRecentFiles(filePath);
-                mainWindow.webContents.send('file-opened', filePath);
+                mainWindow.webContents.send('files-opened', [filePath]);
               }
             }
           },
@@ -468,7 +468,7 @@ async function createWindow() {
     mainWindow.webContents.once('did-finish-load', () => {
       // Send file path to renderer
       addToRecentFiles(pendingFilePath);
-      mainWindow.webContents.send('file-opened', pendingFilePath);
+      mainWindow.webContents.send('files-opened', [pendingFilePath]);
       pendingFilePath = null;
     });
   }
@@ -497,7 +497,7 @@ app.whenReady().then(() => {
     addToRecentFiles(filePath);
     if (mainWindow && mainWindow.webContents) {
       // Window is ready, send immediately
-      mainWindow.webContents.send('file-opened', filePath);
+      mainWindow.webContents.send('files-opened', [filePath]);
     } else {
       // Window not ready yet, store for later
       pendingFilePath = filePath;

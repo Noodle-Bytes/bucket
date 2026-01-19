@@ -192,13 +192,15 @@ export function useFileLoader() {
         rootElement.addEventListener('dragenter', handleDragEnter);
         rootElement.addEventListener('dragleave', handleDragLeave);
 
-        // Electron-specific: Handle file opened via app.open-file (macOS)
+        // Electron-specific: Handle files opened via app.open-file (macOS) or menu
         if (isElectron() && window.electronAPI) {
             const electronAPI = window.electronAPI;
-            electronAPI.onFileOpened(async (filePath: string) => {
+            electronAPI.onFilesOpened(async (filePaths: string[]) => {
                 try {
-                    const bytes = await electronAPI.readFile(filePath);
-                    await loadFile(() => loadFileFromBytes(bytes));
+                    for (const filePath of filePaths) {
+                        const bytes = await electronAPI.readFile(filePath);
+                        await loadFile(() => loadFileFromBytes(bytes));
+                    }
                 } catch (error) {
                     console.error("Failed to open file:", error);
                     notification.error({
