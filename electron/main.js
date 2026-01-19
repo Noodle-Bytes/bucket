@@ -516,7 +516,7 @@ ipcMain.handle('open-file-dialog', async () => {
   if (!mainWindow) return null;
 
   const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile'],
+    properties: ['openFile', 'multiSelections'],
     filters: [
       { name: 'Bucket Archive', extensions: ['bktgz'] },
       { name: 'All Files', extensions: ['*'] },
@@ -527,7 +527,7 @@ ipcMain.handle('open-file-dialog', async () => {
     return null;
   }
 
-  return result.filePaths[0];
+  return result.filePaths;
 });
 
 // Handle file reading
