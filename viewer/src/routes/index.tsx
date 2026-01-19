@@ -19,7 +19,6 @@ function getDefaultTree() {
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 
 export const AppRoutes = () => {
-
     const [tree, setTree] = useState(getDefaultTree());
     const [loading, setLoading] = useState(false);
     const [isDragging, setIsDragging] = useState(false);

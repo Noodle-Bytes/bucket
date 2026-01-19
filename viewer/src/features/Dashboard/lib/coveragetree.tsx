@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
 import { LayoutOutlined, TableOutlined } from "@ant-design/icons";
@@ -72,6 +72,15 @@ export default class CoverageTree extends Tree<PointData> {
 
     getViewsByKey(key: TreeKey): View[] {
         const node = this.getNodeByKey(key);
+        if (!node) {
+            // Return default views if node doesn't exist
+            return [
+                {
+                    value: "Summary",
+                    icon: <TableOutlined />,
+                },
+            ];
+        }
         if (node.children?.length) {
             return [
                 {

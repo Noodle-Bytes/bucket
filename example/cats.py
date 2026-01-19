@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+
+# SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2025 Vypercore. All Rights Reserved
 
 from bucket import Covergroup, Coverpoint
@@ -110,10 +113,10 @@ class CatStats(Coverpoint):
         )
 
     def apply_goals(self, bucket, goals):
-        # Buckets use str names, not values. If you want to compare against a value,
-        # you must first convert the string back to int, etc
+        # Each bucket axis has .name (string) and .value (actual value)
+        # No need to convert strings anymore!
         # Any bucket with no goal assigned, will have the default goal applied
-        if int(bucket.age) >= 13 and bucket.evil_thoughts in ["low"]:
+        if bucket.age.value >= 13 and bucket.evil_thoughts.name in ["low"]:
             return goals.SUSPICIOUS
 
     def sample(self, trace):
@@ -159,7 +162,7 @@ class PlayToysByAge(Coverpoint):
 
     def apply_goals(self, bucket, goals):
         # Apply goal for any time a cat picks box
-        if bucket.favourite_toy == "Box":
+        if bucket.favourite_toy.name == "Box":
             return goals.BOX
         # Else default goal will be used
 

@@ -3,11 +3,6 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-/*
- * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
- */
-
 import { Theme as ThemeType, themes } from "@/theme";
 import Theme from "@/providers/Theme";
 import type { FloatButtonProps, TreeDataNode } from "antd";
@@ -27,7 +22,7 @@ import Tree, { TreeKey, TreeNode } from "./lib/tree";
 
 import Sider from "./components/Sider";
 import { antTheme, view } from "./theme";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
 import { LayoutOutlined } from "@ant-design/icons";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
@@ -168,6 +163,28 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
         {} as { [key: TreeKey]: string | number },
     );
 
+    // Check if tree is empty (no coverage loaded)
+    const isEmpty = tree.getRoots().length === 0;
+
+    // Reset selected keys when tree becomes empty or selected key no longer exists (e.g., after clearing coverage)
+    useEffect(() => {
+        if (isEmpty) {
+            if (selectedTreeKeys.length > 0) {
+                setSelectedTreeKeys([]);
+                setExpandedTreeKeys([]);
+                setTreeKeyContentKey({});
+            }
+        } else if (selectedTreeKeys.length > 0) {
+            // Check if the selected key still exists in the tree
+            const viewKey = selectedTreeKeys[0];
+            if (viewKey !== Tree.ROOT && !tree.getNodeByKey(viewKey)) {
+                // Selected key no longer exists, reset to root
+                setSelectedTreeKeys([]);
+                setExpandedTreeKeys([]);
+            }
+        }
+    }, [tree, selectedTreeKeys, isEmpty]);
+
     const onSelect = (newSelectedKeys: TreeKey[]) => {
         const newExpandedKeys = new Set<TreeKey>(expandedTreeKeys);
         for (const newSelectedKey of newSelectedKeys) {
@@ -193,9 +210,19 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
         });
     };
 
-    // Check if tree is empty (no coverage loaded)
-    const isEmpty = tree.getRoots().length === 0;
+    // Check if we're running in Electron (will be used in a following PR)
     const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
+    void isElectron; // Suppress unused variable warning - will be used in following PR
+    // Get logo path - in Electron production, use app:// protocol
+    // Check if we're using app:// protocol (Electron production) or http:// (dev)
+    const isElectronProduction = typeof window !== 'undefined' && window.location.protocol === 'app:';
+    // For file:// protocol (browser opening HTML directly), use relative path
+    const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
+    const logoSrc = isElectronProduction
+        ? 'app://logo.svg'
+        : isFileProtocol
+        ? './logo.svg'
+        : `${import.meta.env.BASE_URL}logo.svg`;
     // Get source and source_key from the currently selected node's readout
     const sourceInfo = useMemo(() => {
         // Don't show source info when at root level
@@ -225,14 +252,8 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
             return (
                 <Theme.Consumer>
                     {({ theme }) => {
-                        // Use theme-aware colors - check if it's a dark theme
-                        const isDark = theme.name === 'dark' || theme.name.includes('dark');
-                        const primaryTextColor = isDark
-                            ? 'rgba(255, 255, 255, 0.9)'
-                            : 'rgba(0, 0, 0, 0.85)';
-                        const secondaryTextColor = isDark
-                            ? 'rgba(255, 255, 255, 0.7)'
-                            : 'rgba(0, 0, 0, 0.65)';
+                        const primaryTextColor = theme.theme.colors.primarytxt.value;
+                        const secondaryTextColor = theme.theme.colors.desaturatedtxt.value;
 
                         return (
                             <Empty
@@ -275,6 +296,12 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
             );
         }
 
+        const currentNode = tree.getNodeByKey(viewKey);
+        if (!currentNode) {
+            // Node doesn't exist (e.g., after clearing coverage), show empty state
+            return null;
+        }
+
         switch (currentContentKey) {
             case "Pivot":
                 return <LayoutOutlined />;
@@ -282,16 +309,16 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
                 return (
                     <PointSummaryGrid
                         tree={tree}
-                        node={tree.getNodeByKey(viewKey)}
+                        node={currentNode}
                         setSelectedTreeKeys={onSelect}
                     />
                 );
             case "Point":
-                return <PointGrid node={tree.getNodeByKey(viewKey)} />;
+                return <PointGrid node={currentNode} />;
             default:
                 throw new Error("Invalid view!?");
         }
-    }, [viewKey, currentContentKey, tree, isEmpty, isElectron, onOpenFile]);
+    }, [viewKey, currentContentKey, tree, isEmpty, onOpenFile]);
 
     return (
         <ConfigProvider theme={antTheme}>
