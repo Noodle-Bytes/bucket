@@ -16,7 +16,7 @@ import {
     Button,
     Typography,
 } from "antd";
-import { BgColorsOutlined, FileOutlined, FolderOpenOutlined } from "@ant-design/icons";
+import { BgColorsOutlined, FolderOpenOutlined } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 
 import Sider from "./components/Sider";
@@ -208,7 +208,9 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
         });
     };
 
+    // Check if we're running in Electron (will be used in a following PR)
     const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
+    void isElectron; // Suppress unused variable warning - will be used in following PR
     // Get logo path - in Electron production, use app:// protocol
     // Check if we're using app:// protocol (Electron production) or http:// (dev)
     const isElectronProduction = typeof window !== 'undefined' && window.location.protocol === 'app:';
@@ -314,7 +316,7 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
             default:
                 throw new Error("Invalid view!?");
         }
-    }, [viewKey, currentContentKey, tree, isEmpty, isElectron, onOpenFile]);
+    }, [viewKey, currentContentKey, tree, isEmpty, onOpenFile]);
 
     return (
         <ConfigProvider theme={antTheme}>
