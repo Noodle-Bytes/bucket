@@ -113,19 +113,33 @@ function updateRecentFilesMenu() {
         },
       });
 
-      if (openRecentItem) {
-        // Update existing submenu - build a new menu and get its submenu
-        const newSubmenu = Menu.buildFromTemplate(recentSubmenu);
-        if (newSubmenu && newSubmenu.items && newSubmenu.items.length > 0) {
-          // Get the submenu from the first item (which should be the menu itself)
-          // Actually, we need to rebuild the entire menu item
-          const newMenuItem = Menu.buildFromTemplate([{
-            label: 'Open Recent',
-            submenu: recentSubmenu,
-          }])[0];
-          if (newMenuItem && newMenuItem.submenu) {
-            openRecentItem.submenu = newMenuItem.submenu;
-            Menu.setApplicationMenu(menu);
+      if (openRecentItem && openRecentItem.submenu) {
+        // Update existing submenu by rebuilding it
+        try {
+          const newSubmenu = Menu.buildFromTemplate(recentSubmenu);
+          // Replace the submenu items
+          openRecentItem.submenu.clear();
+          for (const item of newSubmenu.items) {
+            openRecentItem.submenu.append(item);
+          }
+          Menu.setApplicationMenu(menu);
+        } catch (error) {
+          console.error('Error updating submenu:', error);
+          // If updating fails, just rebuild the entire menu item
+          try {
+            const newMenuItem = Menu.buildFromTemplate([{
+              label: 'Open Recent',
+              submenu: recentSubmenu,
+            }])[0];
+            if (newMenuItem && newMenuItem.submenu) {
+              const index = fileMenu.submenu.items.indexOf(openRecentItem);
+              if (index >= 0) {
+                fileMenu.submenu.items[index] = newMenuItem;
+                Menu.setApplicationMenu(menu);
+              }
+            }
+          } catch (rebuildError) {
+            console.error('Error rebuilding menu item:', rebuildError);
           }
         }
       }
