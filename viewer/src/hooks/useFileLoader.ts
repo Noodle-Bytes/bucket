@@ -93,11 +93,14 @@ export function useFileLoader() {
      */
     const openFileDialog = async (): Promise<void> => {
         if (isElectron() && window.electronAPI) {
-            // Electron file picker
-            const result = await openElectronFileDialog();
-            if (result) {
-                setTree(result);
-            }
+            // Electron file picker - use loadFile for consistent error handling
+            await loadFile(async () => {
+                const result = await openElectronFileDialog();
+                if (!result) {
+                    throw new Error('File selection was cancelled');
+                }
+                return result;
+            }); // loadFile will show notifications
         } else {
             // Web browser file picker
             fileInputRef.current?.click();
