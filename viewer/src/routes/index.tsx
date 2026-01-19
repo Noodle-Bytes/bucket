@@ -119,8 +119,8 @@ export const AppRoutes = () => {
 
     useEffect(() => {
         // Chrome PWA file handling
-        if ("launchQueue" in window) {
-            launchQueue.setConsumer(async (launchParams) => {
+        if ("launchQueue" in window && window.launchQueue) {
+            window.launchQueue.setConsumer(async (launchParams: { files: FileSystemFileHandle[] }) => {
                 const readouts: Readout[] = [];
                 for (const file of launchParams.files as FileSystemFileHandle[]) {
                     const reader = await readFileHandle(file);
@@ -198,9 +198,10 @@ export const AppRoutes = () => {
 
         // Electron-specific: Handle file opened via app.open-file (macOS)
         if (isElectron && window.electronAPI) {
-            window.electronAPI.onFileOpened(async (filePath: string) => {
+            const electronAPI = window.electronAPI;
+            electronAPI.onFileOpened(async (filePath: string) => {
                 try {
-                    const bytes = await window.electronAPI.readFile(filePath);
+                    const bytes = await electronAPI.readFile(filePath);
                     await loadFileFromBytes(bytes);
                 } catch (error) {
                     console.error("Failed to open file:", error);

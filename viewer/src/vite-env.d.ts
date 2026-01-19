@@ -20,4 +20,7 @@ interface ElectronAPI {
 
 interface Window {
   electronAPI?: ElectronAPI;
+  launchQueue?: {
+    setConsumer: (consumer: (launchParams: { files: FileSystemFileHandle[] }) => void | Promise<void>) => void;
+  };
 }
