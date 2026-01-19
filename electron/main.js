@@ -279,15 +279,8 @@ function createMenu() {
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
-  // Initialize recent files menu after menu is created (only if there are recent files)
-  // We skip this during initial creation to avoid menu insertion issues
-  const recentFiles = loadRecentFiles();
-  if (recentFiles.length > 0) {
-    // Use setTimeout to ensure menu is fully set before updating
-    setTimeout(() => {
-      updateRecentFilesMenu();
-    }, 100);
-  }
+  // Don't update recent files menu during initial creation
+  // It will be updated when files are opened or after window loads
 }
 
 async function createWindow() {
