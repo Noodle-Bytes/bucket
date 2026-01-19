@@ -260,7 +260,7 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
                                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                                 description={
                                     <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
-                                        <Typography.Title level={4} style={{ marginBottom: '16px' }}>
+                                        <Typography.Title level={4} style={{ marginTop: 0, marginBottom: '16px' }}>
                                             No Coverage Loaded
                                         </Typography.Title>
                                         <Typography.Paragraph style={{ marginBottom: '24px', color: primaryTextColor }}>
