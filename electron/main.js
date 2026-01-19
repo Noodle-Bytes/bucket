@@ -114,9 +114,20 @@ function updateRecentFilesMenu() {
       });
 
       if (openRecentItem) {
-        // Update existing submenu
-        openRecentItem.submenu = Menu.buildFromTemplate(recentSubmenu);
-        Menu.setApplicationMenu(menu);
+        // Update existing submenu - build a new menu and get its submenu
+        const newSubmenu = Menu.buildFromTemplate(recentSubmenu);
+        if (newSubmenu && newSubmenu.items && newSubmenu.items.length > 0) {
+          // Get the submenu from the first item (which should be the menu itself)
+          // Actually, we need to rebuild the entire menu item
+          const newMenuItem = Menu.buildFromTemplate([{
+            label: 'Open Recent',
+            submenu: recentSubmenu,
+          }])[0];
+          if (newMenuItem && newMenuItem.submenu) {
+            openRecentItem.submenu = newMenuItem.submenu;
+            Menu.setApplicationMenu(menu);
+          }
+        }
       }
       // If openRecentItem doesn't exist, we'll add it when a file is opened
       // This avoids the menu insertion issue during initial menu creation
