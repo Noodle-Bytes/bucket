@@ -11,6 +11,9 @@ import {Theme as ThemeType} from "@/theme";
 import { natCompare, numCompare } from "./compare";
 import Color from "colorjs.io";
 import Theme from "@/providers/Theme";
+import { FolderOutlined, FileTextOutlined } from "@ant-design/icons";
+import { hexToRgba } from "@/utils/colors";
+import React from "react";
 
 type CoverageRecord = {
     key: number;
@@ -23,8 +26,10 @@ type CoverageRecord = {
 
 type SummaryRecord = {
     key: TreeKey;
-    path: string;
+    name: string;
     desc: string;
+    depth: number;
+    isCovergroup: boolean;
     target: number;
     hits: number;
     target_buckets: number;
@@ -276,19 +281,64 @@ export type PointSummaryGridProps = {
 export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummaryGridProps) {
     const getColumns = (theme: ThemeType): TableProps['columns'] => [
         {
-            title: "Path",
-            dataIndex: "path",
-            key: "path",
-            render: text => <a>{text}</a>,
+            title: "Name",
+            dataIndex: "name",
+            key: "name",
+            render: (text: string, record: SummaryRecord) => {
+                const indent = record.depth * 20;
+                const icon = record.isCovergroup ? (
+                    <FolderOutlined style={{
+                        color: theme.theme.colors.accentbg.value,
+                        marginRight: 8,
+                        fontSize: '16px'
+                    }} />
+                ) : (
+                    <FileTextOutlined style={{
+                        color: theme.theme.colors.desaturatedtxt.value,
+                        marginRight: 8,
+                        fontSize: '14px'
+                    }} />
+                );
+                return (
+                    <a
+                        style={{
+                            paddingLeft: `${indent}px`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            fontWeight: record.isCovergroup ? 700 : 400,
+                            fontSize: record.isCovergroup ? '14px' : '13px',
+                            color: record.isCovergroup
+                                ? theme.theme.colors.primarytxt.value
+                                : theme.theme.colors.desaturatedtxt.value
+                        }}
+                    >
+                        {icon}
+                        {text}
+                    </a>
+                );
+            },
             onCell: record => ({
                 onClick: () => setSelectedTreeKeys([record.key]),
+                style: { cursor: 'pointer' }
             }),
-            sorter: getColumnMixedCompare('path')
+            sorter: getColumnMixedCompare('name')
         },
         {
             title: "Description",
             dataIndex: "desc",
             key: "desc",
+            onCell: (record: SummaryRecord) => ({
+                style: {
+                    backgroundColor: record.isCovergroup
+                        ? hexToRgba(theme.theme.colors.accentbg.value, 0.2)
+                        : 'transparent',
+                    borderLeft: record.isCovergroup
+                        ? `4px solid ${theme.theme.colors.accentbg.value}`
+                        : 'none',
+                    fontWeight: record.isCovergroup ? 500 : 400,
+                    paddingLeft: record.isCovergroup ? '12px' : '8px',
+                }
+            }),
             sorter: getColumnMixedCompare('desc')
         },
         {
@@ -298,20 +348,49 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
                     title: "Target",
                     dataIndex: "target",
                     key: "target",
-                    sorter: getColumnNumCompare('target')
+                    sorter: getColumnNumCompare('target'),
+                    onCell: (record: SummaryRecord) => ({
+                        style: {
+                            backgroundColor: record.isCovergroup
+                                ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                                : 'transparent',
+                        }
+                    }),
                 },
                 {
                     title: "Hits",
                     dataIndex: "hits",
                     key: "hits",
-                    sorter: getColumnNumCompare('hits')
+                    sorter: getColumnNumCompare('hits'),
+                    onCell: (record: SummaryRecord) => ({
+                        style: {
+                            backgroundColor: record.isCovergroup
+                                ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                                : 'transparent',
+                        }
+                    }),
                 },
                 {
                     title: "Hit %",
                     dataIndex: "hit_ratio",
                     key: "hit_ratio",
                     ...getCoverageColumnConfig(theme, "hit_ratio"),
-                    sorter: getColumnNumCompare('hit_ratio')
+                    sorter: getColumnNumCompare('hit_ratio'),
+                    onCell: (record: SummaryRecord) => {
+                        const coverageConfig = getCoverageColumnConfig(theme, "hit_ratio");
+                        const coverageStyle = coverageConfig.onCell ? coverageConfig.onCell(record as any).style : {} as React.CSSProperties;
+                        const covergroupBg = record.isCovergroup
+                            ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                            : 'transparent';
+                        return {
+                            style: {
+                                ...coverageStyle,
+                                backgroundColor: coverageStyle.backgroundColor && coverageStyle.backgroundColor !== "unset"
+                                    ? coverageStyle.backgroundColor
+                                    : covergroupBg,
+                            }
+                        };
+                    },
                 },
             ]
         },
@@ -322,33 +401,84 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
                     title: "Target",
                     dataIndex: "target_buckets",
                     key: "target_buckets",
-                    sorter:  getColumnNumCompare('target_buckets')
+                    sorter:  getColumnNumCompare('target_buckets'),
+                    onCell: (record: SummaryRecord) => ({
+                        style: {
+                            backgroundColor: record.isCovergroup
+                                ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                                : 'transparent',
+                        }
+                    }),
                 },
                 {
                     title: "Hit",
                     dataIndex: "hit_buckets",
                     key: "hit_buckets",
-                    sorter:  getColumnNumCompare('hit_buckets')
+                    sorter:  getColumnNumCompare('hit_buckets'),
+                    onCell: (record: SummaryRecord) => ({
+                        style: {
+                            backgroundColor: record.isCovergroup
+                                ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                                : 'transparent',
+                        }
+                    }),
                 },
                 {
                     title: "Full",
                     dataIndex: "full_buckets",
                     key: "full_buckets",
-                    sorter:  getColumnNumCompare('full_buckets')
+                    sorter:  getColumnNumCompare('full_buckets'),
+                    onCell: (record: SummaryRecord) => ({
+                        style: {
+                            backgroundColor: record.isCovergroup
+                                ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                                : 'transparent',
+                        }
+                    }),
                 },
                 {
                     title: "Hit %",
                     dataIndex: "buckets_hit_ratio",
                     key: "buckets_hit_ratio",
                     ...getCoverageColumnConfig(theme, "buckets_hit_ratio"),
-                    sorter:  getColumnNumCompare('buckets_hit_ratio')
+                    sorter:  getColumnNumCompare('buckets_hit_ratio'),
+                    onCell: (record: SummaryRecord) => {
+                        const coverageConfig = getCoverageColumnConfig(theme, "buckets_hit_ratio");
+                        const coverageStyle = coverageConfig.onCell ? coverageConfig.onCell(record as any).style : {} as React.CSSProperties;
+                        const covergroupBg = record.isCovergroup
+                            ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                            : 'transparent';
+                        return {
+                            style: {
+                                ...coverageStyle,
+                                backgroundColor: coverageStyle.backgroundColor && coverageStyle.backgroundColor !== "unset"
+                                    ? coverageStyle.backgroundColor
+                                    : covergroupBg,
+                            }
+                        };
+                    },
                 },
                 {
                     title: "Full %",
                     dataIndex: "buckets_full_ratio",
                     key: "buckets_full_ratio",
                     ...getCoverageColumnConfig(theme, "buckets_full_ratio"),
-                    sorter:  getColumnNumCompare('buckets_full_ratio')
+                    sorter:  getColumnNumCompare('buckets_full_ratio'),
+                    onCell: (record: SummaryRecord) => {
+                        const coverageConfig = getCoverageColumnConfig(theme, "buckets_full_ratio");
+                        const coverageStyle = coverageConfig.onCell ? coverageConfig.onCell(record as any).style : {} as React.CSSProperties;
+                        const covergroupBg = record.isCovergroup
+                            ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                            : 'transparent';
+                        return {
+                            style: {
+                                ...coverageStyle,
+                                backgroundColor: coverageStyle.backgroundColor && coverageStyle.backgroundColor !== "unset"
+                                    ? coverageStyle.backgroundColor
+                                    : covergroupBg,
+                            }
+                        };
+                    },
                 },
             ]
         }
@@ -361,12 +491,16 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
     const isRoot = node.key == CoverageTree.ROOT;
 
     const root = isRoot ? null : [node];
-    const nodePath = tree.getAncestorsByKey(node.key)
+    const nodePath = tree.getAncestorsByKey(node.key);
+    const baseDepth = isRoot ? 1 : nodePath.length; // For root, subtract 1 (the root itself); for nodes, use full path length
+
     for (const [subNode, _parent] of tree.walk(root)) {
-        const path = tree.getAncestorsByKey(subNode.key)
-                          .slice(nodePath.length - 1)
-                          .map(n => n.title as string).join(' / ')
+        const ancestors = tree.getAncestorsByKey(subNode.key);
+        const depth = isRoot
+            ? ancestors.length - 1  // For root view, subtract 1 to account for root
+            : ancestors.length - baseDepth; // For node view, relative to selected node
         const {point, point_hit} = subNode.data;
+        const isCovergroup = (subNode.children?.length ?? 0) > 0;
 
         const hit_ratio =
             point_hit.hits / point.target;
@@ -377,8 +511,10 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
 
         dataSource.push({
             key: subNode.key,
-            path: path,
+            name: subNode.title as string,
             desc: point.description,
+            depth: depth,
+            isCovergroup: isCovergroup,
             target: point.target,
             hits: point_hit.hits,
             target_buckets: point.target_buckets,
@@ -396,6 +532,18 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
                 key={node.key}
                 columns={getColumns(theme)}
                 dataSource={dataSource}
+                onRow={(record: SummaryRecord) => {
+                    return {
+                        style: {
+                            backgroundColor: record.isCovergroup
+                                ? hexToRgba(theme.theme.colors.accentbg.value, 0.12)
+                                : 'transparent',
+                            borderLeft: record.isCovergroup
+                                ? `3px solid ${theme.theme.colors.accentbg.value}`
+                                : '3px solid transparent',
+                        },
+                    };
+                }}
             />
         }}
     </Theme.Consumer>
