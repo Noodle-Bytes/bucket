@@ -248,14 +248,8 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
             return (
                 <Theme.Consumer>
                     {({ theme }) => {
-                        // Use theme-aware colors - check if it's a dark theme
-                        const isDark = theme.name === 'dark' || theme.name.includes('dark');
-                        const primaryTextColor = isDark
-                            ? 'rgba(255, 255, 255, 0.9)'
-                            : 'rgba(0, 0, 0, 0.85)';
-                        const secondaryTextColor = isDark
-                            ? 'rgba(255, 255, 255, 0.7)'
-                            : 'rgba(0, 0, 0, 0.65)';
+                        const primaryTextColor = theme.theme.colors.primarytxt.value;
+                        const secondaryTextColor = theme.theme.colors.desaturatedtxt.value;
 
                         return (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px', padding: '40px 20px' }}>
