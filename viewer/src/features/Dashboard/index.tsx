@@ -257,7 +257,7 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
 
                         return (
                             <Empty
-                                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                image={<img src={logoSrc} alt="Bucket Logo" style={{ width: '128px', height: '128px', marginBottom: '16px' }} />}
                                 description={
                                     <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
                                         <Typography.Title level={4} style={{ marginTop: 0, marginBottom: '16px' }}>
@@ -318,7 +318,7 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
             default:
                 throw new Error("Invalid view!?");
         }
-    }, [viewKey, currentContentKey, tree, isEmpty, onOpenFile]);
+    }, [viewKey, currentContentKey, tree, isEmpty, onOpenFile, logoSrc]);
 
     return (
         <ConfigProvider theme={antTheme}>
