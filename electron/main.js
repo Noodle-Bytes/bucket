@@ -307,6 +307,23 @@ async function createWindow() {
     mainWindow.show();
   });
 
+  // Also show window when page finishes loading (even if ready-to-show didn't fire)
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (mainWindow && !mainWindow.isVisible()) {
+      console.log('Window not visible after did-finish-load, showing now');
+      mainWindow.show();
+    }
+  });
+
+  // Fallback: Show window after a timeout even if ready-to-show doesn't fire
+  // This ensures the window appears even if there's a loading error
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isVisible()) {
+      console.warn('Window not shown after timeout, forcing show');
+      mainWindow.show();
+    }
+  }, 3000);
+
   // Load the React viewer
   if (isDevelopment) {
     // In development, load from dev server
