@@ -13,13 +13,12 @@ import {
     Segmented,
     Flex,
     FloatButton,
-    Button,
-    Typography,
 } from "antd";
-import { BgColorsOutlined, FolderOpenOutlined } from "@ant-design/icons";
+import { BgColorsOutlined } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 
 import Sider from "./components/Sider";
+import EmptyState from "./components/EmptyState";
 import { antTheme, view } from "./theme";
 import { useEffect, useMemo, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
@@ -247,82 +246,8 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
 
     const selectedViewContent = useMemo(() => {
         // Show empty state if no coverage is loaded
-        // We use a custom layout instead of Ant Design's Empty component to have
-        // better control over spacing, logo display, and theme integration
         if (isEmpty) {
-            return (
-                <Theme.Consumer>
-                    {({ theme }) => {
-                        const primaryTextColor = theme.theme.colors.primarytxt.value;
-                        const secondaryTextColor = theme.theme.colors.desaturatedtxt.value;
-
-                        return (
-                            <div style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                minHeight: '100%',
-                                padding: '48px 24px'
-                            }}>
-                                <img
-                                    src={logoSrc}
-                                    alt="Bucket Logo"
-                                    style={{
-                                        width: '128px',
-                                        height: '128px',
-                                        marginBottom: '32px',
-                                        display: 'block'
-                                    }}
-                                />
-                                <Typography.Title
-                                    level={2}
-                                    style={{
-                                        marginTop: 0,
-                                        marginBottom: '16px',
-                                        color: primaryTextColor,
-                                        fontWeight: 600
-                                    }}
-                                >
-                                    No Coverage Loaded
-                                </Typography.Title>
-                                <Typography.Paragraph
-                                    style={{
-                                        marginBottom: '32px',
-                                        color: secondaryTextColor,
-                                        fontSize: '16px',
-                                        maxWidth: '500px',
-                                        textAlign: 'center'
-                                    }}
-                                >
-                                    Load a Bucket coverage archive file (`.bktgz`) to view coverage data.
-                                </Typography.Paragraph>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
-                                    {onOpenFile ? (
-                                        <>
-                                            <Button
-                                                type="primary"
-                                                icon={<FolderOpenOutlined />}
-                                                size="large"
-                                                onClick={onOpenFile}
-                                            >
-                                                Open File...
-                                            </Button>
-                                            <Typography.Text style={{ fontSize: '14px', color: secondaryTextColor }}>
-                                                Or drag and drop a `.bktgz` file here
-                                            </Typography.Text>
-                                        </>
-                                    ) : (
-                                        <Typography.Text style={{ color: secondaryTextColor, fontSize: '14px' }}>
-                                            Drag and drop a `.bktgz` file here
-                                        </Typography.Text>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    }}
-                </Theme.Consumer>
-            );
+            return <EmptyState logoSrc={logoSrc} onOpenFile={onOpenFile} />;
         }
 
         const currentNode = tree.getNodeByKey(viewKey);

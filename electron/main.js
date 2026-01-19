@@ -357,17 +357,20 @@ function createMenu() {
   // It will be updated when files are opened or after window loads
 }
 
-async function createWindow() {
-  try {
-    console.log('Creating window...');
-    // Load window state or use defaults
-    let mainWindowState = windowStateKeeper({
-      defaultWidth: 1400,
-      defaultHeight: 900,
-    });
+/**
+ * Create and configure the BrowserWindow instance
+ * @returns {BrowserWindow} The created window instance
+ */
+function createBrowserWindow() {
+  console.log('Creating window...');
+  // Load window state or use defaults
+  const mainWindowState = windowStateKeeper({
+    defaultWidth: 1400,
+    defaultHeight: 900,
+  });
 
-    console.log('Creating BrowserWindow...');
-    mainWindow = new BrowserWindow({
+  console.log('Creating BrowserWindow...');
+  const window = new BrowserWindow({
     x: mainWindowState.x,
     y: mainWindowState.y,
     width: mainWindowState.width,
@@ -389,81 +392,99 @@ async function createWindow() {
   });
 
   // Let windowStateKeeper manage the window state
-  mainWindowState.manage(mainWindow);
+  mainWindowState.manage(window);
 
+  return window;
+}
+
+/**
+ * Set up window visibility handlers to ensure the window is shown
+ * @param {BrowserWindow} window - The window to set up handlers for
+ */
+function setupWindowVisibilityHandlers(window) {
   // Show window when ready
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
+  window.once('ready-to-show', () => {
+    window.show();
   });
 
   // Also show window when page finishes loading (even if ready-to-show didn't fire)
-  mainWindow.webContents.once('did-finish-load', () => {
-    if (mainWindow && !mainWindow.isVisible()) {
+  window.webContents.once('did-finish-load', () => {
+    if (window && !window.isVisible()) {
       console.log('Window not visible after did-finish-load, showing now');
-      mainWindow.show();
+      window.show();
     }
   });
 
   // Fallback: Show window after a timeout even if ready-to-show doesn't fire
   // This ensures the window appears even if there's a loading error
   setTimeout(() => {
-    if (mainWindow && !mainWindow.isVisible()) {
+    if (window && !window.isVisible()) {
       console.warn('Window not shown after timeout, forcing show');
-      mainWindow.show();
+      window.show();
     }
   }, 3000);
+}
 
-  // Load the React viewer
-  if (isDevelopment) {
-    // In development, load from dev server
-    mainWindow.loadURL('http://localhost:4000');
-    mainWindow.webContents.openDevTools();
-  } else {
-    // In production, load the built React viewer
-    const htmlPath = path.join(distPath, 'index.html');
+/**
+ * Load the React viewer in development mode
+ * @param {BrowserWindow} window - The window to load content into
+ */
+function loadDevelopmentViewer(window) {
+  // In development, load from dev server
+  window.loadURL('http://localhost:4000');
+  window.webContents.openDevTools();
+}
 
-    try {
-      // Read file directly - handle errors if file doesn't exist
-      // This avoids race conditions from checking existence separately
-      const html = await fsp.readFile(htmlPath, 'utf8');
+/**
+ * Load the React viewer in production mode
+ * @param {BrowserWindow} window - The window to load content into
+ */
+async function loadProductionViewer(window) {
+  // In production, load the built React viewer
+  const htmlPath = path.join(distPath, 'index.html');
 
-      // Add base tag to set the base URL for relative paths
-      let modifiedHtml = html;
-      if (!modifiedHtml.includes('<base')) {
-        modifiedHtml = modifiedHtml.replace('<head>', '<head>\n    <base href="app://">');
-      }
+  try {
+    // Read file directly - handle errors if file doesn't exist
+    // This avoids race conditions from checking existence separately
+    const html = await fsp.readFile(htmlPath, 'utf8');
 
-      // Replace all absolute paths (starting with /) with app:// protocol
-      modifiedHtml = modifiedHtml
-        .replace(/(href|src|action)="\//g, '$1="app://')
-        .replace(/(href|src|action)='\//g, "$1='app://")
-        .replace(/url\("\//g, 'url("app://')
-        .replace(/url\('\//g, "url('app://")
-        .replace(/url\(\/\//g, 'url(app://');
-
-      // Write modified HTML to dist directory and load via app:// protocol
-      const tempHtmlPath = path.join(distPath, 'index-electron.html');
-      await fsp.writeFile(tempHtmlPath, modifiedHtml, 'utf8');
-      mainWindow.loadURL('app://index-electron.html');
-    } catch (err) {
-      // Show error - this helps identify issues
-      console.error('Failed to load viewer:', err.message);
-      console.error('Stack:', err.stack);
-      console.error('distPath:', distPath);
-      console.error('htmlPath:', htmlPath);
-      // Load a simple error page
-      const errorHtml = createErrorHtml(err.message);
-      mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
+    // Add base tag to set the base URL for relative paths
+    let modifiedHtml = html;
+    if (!modifiedHtml.includes('<base')) {
+      modifiedHtml = modifiedHtml.replace('<head>', '<head>\n    <base href="app://">');
     }
-  }
 
-  // Open dev tools in development for debugging
-  if (isDevelopment) {
-    mainWindow.webContents.openDevTools();
-  }
+    // Replace all absolute paths (starting with /) with app:// protocol
+    modifiedHtml = modifiedHtml
+      .replace(/(href|src|action)="\//g, '$1="app://')
+      .replace(/(href|src|action)='\//g, "$1='app://")
+      .replace(/url\("\//g, 'url("app://')
+      .replace(/url\('\//g, "url('app://")
+      .replace(/url\(\/\//g, 'url(app://');
 
+    // Write modified HTML to dist directory and load via app:// protocol
+    const tempHtmlPath = path.join(distPath, 'index-electron.html');
+    await fsp.writeFile(tempHtmlPath, modifiedHtml, 'utf8');
+    window.loadURL('app://index-electron.html');
+  } catch (err) {
+    // Show error - this helps identify issues
+    console.error('Failed to load viewer:', err.message);
+    console.error('Stack:', err.stack);
+    console.error('distPath:', distPath);
+    console.error('htmlPath:', htmlPath);
+    // Load a simple error page
+    const errorHtml = createErrorHtml(err.message);
+    window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
+  }
+}
+
+/**
+ * Set up event handlers for the window (error handling, logging, etc.)
+ * @param {BrowserWindow} window - The window to set up handlers for
+ */
+function setupWindowEventHandlers(window) {
   // Log failed resource loads and show error
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+  window.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     console.error('Failed to load:', errorCode, errorDescription, validatedURL, 'isMainFrame:', isMainFrame);
     // Only show error for main page (top-level) load failures, not subresources
     if (isMainFrame) {
@@ -472,50 +493,80 @@ async function createWindow() {
         code: errorCode,
         url: validatedURL,
       });
-      mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
+      window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
     }
   });
 
   // Log ALL console messages from renderer for debugging
-  mainWindow.webContents.on('console-message', (event, level, message) => {
+  window.webContents.on('console-message', (event, level, message) => {
     const levelName = level === 0 ? 'Log' : level === 1 ? 'Info' : level === 2 ? 'Warn' : 'Error';
     console.log(`[Renderer ${levelName}]`, message);
   });
 
   // Log uncaught exceptions from renderer
-  mainWindow.webContents.on('uncaught-exception', (event, error) => {
+  window.webContents.on('uncaught-exception', (event, error) => {
     console.error('[Renderer Uncaught Exception]', error);
   });
 
   // Log unhandled promise rejections from renderer
-  mainWindow.webContents.executeJavaScript(`
+  window.webContents.executeJavaScript(`
     window.addEventListener('unhandledrejection', (event) => {
       console.error('Unhandled promise rejection:', event.reason);
     });
   `);
 
-  mainWindow.on('closed', () => {
+  window.on('closed', () => {
     mainWindow = null;
   });
+}
 
+/**
+ * Handle pending file opens and menu updates after window loads
+ * @param {BrowserWindow} window - The window that finished loading
+ */
+function handleWindowReady(window) {
   // Handle pending file open (for macOS file association)
   // This handles the case where a file was opened before the window was ready
   if (pendingFilePath) {
-    mainWindow.webContents.once('did-finish-load', () => {
+    window.webContents.once('did-finish-load', () => {
       // Send file path to renderer as an array to match onFilesOpened API
       addToRecentFiles(pendingFilePath);
-      mainWindow.webContents.send('files-opened', [pendingFilePath]);
+      window.webContents.send('files-opened', [pendingFilePath]);
       pendingFilePath = null;
     });
   }
 
   // Update recent files menu after window is ready
   // We do this here instead of during initial menu creation to avoid menu insertion errors
-  mainWindow.webContents.once('did-finish-load', () => {
+  window.webContents.once('did-finish-load', () => {
     updateRecentFilesMenu();
   });
+}
 
-  console.log('Window created successfully');
+/**
+ * Create and configure the main application window
+ */
+async function createWindow() {
+  try {
+    mainWindow = createBrowserWindow();
+    setupWindowVisibilityHandlers(mainWindow);
+
+    // Load the React viewer
+    if (isDevelopment) {
+      loadDevelopmentViewer(mainWindow);
+    } else {
+      await loadProductionViewer(mainWindow);
+    }
+
+    // Open dev tools in development for debugging
+    if (isDevelopment) {
+      mainWindow.webContents.openDevTools();
+    }
+
+    setupWindowEventHandlers(mainWindow);
+    handleWindowReady(mainWindow);
+
+    console.log('Window created successfully');
   } catch (error) {
     console.error('Error creating window:', error);
     throw error;
