@@ -199,6 +199,57 @@ function setupProtocol() {
   });
 }
 
+/**
+ * Generate an error HTML page for display when the viewer fails to load
+ * @param {string} errorMessage - The error message to display
+ * @param {Object} [details] - Optional error details object with error, code, and url
+ * @returns {string} HTML string for the error page
+ */
+function createErrorHtml(errorMessage, details = null) {
+  const errorDetail = details
+    ? `<div class="error-detail">
+    <div><strong>Error:</strong> ${details.error}</div>
+    <div><strong>Code:</strong> ${details.code}</div>
+    <div><strong>URL:</strong> ${details.url}</div>
+  </div>`
+    : `<div class="error-detail">${errorMessage.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Error - Bucket</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 40px;
+      text-align: center;
+      background: #fff;
+      color: #333;
+    }
+    h1 { color: #d32f2f; margin-bottom: 16px; }
+    p { color: #666; line-height: 1.6; }
+    .error-detail {
+      background: #f5f5f5;
+      padding: 16px;
+      border-radius: 4px;
+      margin: 20px 0;
+      font-family: monospace;
+      font-size: 12px;
+      text-align: left;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <h1>Error Loading Viewer</h1>
+  <p>Failed to load the coverage viewer.</p>
+  ${errorDetail}
+  <p style="color: #999; font-size: 12px; margin-top: 20px;">Please check the console for details.</p>
+</body>
+</html>`;
+}
+
 function showAboutDialog() {
   dialog.showMessageBox(mainWindow, {
     type: 'info',
@@ -401,40 +452,7 @@ async function createWindow() {
       console.error('distPath:', distPath);
       console.error('htmlPath:', htmlPath);
       // Load a simple error page
-      const errorHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Error - Bucket</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      padding: 40px;
-      text-align: center;
-      background: #fff;
-      color: #333;
-    }
-    h1 { color: #d32f2f; margin-bottom: 16px; }
-    p { color: #666; line-height: 1.6; }
-    .error-detail {
-      background: #f5f5f5;
-      padding: 16px;
-      border-radius: 4px;
-      margin: 20px 0;
-      font-family: monospace;
-      font-size: 12px;
-      text-align: left;
-      word-break: break-all;
-    }
-  </style>
-</head>
-<body>
-  <h1>Error Loading Viewer</h1>
-  <p>Failed to load the coverage viewer.</p>
-  <div class="error-detail">${err.message.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-  <p style="color: #999; font-size: 12px; margin-top: 20px;">Please check the console for details.</p>
-</body>
-</html>`;
+      const errorHtml = createErrorHtml(err.message);
       mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
     }
   }
@@ -449,43 +467,11 @@ async function createWindow() {
     console.error('Failed to load:', errorCode, errorDescription, validatedURL, 'isMainFrame:', isMainFrame);
     // Only show error for main page (top-level) load failures, not subresources
     if (isMainFrame) {
-      const errorHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Error - Bucket</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      padding: 40px;
-      text-align: center;
-      background: #fff;
-      color: #333;
-    }
-    h1 { color: #d32f2f; margin-bottom: 16px; }
-    p { color: #666; line-height: 1.6; }
-    .error-detail {
-      background: #f5f5f5;
-      padding: 16px;
-      border-radius: 4px;
-      margin: 20px 0;
-      font-family: monospace;
-      font-size: 12px;
-      text-align: left;
-    }
-  </style>
-</head>
-<body>
-  <h1>Error Loading Viewer</h1>
-  <p>Failed to load the coverage viewer.</p>
-  <div class="error-detail">
-    <div><strong>Error:</strong> ${errorDescription}</div>
-    <div><strong>Code:</strong> ${errorCode}</div>
-    <div><strong>URL:</strong> ${validatedURL}</div>
-  </div>
-  <p style="color: #999; font-size: 12px; margin-top: 20px;">Please check the console for details.</p>
-</body>
-</html>`;
+      const errorHtml = createErrorHtml('Failed to load viewer', {
+        error: errorDescription,
+        code: errorCode,
+        url: validatedURL,
+      });
       mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
     }
   });

@@ -25,6 +25,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
 import { LayoutOutlined } from "@ant-design/icons";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
+import { hexToRgba } from "@/utils/colors";
 const { Header, Content } = Layout;
 
 const ColorModeToggleButton = (props: FloatButtonProps) => {
@@ -209,9 +210,6 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
         });
     };
 
-    // Check if we're running in Electron (will be used in a following PR)
-    const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
-    void isElectron; // Suppress unused variable warning - will be used in following PR
 
     // Determine logo path based on the runtime environment:
     // - Electron production: Use app:// protocol (custom protocol registered in main.js)
@@ -358,14 +356,7 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
                     const dragStyle = isDragging ? {
                         border: '3px dashed',
                         borderColor: themeContext.theme.colors.accentbg.value,
-                        // Use rgba for transparency - convert hex to rgba
-                        backgroundColor: (() => {
-                            const hex = themeContext.theme.colors.highlightbg.value.replace('#', '');
-                            const r = parseInt(hex.substring(0, 2), 16);
-                            const g = parseInt(hex.substring(2, 4), 16);
-                            const b = parseInt(hex.substring(4, 6), 16);
-                            return `rgba(${r}, ${g}, ${b}, 0.25)`;
-                        })(),
+                        backgroundColor: hexToRgba(themeContext.theme.colors.highlightbg.value, 0.25),
                         transition: 'all 0.2s ease-in-out',
                     } : {};
                     return (

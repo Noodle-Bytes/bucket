@@ -222,7 +222,11 @@ export function useFileLoader() {
             rootElement.removeEventListener('dragenter', handleDragEnter);
             rootElement.removeEventListener('dragleave', handleDragLeave);
         };
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        // Intentionally empty deps: This effect should run only once on mount to set up
+        // event listeners and IPC handlers. The handlers (loadFile, handleDrop, etc.)
+        // are stable functions that don't need to be in the dependency array.
+    }, []);
 
     return {
         tree,
