@@ -11,9 +11,9 @@ import {Theme as ThemeType} from "@/theme";
 import { natCompare, numCompare } from "./compare";
 import Color from "colorjs.io";
 import Theme from "@/providers/Theme";
-import { FolderOutlined, FileTextOutlined } from "@ant-design/icons";
+import { FolderOutlined, FileTextOutlined, CaretRightOutlined, CaretDownOutlined } from "@ant-design/icons";
 import { hexToRgba } from "@/utils/colors";
-import React from "react";
+import React, { useState } from "react";
 
 type CoverageRecord = {
     key: number;
@@ -279,6 +279,33 @@ export type PointSummaryGridProps = {
 
 
 export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummaryGridProps) {
+    // Initialize all covergroups as expanded by default
+    const [expandedCovergroups, setExpandedCovergroups] = useState<Set<TreeKey>>(() => {
+        const initialExpanded = new Set<TreeKey>();
+        const isRoot = node.key == CoverageTree.ROOT;
+        const root = isRoot ? null : [node];
+        for (const [subNode, _parent] of tree.walk(root)) {
+            const isCovergroup = (subNode.children?.length ?? 0) > 0;
+            if (isCovergroup) {
+                initialExpanded.add(subNode.key);
+            }
+        }
+        return initialExpanded;
+    });
+
+    const toggleCovergroup = (key: TreeKey, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent row click
+        setExpandedCovergroups(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(key)) {
+                newSet.delete(key);
+            } else {
+                newSet.add(key);
+            }
+            return newSet;
+        });
+    };
+
     const getColumns = (theme: ThemeType): TableProps['columns'] => [
         {
             title: "Name",
@@ -286,6 +313,33 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
             key: "name",
             render: (text: string, record: SummaryRecord) => {
                 const indent = record.depth * 20;
+                const isExpanded = expandedCovergroups.has(record.key);
+                const hasArrow = record.isCovergroup;
+                const arrowIcon = hasArrow ? (
+                    isExpanded ? (
+                        <CaretDownOutlined
+                            style={{
+                                color: theme.theme.colors.accentbg.value,
+                                marginRight: 4,
+                                fontSize: '12px',
+                                cursor: 'pointer'
+                            }}
+                            onClick={(e) => toggleCovergroup(record.key, e)}
+                        />
+                    ) : (
+                        <CaretRightOutlined
+                            style={{
+                                color: theme.theme.colors.accentbg.value,
+                                marginRight: 4,
+                                fontSize: '12px',
+                                cursor: 'pointer'
+                            }}
+                            onClick={(e) => toggleCovergroup(record.key, e)}
+                        />
+                    )
+                ) : (
+                    <span style={{ width: '16px', display: 'inline-block' }} />
+                );
                 const icon = record.isCovergroup ? (
                     <FolderOutlined style={{
                         color: theme.theme.colors.accentbg.value,
@@ -312,6 +366,7 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
                                 : theme.theme.colors.desaturatedtxt.value
                         }}
                     >
+                        {arrowIcon}
                         {icon}
                         {text}
                     </a>
@@ -494,7 +549,39 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
     const nodePath = tree.getAncestorsByKey(node.key);
     const baseDepth = isRoot ? 1 : nodePath.length; // For root, subtract 1 (the root itself); for nodes, use full path length
 
+    // Build a map of node keys to their parent keys for filtering
+    const parentMap = new Map<TreeKey, TreeKey | null>();
+    for (const [subNode, parent] of tree.walk(root)) {
+        const parentKey = parent?.key;
+        parentMap.set(subNode.key, parentKey !== undefined ? parentKey : null);
+    }
+
+    // Filter function to check if a node should be visible
+    const isVisible = (nodeKey: TreeKey): boolean => {
+        const parentKey = parentMap.get(nodeKey);
+        if (parentKey === null || parentKey === undefined) {
+            // Root level nodes are always visible
+            return true;
+        }
+        const parentNode = tree.getNodeByKey(parentKey);
+        if (!parentNode || !parentNode.children || parentNode.children.length === 0) {
+            // Not a covergroup, always visible
+            return true;
+        }
+        // Check if parent is expanded
+        if (!expandedCovergroups.has(parentKey)) {
+            return false; // Parent is collapsed, hide this node
+        }
+        // Recursively check ancestors
+        return isVisible(parentKey);
+    };
+
     for (const [subNode, _parent] of tree.walk(root)) {
+        // Skip if any ancestor is collapsed
+        if (!isVisible(subNode.key)) {
+            continue;
+        }
+
         const ancestors = tree.getAncestorsByKey(subNode.key);
         const depth = isRoot
             ? ancestors.length - 1  // For root view, subtract 1 to account for root
