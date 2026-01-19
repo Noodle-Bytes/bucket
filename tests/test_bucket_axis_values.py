@@ -5,6 +5,8 @@
 Test that bucket axes provide both .name and .value in apply_goals
 """
 
+import pytest
+
 from bucket import Coverpoint, Covertop
 from bucket.common.types import BucketValCompError
 
@@ -356,35 +358,20 @@ class TestBucketValProtection:
         TopCoverage()
 
         # Verify that direct comparison raises BucketValCompError
-        try:
+        with pytest.raises(BucketValCompError):
             _ = captured_bucket.age == captured_bucket.age
-            assert False, "Expected BucketValCompError for == comparison"
-        except BucketValCompError:
-            pass  # Expected
 
-        try:
+        with pytest.raises(BucketValCompError):
             _ = captured_bucket.age < captured_bucket.age
-            assert False, "Expected BucketValCompError for < comparison"
-        except BucketValCompError:
-            pass  # Expected
 
-        try:
+        with pytest.raises(BucketValCompError):
             _ = captured_bucket.age <= captured_bucket.age
-            assert False, "Expected BucketValCompError for <= comparison"
-        except BucketValCompError:
-            pass  # Expected
 
-        try:
+        with pytest.raises(BucketValCompError):
             _ = captured_bucket.age > captured_bucket.age
-            assert False, "Expected BucketValCompError for > comparison"
-        except BucketValCompError:
-            pass  # Expected
 
-        try:
+        with pytest.raises(BucketValCompError):
             _ = captured_bucket.age >= captured_bucket.age
-            assert False, "Expected BucketValCompError for >= comparison"
-        except BucketValCompError:
-            pass  # Expected
 
     def test_is_operator_works_normally(self):
         """Test that the `is` operator works normally (identity check)"""
@@ -418,19 +405,15 @@ class TestBucketValProtection:
 
     def test_bucketval_is_frozen(self):
         """Test that BucketVal is frozen and cannot be modified"""
+        from dataclasses import FrozenInstanceError
+
         from bucket.common.types import BucketVal
 
         val = BucketVal(name="test", value=42)
 
         # Verify it's frozen - should raise FrozenInstanceError on modification
-        try:
+        with pytest.raises(FrozenInstanceError):
             val.name = "modified"
-            assert False, "Expected FrozenInstanceError or AttributeError"
-        except (AttributeError, Exception):
-            pass  # Expected - dataclass is frozen
 
-        try:
+        with pytest.raises(FrozenInstanceError):
             val.value = 100
-            assert False, "Expected FrozenInstanceError or AttributeError"
-        except (AttributeError, Exception):
-            pass  # Expected - dataclass is frozen
