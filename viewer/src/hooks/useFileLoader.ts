@@ -170,8 +170,17 @@ export function useFileLoader() {
         // Chrome PWA file handling
         if ("launchQueue" in window && window.launchQueue) {
             window.launchQueue.setConsumer(async (launchParams: { files: FileSystemFileHandle[] }) => {
-                for (const file of launchParams.files) {
-                    await loadFile(() => loadFileFromFileHandle(file));
+                try {
+                    for (const file of launchParams.files) {
+                        await loadFile(() => loadFileFromFileHandle(file));
+                    }
+                } catch (error) {
+                    console.error("Failed to load file from PWA launchQueue:", error);
+                    notification.error({
+                        message: 'Failed to Load File',
+                        description: error instanceof Error ? error.message : String(error),
+                        duration: 5,
+                    });
                 }
             });
         }
