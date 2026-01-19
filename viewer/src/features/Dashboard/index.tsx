@@ -358,7 +358,14 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
                     const dragStyle = isDragging ? {
                         border: '3px dashed',
                         borderColor: themeContext.theme.colors.accentbg.value,
-                        backgroundColor: themeContext.theme.colors.highlightbg.value + '40', // Add transparency
+                        // Use rgba for transparency - convert hex to rgba
+                        backgroundColor: (() => {
+                            const hex = themeContext.theme.colors.highlightbg.value.replace('#', '');
+                            const r = parseInt(hex.substring(0, 2), 16);
+                            const g = parseInt(hex.substring(2, 4), 16);
+                            const b = parseInt(hex.substring(4, 6), 16);
+                            return `rgba(${r}, ${g}, ${b}, 0.25)`;
+                        })(),
                         transition: 'all 0.2s ease-in-out',
                     } : {};
                     return (
