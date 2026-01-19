@@ -73,89 +73,58 @@ function addToRecentFiles(filePath) {
 }
 
 function updateRecentFilesMenu() {
-  const recentFiles = loadRecentFiles();
-  const menu = Menu.getApplicationMenu();
-  if (!menu) return;
+  try {
+    const recentFiles = loadRecentFiles();
+    const menu = Menu.getApplicationMenu();
+    if (!menu) return;
 
-  const fileMenu = menu.items.find(item => item.label === 'File');
-  if (!fileMenu || !fileMenu.submenu) return;
+    const fileMenu = menu.items.find(item => item.label === 'File');
+    if (!fileMenu || !fileMenu.submenu) return;
 
-  // Find or create "Open Recent" submenu
-  let openRecentItem = fileMenu.submenu.items.find(item => item.label === 'Open Recent');
+    // Find or create "Open Recent" submenu
+    let openRecentItem = fileMenu.submenu.items.find(item => item.label === 'Open Recent');
 
-  if (recentFiles.length === 0) {
-    // Remove Open Recent if no files
-    if (openRecentItem) {
-      const index = fileMenu.submenu.items.indexOf(openRecentItem);
-      if (index > -1) {
-        fileMenu.submenu.items.splice(index, 1);
-      }
-    }
-  } else {
-    // Create or update Open Recent submenu
-    const recentSubmenu = recentFiles.map(file => ({
-      label: file.name,
-      click: () => {
-        if (mainWindow) {
-          mainWindow.webContents.send('files-opened', [file.path]);
+    if (recentFiles.length === 0) {
+      // Remove Open Recent if no files
+      if (openRecentItem) {
+        const index = fileMenu.submenu.items.indexOf(openRecentItem);
+        if (index > -1) {
+          fileMenu.submenu.items.splice(index, 1);
+          Menu.setApplicationMenu(menu);
         }
-      },
-    }));
-
-    recentSubmenu.push({ type: 'separator' });
-    recentSubmenu.push({
-      label: 'Clear Menu',
-      click: () => {
-        saveRecentFiles([]);
-        updateRecentFilesMenu();
-      },
-    });
-
-    if (openRecentItem) {
-      // Update existing submenu
-      openRecentItem.submenu = Menu.buildFromTemplate(recentSubmenu);
+      }
     } else {
-      // Can't insert into existing menu, so rebuild the File menu
-      const fileMenuTemplate = [
-        {
-          label: 'Open...',
-          accelerator: 'CmdOrCtrl+O',
-          click: async () => {
-            if (mainWindow) {
-              const result = await dialog.showOpenDialog(mainWindow, {
-                properties: ['openFile'],
-                filters: [
-                  { name: 'Bucket Archive', extensions: ['bktgz'] },
-                  { name: 'All Files', extensions: ['*'] },
-                ],
-              });
-
-              if (!result.canceled && result.filePaths.length > 0) {
-                const filePath = result.filePaths[0];
-                addToRecentFiles(filePath);
-                mainWindow.webContents.send('files-opened', [filePath]);
-              }
-            }
-          },
+      // Create or update Open Recent submenu
+      const recentSubmenu = recentFiles.map(file => ({
+        label: file.name,
+        click: () => {
+          if (mainWindow) {
+            mainWindow.webContents.send('files-opened', [file.path]);
+          }
         },
-        {
-          label: 'Open Recent',
-          submenu: recentSubmenu,
-        },
-        { type: 'separator' },
-        { role: 'close', label: 'Close Window' },
-      ];
+      }));
 
-      // Rebuild the File menu
-      const fileMenuIndex = menu.items.indexOf(fileMenu);
-      menu.items[fileMenuIndex] = Menu.buildFromTemplate([{
-        label: 'File',
-        submenu: fileMenuTemplate,
-      }])[0];
+      recentSubmenu.push({ type: 'separator' });
+      recentSubmenu.push({
+        label: 'Clear Menu',
+        click: () => {
+          saveRecentFiles([]);
+          updateRecentFilesMenu();
+        },
+      });
+
+      if (openRecentItem) {
+        // Update existing submenu
+        openRecentItem.submenu = Menu.buildFromTemplate(recentSubmenu);
+        Menu.setApplicationMenu(menu);
+      }
+      // If openRecentItem doesn't exist, we'll add it when a file is opened
+      // This avoids the menu insertion issue during initial menu creation
     }
+  } catch (error) {
+    console.error('Error updating recent files menu:', error);
+    // Don't throw - menu errors shouldn't prevent app from running
   }
-
-  Menu.setApplicationMenu(menu);
 }
 // In built app, viewer/dist is in extraResources, so it's in Resources/viewer/dist
 // In development, path is relative to electron directory
