@@ -113,34 +113,23 @@ function updateRecentFilesMenu() {
         },
       });
 
-      if (openRecentItem && openRecentItem.submenu) {
-        // Update existing submenu by rebuilding it
+      if (openRecentItem) {
+        // Update existing submenu by rebuilding the entire menu item
         try {
-          const newSubmenu = Menu.buildFromTemplate(recentSubmenu);
-          // Replace the submenu items
-          openRecentItem.submenu.clear();
-          for (const item of newSubmenu.items) {
-            openRecentItem.submenu.append(item);
-          }
-          Menu.setApplicationMenu(menu);
-        } catch (error) {
-          console.error('Error updating submenu:', error);
-          // If updating fails, just rebuild the entire menu item
-          try {
-            const newMenuItem = Menu.buildFromTemplate([{
-              label: 'Open Recent',
-              submenu: recentSubmenu,
-            }])[0];
-            if (newMenuItem && newMenuItem.submenu) {
-              const index = fileMenu.submenu.items.indexOf(openRecentItem);
-              if (index >= 0) {
-                fileMenu.submenu.items[index] = newMenuItem;
-                Menu.setApplicationMenu(menu);
-              }
+          const newMenuItem = Menu.buildFromTemplate([{
+            label: 'Open Recent',
+            submenu: recentSubmenu,
+          }])[0];
+          if (newMenuItem) {
+            const index = fileMenu.submenu.items.indexOf(openRecentItem);
+            if (index >= 0) {
+              fileMenu.submenu.items[index] = newMenuItem;
+              Menu.setApplicationMenu(menu);
             }
-          } catch (rebuildError) {
-            console.error('Error rebuilding menu item:', rebuildError);
           }
+        } catch (error) {
+          console.error('Error updating recent files menu item:', error);
+          // Don't throw - menu errors shouldn't prevent app from running
         }
       }
       // If openRecentItem doesn't exist, we'll add it when a file is opened
