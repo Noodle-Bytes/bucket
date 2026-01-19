@@ -296,7 +296,7 @@ async function createWindow() {
     backgroundColor: '#ffffff',
     frame: true, // Use standard frame to ensure window is movable
     titleBarStyle: 'default', // Use default title bar style
-    show: false, // Don't show until ready
+    show: true, // Show immediately for debugging (was: false)
   });
 
   // Let windowStateKeeper manage the window state
