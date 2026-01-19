@@ -3,14 +3,8 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-/*
- * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
- */
-
 import { Theme as ThemeType, themes } from "@/theme";
 import Theme from "@/providers/Theme";
-import ThemeConsumer from "@/providers/Theme";
 import type { FloatButtonProps, TreeDataNode } from "antd";
 import {
     Breadcrumb,
@@ -228,10 +222,6 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
         return { source: null, source_key: null };
     }, [tree, viewKey]);
 
-    // Check if tree is empty (no coverage loaded)
-    const isEmpty = tree.getRoots().length === 0;
-    const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
-
     const selectedViewContent = useMemo(() => {
         // Show empty state if no coverage is loaded
         if (isEmpty) {
@@ -320,15 +310,6 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
                         setAutoExpandTreeParent={setAutoExpandTreeParent}></Sider>
                 )}
                 <Layout {...view.body.props}>
-<<<<<<< HEAD
-                    <Header {...view.body.header.props}>
-                        <Flex {...view.body.header.flex.props}>
-                            <Theme.Consumer>
-                                {/* The breadcrumb menu is placed outside of the main DOM tree
-                                    so we need to pass through the theme class */}
-                                {({ theme }) => (
-                                    <>
-=======
                     {!isEmpty && (
                         <Header {...view.body.header.props}>
                             <Flex {...view.body.header.flex.props}>
@@ -336,40 +317,28 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
                                     {/* The breadcrumb menu is placed outside of the main DOM tree
                                         so we need to pass through the theme class */}
                                     {({ theme }) => (
->>>>>>> e5b7c79 (Changes to web viewer to have a default loading screen. Not currently working. Example switched from SQL to BKTGZ)
-                                        <Breadcrumb
-                                            {...view.body.header.flex.breadcrumb
-                                                .props}
-                                            items={getBreadCrumbItems({
-                                                tree,
-                                                selectedTreeKeys,
-                                                onSelect,
-                                                theme,
-                                            })}></Breadcrumb>
-<<<<<<< HEAD
-                                        {(sourceInfo.source || sourceInfo.source_key) && (
-                                            <Flex gap="small" style={{ marginLeft: '16px' }}>
-                                                <span style={{ color: theme.theme.colors.primarytxt.value }}>
-                                                    {sourceInfo.source && sourceInfo.source_key
-                                                        ? `${sourceInfo.source}[${sourceInfo.source_key}]`
-                                                        : sourceInfo.source
-                                                        ? sourceInfo.source
-                                                        : `[${sourceInfo.source_key}]`}
-                                                </span>
-                                            </Flex>
-                                        )}
-                                    </>
-                                )}
-                            </Theme.Consumer>
-                            <Segmented
-                                {...view.body.header.flex.segmented.props}
-                                options={contentViews}
-                                value={currentContentKey}
-                                onChange={onViewChange}
-                            />
-                        </Flex>
-                    </Header>
-=======
+                                        <>
+                                            <Breadcrumb
+                                                {...view.body.header.flex.breadcrumb
+                                                    .props}
+                                                items={getBreadCrumbItems({
+                                                    tree,
+                                                    selectedTreeKeys,
+                                                    onSelect,
+                                                    theme,
+                                                })}></Breadcrumb>
+                                            {(sourceInfo.source || sourceInfo.source_key) && (
+                                                <Flex gap="small" style={{ marginLeft: '16px' }}>
+                                                    <span style={{ color: theme.theme.colors.primarytxt.value }}>
+                                                        {sourceInfo.source && sourceInfo.source_key
+                                                            ? `${sourceInfo.source}[${sourceInfo.source_key}]`
+                                                            : sourceInfo.source
+                                                            ? sourceInfo.source
+                                                            : `[${sourceInfo.source_key}]`}
+                                                    </span>
+                                                </Flex>
+                                            )}
+                                        </>
                                     )}
                                 </Theme.Consumer>
                                 <Segmented
@@ -381,7 +350,6 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
                             </Flex>
                         </Header>
                     )}
->>>>>>> e5b7c79 (Changes to web viewer to have a default loading screen. Not currently working. Example switched from SQL to BKTGZ)
                     <Content {...view.body.content.props}>
                         {selectedViewContent}
                     </Content>
