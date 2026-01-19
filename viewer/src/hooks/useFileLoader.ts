@@ -40,14 +40,6 @@ export function useFileLoader() {
         try {
             const newTree = await loadFn();
             setTree(newTree);
-
-            if (!suppressNotification) {
-                notification.success({
-                    message: 'File Loaded',
-                    description: 'Successfully loaded coverage data.',
-                    duration: 3,
-                });
-            }
             return { success: true };
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err);
