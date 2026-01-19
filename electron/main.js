@@ -112,20 +112,46 @@ function updateRecentFilesMenu() {
     });
 
     if (openRecentItem) {
+      // Update existing submenu
       openRecentItem.submenu = Menu.buildFromTemplate(recentSubmenu);
     } else {
-      // Insert after "Open..." and before separator
-      const openIndex = fileMenu.submenu.items.findIndex(item => item.label === 'Open...');
-      const separatorIndex = fileMenu.submenu.items.findIndex((item, idx) => idx > openIndex && item.type === 'separator');
-      const insertIndex = separatorIndex > -1 ? separatorIndex : openIndex + 1;
+      // Can't insert into existing menu, so rebuild the File menu
+      const fileMenuTemplate = [
+        {
+          label: 'Open...',
+          accelerator: 'CmdOrCtrl+O',
+          click: async () => {
+            if (mainWindow) {
+              const result = await dialog.showOpenDialog(mainWindow, {
+                properties: ['openFile'],
+                filters: [
+                  { name: 'Bucket Archive', extensions: ['bktgz'] },
+                  { name: 'All Files', extensions: ['*'] },
+                ],
+              });
 
-      // Build the menu item from template first
-      const openRecentMenuItem = Menu.buildFromTemplate([{
-        label: 'Open Recent',
-        submenu: recentSubmenu,
+              if (!result.canceled && result.filePaths.length > 0) {
+                const filePath = result.filePaths[0];
+                addToRecentFiles(filePath);
+                mainWindow.webContents.send('files-opened', [filePath]);
+              }
+            }
+          },
+        },
+        {
+          label: 'Open Recent',
+          submenu: recentSubmenu,
+        },
+        { type: 'separator' },
+        { role: 'close', label: 'Close Window' },
+      ];
+
+      // Rebuild the File menu
+      const fileMenuIndex = menu.items.indexOf(fileMenu);
+      menu.items[fileMenuIndex] = Menu.buildFromTemplate([{
+        label: 'File',
+        submenu: fileMenuTemplate,
       }])[0];
-
-      fileMenu.submenu.insert(insertIndex, openRecentMenuItem);
     }
   }
 
