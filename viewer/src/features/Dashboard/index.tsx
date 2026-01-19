@@ -212,10 +212,12 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
     // Check if we're running in Electron (will be used in a following PR)
     const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
     void isElectron; // Suppress unused variable warning - will be used in following PR
-    // Get logo path - in Electron production, use app:// protocol
-    // Check if we're using app:// protocol (Electron production) or http:// (dev)
+
+    // Determine logo path based on the runtime environment:
+    // - Electron production: Use app:// protocol (custom protocol registered in main.js)
+    // - Browser with file://: Use relative path (when opening HTML directly)
+    // - Browser with http://: Use Vite's BASE_URL (development server)
     const isElectronProduction = typeof window !== 'undefined' && window.location.protocol === 'app:';
-    // For file:// protocol (browser opening HTML directly), use relative path
     const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
     const logoSrc = isElectronProduction
         ? 'app://logo.svg'
@@ -247,6 +249,8 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
 
     const selectedViewContent = useMemo(() => {
         // Show empty state if no coverage is loaded
+        // We use a custom layout instead of Ant Design's Empty component to have
+        // better control over spacing, logo display, and theme integration
         if (isEmpty) {
             return (
                 <Theme.Consumer>

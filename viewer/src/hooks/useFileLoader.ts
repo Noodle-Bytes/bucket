@@ -167,7 +167,9 @@ export function useFileLoader() {
 
     // Set up event listeners and Electron handlers
     useEffect(() => {
-        // Chrome PWA file handling
+        // Chrome PWA file handling: Handle files opened directly via PWA file association
+        // This allows users to open .bktgz files directly from the OS when the app
+        // is installed as a PWA (Progressive Web App)
         if ("launchQueue" in window && window.launchQueue) {
             window.launchQueue.setConsumer(async (launchParams: { files: FileSystemFileHandle[] }) => {
                 try {
@@ -193,6 +195,8 @@ export function useFileLoader() {
         rootElement.addEventListener('dragleave', handleDragLeave);
 
         // Electron-specific: Handle files opened via app.open-file (macOS) or menu
+        // The onFilesOpened API receives an array of file paths to support multi-file
+        // selection in the future. Currently, we process each file sequentially.
         if (isElectron() && window.electronAPI) {
             const electronAPI = window.electronAPI;
             electronAPI.onFilesOpened(async (filePaths: string[]) => {

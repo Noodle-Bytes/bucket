@@ -72,6 +72,17 @@ function addToRecentFiles(filePath) {
   updateRecentFilesMenu();
 }
 
+/**
+ * Update the "Open Recent" submenu in the File menu.
+ *
+ * This function dynamically updates the recent files list. We rebuild the entire
+ * menu item instead of directly modifying the submenu because Electron's menu API
+ * requires menu items to be built from templates. Directly assigning a submenu
+ * array can cause "Invalid item" errors.
+ *
+ * Note: We don't call this during initial menu creation to avoid menu insertion
+ * issues. The menu will be updated when files are opened or after the window loads.
+ */
 function updateRecentFilesMenu() {
   try {
     const recentFiles = loadRecentFiles();
@@ -95,6 +106,7 @@ function updateRecentFilesMenu() {
       }
     } else {
       // Create or update Open Recent submenu
+      // Note: We send file paths as an array to match the onFilesOpened API
       const recentSubmenu = recentFiles.map(file => ({
         label: file.name,
         click: () => {
@@ -115,6 +127,8 @@ function updateRecentFilesMenu() {
 
       if (openRecentItem) {
         // Update existing submenu by rebuilding the entire menu item
+        // This is necessary because Electron's menu API doesn't allow direct
+        // submenu assignment - we must build from a template
         try {
           const newMenuItem = Menu.buildFromTemplate([{
             label: 'Open Recent',
@@ -195,6 +209,14 @@ function showAboutDialog() {
   });
 }
 
+/**
+ * Create the application menu.
+ *
+ * Note: We don't call updateRecentFilesMenu() during initial menu creation to avoid
+ * menu insertion errors. The recent files menu will be updated:
+ * - When files are opened (via addToRecentFiles -> updateRecentFilesMenu)
+ * - After the window finishes loading (see createWindow)
+ */
 function createMenu() {
   const template = [
     {
@@ -233,6 +255,7 @@ function createMenu() {
               if (!result.canceled && result.filePaths.length > 0) {
                 const filePath = result.filePaths[0];
                 addToRecentFiles(filePath);
+                // Send as array to match onFilesOpened API (supports multi-file in future)
                 mainWindow.webContents.send('files-opened', [filePath]);
               }
             }
@@ -490,9 +513,10 @@ async function createWindow() {
   });
 
   // Handle pending file open (for macOS file association)
+  // This handles the case where a file was opened before the window was ready
   if (pendingFilePath) {
     mainWindow.webContents.once('did-finish-load', () => {
-      // Send file path to renderer
+      // Send file path to renderer as an array to match onFilesOpened API
       addToRecentFiles(pendingFilePath);
       mainWindow.webContents.send('files-opened', [pendingFilePath]);
       pendingFilePath = null;
@@ -500,6 +524,7 @@ async function createWindow() {
   }
 
   // Update recent files menu after window is ready
+  // We do this here instead of during initial menu creation to avoid menu insertion errors
   mainWindow.webContents.once('did-finish-load', () => {
     updateRecentFilesMenu();
   });
@@ -523,7 +548,9 @@ app.whenReady().then(() => {
     }
   });
 
-  // Handle file open on macOS
+  // Handle file open on macOS (when user double-clicks a .bktgz file)
+  // Note: We send file paths as an array [filePath] to match the onFilesOpened API
+  // which expects an array of file paths (for future multi-file support)
   app.on('open-file', (event, filePath) => {
     event.preventDefault();
     addToRecentFiles(filePath);
