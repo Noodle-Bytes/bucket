@@ -272,13 +272,16 @@ function createMenu() {
 }
 
 async function createWindow() {
-  // Load window state or use defaults
-  let mainWindowState = windowStateKeeper({
-    defaultWidth: 1400,
-    defaultHeight: 900,
-  });
+  try {
+    console.log('Creating window...');
+    // Load window state or use defaults
+    let mainWindowState = windowStateKeeper({
+      defaultWidth: 1400,
+      defaultHeight: 900,
+    });
 
-  mainWindow = new BrowserWindow({
+    console.log('Creating BrowserWindow...');
+    mainWindow = new BrowserWindow({
     x: mainWindowState.x,
     y: mainWindowState.y,
     width: mainWindowState.width,
@@ -452,12 +455,23 @@ async function createWindow() {
     }
   });
 
-  // Log console errors from renderer
+  // Log ALL console messages from renderer for debugging
   mainWindow.webContents.on('console-message', (event, level, message) => {
-    if (level >= 2) { // Error or warning
-      console.log(`[Renderer ${level === 2 ? 'Warn' : 'Error'}]`, message);
-    }
+    const levelName = level === 0 ? 'Log' : level === 1 ? 'Info' : level === 2 ? 'Warn' : 'Error';
+    console.log(`[Renderer ${levelName}]`, message);
   });
+
+  // Log uncaught exceptions from renderer
+  mainWindow.webContents.on('uncaught-exception', (event, error) => {
+    console.error('[Renderer Uncaught Exception]', error);
+  });
+
+  // Log unhandled promise rejections from renderer
+  mainWindow.webContents.executeJavaScript(`
+    window.addEventListener('unhandledrejection', (event) => {
+      console.error('Unhandled promise rejection:', event.reason);
+    });
+  `);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -477,6 +491,12 @@ async function createWindow() {
   mainWindow.webContents.once('did-finish-load', () => {
     updateRecentFilesMenu();
   });
+
+  console.log('Window created successfully');
+  } catch (error) {
+    console.error('Error creating window:', error);
+    throw error;
+  }
 }
 
 app.whenReady().then(() => {
