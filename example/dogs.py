@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+
+# SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2025 Vypercore. All Rights Reserved
 
 
@@ -93,10 +96,14 @@ class DogStats(Coverpoint):
         self.add_goal("HECKIN_CHONKY", "Puppies can't be this big!", illegal=True)
 
     def apply_goals(self, bucket, goals):
-        # Buckets use str names, not values. If you want to compare against a value,
-        # you must first convert the string back to int, etc
+        # Each bucket axis has .name (string) and .value (actual value)
+        # No need to convert strings anymore!
         # Any bucket with no goal assigned, will have the default goal applied
-        if bucket.age != "16+" and int(bucket.age) <= 1 and bucket.size in ["large"]:
+        if (
+            bucket.age.name != "16+"
+            and bucket.age.value <= 1
+            and bucket.size.name in ["large"]
+        ):
             return goals.HECKIN_CHONKY
 
     def sample(self, trace):
@@ -151,13 +158,15 @@ class ChewToysByAgeAndFavLeg(Coverpoint):
 
     def apply_goals(self, bucket, goals):
         # Apply goal if any dog which is not a puppy likes slippers
-        if bucket.age != "Puppy" and bucket.favourite_toy in ["Slipper"]:
+        if bucket.age.name != "Puppy" and bucket.favourite_toy.name in ["Slipper"]:
             return goals.NO_SLIPPERS
         # Apply goal for senior dogs who chose a favourite back leg
-        elif bucket.age == "Senior" and int(bucket.favourite_leg, base=0) & 0x3:
+        elif (
+            bucket.age.name == "Senior" and int(bucket.favourite_leg.name, base=0) & 0x3
+        ):
             return goals.FRONT_LEGS_ONLY
         # Apply goal for any time a dog picks stick (if above goals don't apply)
-        elif bucket.favourite_toy == "Stick":
+        elif bucket.favourite_toy.name == "Stick":
             return goals.STICK
         # Else default goal will be used
 
@@ -220,7 +229,10 @@ class ChewToysByNameAndBreed(Coverpoint):
         )
 
     def apply_goals(self, bucket, goals):
-        if bucket.breed == "Border Collie" and bucket.name in ["Barbara", "Linda"]:
+        if bucket.breed.name == "Border Collie" and bucket.name.name in [
+            "Barbara",
+            "Linda",
+        ]:
             return goals.WEIRDO_DOG
 
     def sample(self, trace):
