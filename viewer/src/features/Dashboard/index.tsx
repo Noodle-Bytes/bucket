@@ -21,7 +21,7 @@ import Tree, { TreeKey, TreeNode } from "./lib/tree";
 
 import Sider from "./components/Sider";
 import { antTheme, view } from "./theme";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
 import { LayoutOutlined } from "@ant-design/icons";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
@@ -161,6 +161,28 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
         {} as { [key: TreeKey]: string | number },
     );
 
+    // Check if tree is empty (no coverage loaded)
+    const isEmpty = tree.getRoots().length === 0;
+
+    // Reset selected keys when tree becomes empty or selected key no longer exists (e.g., after clearing coverage)
+    useEffect(() => {
+        if (isEmpty) {
+            if (selectedTreeKeys.length > 0) {
+                setSelectedTreeKeys([]);
+                setExpandedTreeKeys([]);
+                setTreeKeyContentKey({});
+            }
+        } else if (selectedTreeKeys.length > 0) {
+            // Check if the selected key still exists in the tree
+            const viewKey = selectedTreeKeys[0];
+            if (viewKey !== Tree.ROOT && !tree.getNodeByKey(viewKey)) {
+                // Selected key no longer exists, reset to root
+                setSelectedTreeKeys([]);
+                setExpandedTreeKeys([]);
+            }
+        }
+    }, [tree, selectedTreeKeys, isEmpty]);
+
     const onSelect = (newSelectedKeys: TreeKey[]) => {
         const newExpandedKeys = new Set<TreeKey>(expandedTreeKeys);
         for (const newSelectedKey of newSelectedKeys) {
@@ -186,8 +208,6 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
         });
     };
 
-    // Check if tree is empty (no coverage loaded)
-    const isEmpty = tree.getRoots().length === 0;
     const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
     // Get logo path - in Electron production, use app:// protocol
     // Check if we're using app:// protocol (Electron production) or http:// (dev)
@@ -278,6 +298,12 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
             );
         }
 
+        const currentNode = tree.getNodeByKey(viewKey);
+        if (!currentNode) {
+            // Node doesn't exist (e.g., after clearing coverage), show empty state
+            return null;
+        }
+
         switch (currentContentKey) {
             case "Pivot":
                 return <LayoutOutlined />;
@@ -285,12 +311,12 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
                 return (
                     <PointSummaryGrid
                         tree={tree}
-                        node={tree.getNodeByKey(viewKey)}
+                        node={currentNode}
                         setSelectedTreeKeys={onSelect}
                     />
                 );
             case "Point":
-                return <PointGrid node={tree.getNodeByKey(viewKey)} />;
+                return <PointGrid node={currentNode} />;
             default:
                 throw new Error("Invalid view!?");
         }

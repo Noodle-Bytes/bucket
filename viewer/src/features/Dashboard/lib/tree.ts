@@ -65,8 +65,11 @@ export default abstract class Tree<T = any> {
         return this.ancestorsByKey[key] ?? [];
     }
 
-    getNodeByKey(key: TreeKey): TreeNode<T> {
+    getNodeByKey(key: TreeKey): TreeNode<T> | undefined {
         const ancestors = this.ancestorsByKey[key];
+        if (!ancestors || ancestors.length === 0) {
+            return undefined;
+        }
         return ancestors[ancestors.length - 1];
     }
 
