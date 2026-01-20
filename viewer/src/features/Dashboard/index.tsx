@@ -22,8 +22,9 @@ import EmptyState from "./components/EmptyState";
 import { antTheme, view } from "./theme";
 import { useEffect, useMemo, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
-import { LayoutOutlined } from "@ant-design/icons";
+import { LayoutOutlined, TableOutlined, PieChartOutlined } from "@ant-design/icons";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
+import { CoverageDonut } from "./lib/coveragedonut";
 import { hexToRgba } from "@/utils/colors";
 const { Header, Content } = Layout;
 
@@ -45,6 +46,7 @@ const ColorModeToggleButton = (props: FloatButtonProps) => {
                         {...props}
                         onClick={onClick}
                         icon={<BgColorsOutlined />}
+                        tooltip="Toggle theme (light/dark/auto)"
                     />
                 );
             }}
@@ -161,6 +163,7 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
     const [treeKeyContentKey, setTreeKeyContentKey] = useState(
         {} as { [key: TreeKey]: string | number },
     );
+    const [summaryViewMode, setSummaryViewMode] = useState<'table' | 'donut'>('table');
 
     // Check if tree is empty (no coverage loaded)
     const isEmpty = tree.getRoots().length === 0;
@@ -260,6 +263,15 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
             case "Pivot":
                 return <LayoutOutlined />;
             case "Summary":
+                if (summaryViewMode === 'donut') {
+                    return (
+                        <CoverageDonut
+                            tree={tree}
+                            node={currentNode}
+                            setSelectedTreeKeys={onSelect}
+                        />
+                    );
+                }
                 return (
                     <PointSummaryGrid
                         tree={tree}
@@ -272,7 +284,7 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
             default:
                 throw new Error("Invalid view!?");
         }
-    }, [viewKey, currentContentKey, tree, isEmpty, onOpenFile, logoSrc]);
+    }, [viewKey, currentContentKey, tree, isEmpty, onOpenFile, logoSrc, summaryViewMode]);
 
     return (
         <ConfigProvider theme={antTheme}>
@@ -334,12 +346,34 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
                                         </>
                                     )}
                                 </Theme.Consumer>
-                                <Segmented
-                                    {...view.body.header.flex.segmented.props}
-                                    options={contentViews}
-                                    value={currentContentKey}
-                                    onChange={onViewChange}
-                                />
+                                <Flex gap="small" align="center">
+                                    <Segmented
+                                        {...view.body.header.flex.segmented.props}
+                                        options={contentViews}
+                                        value={currentContentKey}
+                                        onChange={onViewChange}
+                                    />
+                                    {currentContentKey === "Summary" && (
+                                        <Segmented
+                                            options={[
+                                                {
+                                                    value: 'table',
+                                                    icon: <TableOutlined />,
+                                                    label: 'Table',
+                                                    title: 'View coverage as a table',
+                                                },
+                                                {
+                                                    value: 'donut',
+                                                    icon: <PieChartOutlined />,
+                                                    label: 'Donut',
+                                                    title: 'View coverage as a donut chart',
+                                                },
+                                            ]}
+                                            value={summaryViewMode}
+                                            onChange={(value) => setSummaryViewMode(value as 'table' | 'donut')}
+                                        />
+                                    )}
+                                </Flex>
                             </Flex>
                         </Header>
                     )}
