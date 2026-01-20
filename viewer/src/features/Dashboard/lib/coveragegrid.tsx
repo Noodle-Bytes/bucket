@@ -9,10 +9,9 @@ import { view } from "../theme";
 import { TreeKey } from "./tree";
 import {Theme as ThemeType} from "@/theme";
 import { natCompare, numCompare } from "./compare";
-import Color from "colorjs.io";
 import Theme from "@/providers/Theme";
 import { FolderOutlined, FileTextOutlined, CaretRightOutlined, CaretDownOutlined } from "@ant-design/icons";
-import { hexToRgba } from "@/utils/colors";
+import { hexToRgba, getCoverageColor } from "@/utils/colors";
 import React, { useState } from "react";
 
 type CoverageRecord = {
@@ -53,11 +52,6 @@ export type PointGridProps = {
 };
 
 function getCoverageColumnConfig(theme: ThemeType, columnKey: string) {
-    const good = new Color(theme.theme.colors.positivebg.value);
-    const bad = new Color(theme.theme.colors.negativebg.value);
-    const mix = Color.range(Color.mix(bad, good, 0.2, {space:'hsl'}),
-                            Color.mix(bad, good, 0.6, {space:'hsl'}),
-                            {space:'hsl'});
     return {
         render: (ratio: number) => {
             if (Number.isNaN(ratio) || Object.is(ratio, -0)) {
@@ -73,20 +67,17 @@ function getCoverageColumnConfig(theme: ThemeType, columnKey: string) {
             let fontWeight = "unset";
             if (ratio >= 1) {
                 // >=1 if target is fully hit
-                backgroundColor = good.toString();
+                backgroundColor = getCoverageColor(ratio, theme.theme.colors);
             } else if (Number.isNaN(ratio) || Object.is(ratio, -0)) {
                 // NaN if target is zero (don't care)
                 // -0 if target is negative (illegal) and not hit
             } else if (ratio <= 0) {
                 // <0 if target is negative (illegal) and hit
-                backgroundColor = bad.toString();
+                backgroundColor = getCoverageColor(ratio, theme.theme.colors);
                 fontWeight = "bold"
             } else {
                 // 0<x<1 if target is hit but not fully
-                // Interpolate between bad and good, leaving some margin
-                // so full hit and fully missed is distinguishable
-                const clamped = Math.min(Math.max(ratio, 0), 1);
-                backgroundColor = mix(clamped).toString();
+                backgroundColor = getCoverageColor(ratio, theme.theme.colors);
             }
             return {
                 style: {
