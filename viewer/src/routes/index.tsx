@@ -9,7 +9,7 @@ import { useFileLoader } from "@/hooks/useFileLoader";
 import { Spin } from "antd";
 
 export const AppRoutes = () => {
-    const { tree, isLoading, isDragging, fileInputRef, handleFileInput, openFileDialog } = useFileLoader();
+    const { tree, isLoading, isDragging, fileInputRef, handleFileInput, openFileDialog, clearCoverage } = useFileLoader();
 
     const element = useRoutes([
         {
@@ -25,7 +25,7 @@ export const AppRoutes = () => {
                         style={{ display: 'none' }}
                     />
                     <Spin spinning={isLoading} size="large" tip="Loading coverage data...">
-                        <Dashboard tree={tree} onOpenFile={openFileDialog} isDragging={isDragging} />
+                        <Dashboard tree={tree} onOpenFile={openFileDialog} onClearCoverage={clearCoverage} isDragging={isDragging} />
                     </Spin>
                 </>
             ),

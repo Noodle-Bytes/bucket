@@ -100,6 +100,14 @@ export function useFileLoader() {
     };
 
     /**
+     * Clear coverage data and reset to empty tree
+     */
+    const clearCoverage = (): void => {
+        setTree(getDefaultTree());
+        setError(null);
+    };
+
+    /**
      * Handle drag and drop
      */
     const handleDrop = async (e: DragEvent): Promise<void> => {
@@ -206,6 +214,11 @@ export function useFileLoader() {
                     });
                 }
             });
+
+            // Handle clear coverage event from Electron
+            electronAPI.onClearCoverage(() => {
+                clearCoverage();
+            });
         }
 
         return () => {
@@ -229,5 +242,6 @@ export function useFileLoader() {
         fileInputRef,
         handleFileInput,
         openFileDialog,
+        clearCoverage,
     };
 }

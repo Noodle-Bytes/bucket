@@ -13,8 +13,9 @@ import {
     Segmented,
     Flex,
     FloatButton,
+    Button,
 } from "antd";
-import { BgColorsOutlined } from "@ant-design/icons";
+import { BgColorsOutlined, FileAddOutlined, ClearOutlined } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 
 import Sider from "./components/Sider";
@@ -153,10 +154,11 @@ function getBreadCrumbItems({
 export type DashboardProps = {
     tree: Tree;
     onOpenFile?: () => void | Promise<void>;
+    onClearCoverage?: () => void;
     isDragging?: boolean;
 };
 
-export default function Dashboard({ tree, onOpenFile, isDragging = false }: DashboardProps) {
+export default function Dashboard({ tree, onOpenFile, onClearCoverage, isDragging = false }: DashboardProps) {
     const [selectedTreeKeys, setSelectedTreeKeys] = useState<TreeKey[]>([]);
     const [expandedTreeKeys, setExpandedTreeKeys] = useState<TreeKey[]>([]);
     const [autoExpandTreeParent, setAutoExpandTreeParent] = useState(true);
@@ -372,6 +374,26 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
                                             value={summaryViewMode}
                                             onChange={(value) => setSummaryViewMode(value as 'table' | 'donut')}
                                         />
+                                    )}
+                                    {onOpenFile && (
+                                        <Button
+                                            icon={<FileAddOutlined />}
+                                            onClick={onOpenFile}
+                                            size="small"
+                                            type="primary"
+                                        >
+                                            Load
+                                        </Button>
+                                    )}
+                                    {onClearCoverage && (
+                                        <Button
+                                            icon={<ClearOutlined />}
+                                            onClick={onClearCoverage}
+                                            size="small"
+                                            danger
+                                        >
+                                            Clear
+                                        </Button>
                                     )}
                                 </Flex>
                             </Flex>
