@@ -40,6 +40,14 @@ type SummaryRecord = {
     buckets_full_ratio: number;
 };
 
+// Type for records that have ratio properties used by getCoverageColumnConfig
+type RecordWithRatio = {
+    [key: string]: string | number;
+    hit_ratio?: number;
+    buckets_hit_ratio?: number;
+    buckets_full_ratio?: number;
+};
+
 export type PointGridProps = {
     node: PointNode;
 };
@@ -59,8 +67,8 @@ function getCoverageColumnConfig(theme: ThemeType, columnKey: string) {
             }
             return `${(Math.min(ratio, 1) * 100).toFixed(1)}%`;
         },
-        onCell: (record: CoverageRecord) => {
-            const ratio = record[columnKey];
+        onCell: (record: RecordWithRatio) => {
+            const ratio = record[columnKey] as number;
             let backgroundColor = "unset";
             let fontWeight = "unset";
             if (ratio >= 1) {
@@ -433,7 +441,7 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
                     sorter: getColumnNumCompare('hit_ratio'),
                     onCell: (record: SummaryRecord) => {
                         const coverageConfig = getCoverageColumnConfig(theme, "hit_ratio");
-                        const coverageStyle = coverageConfig.onCell ? coverageConfig.onCell(record as any).style : {} as React.CSSProperties;
+                        const coverageStyle = coverageConfig.onCell ? coverageConfig.onCell(record).style : {} as React.CSSProperties;
                         const covergroupBg = record.isCovergroup
                             ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
                             : 'transparent';
@@ -499,7 +507,7 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
                     sorter:  getColumnNumCompare('buckets_hit_ratio'),
                     onCell: (record: SummaryRecord) => {
                         const coverageConfig = getCoverageColumnConfig(theme, "buckets_hit_ratio");
-                        const coverageStyle = coverageConfig.onCell ? coverageConfig.onCell(record as any).style : {} as React.CSSProperties;
+                        const coverageStyle = coverageConfig.onCell ? coverageConfig.onCell(record).style : {} as React.CSSProperties;
                         const covergroupBg = record.isCovergroup
                             ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
                             : 'transparent';
@@ -521,7 +529,7 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
                     sorter:  getColumnNumCompare('buckets_full_ratio'),
                     onCell: (record: SummaryRecord) => {
                         const coverageConfig = getCoverageColumnConfig(theme, "buckets_full_ratio");
-                        const coverageStyle = coverageConfig.onCell ? coverageConfig.onCell(record as any).style : {} as React.CSSProperties;
+                        const coverageStyle = coverageConfig.onCell ? coverageConfig.onCell(record).style : {} as React.CSSProperties;
                         const covergroupBg = record.isCovergroup
                             ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
                             : 'transparent';

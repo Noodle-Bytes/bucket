@@ -295,8 +295,32 @@ function calculateRingRadii(
 ): { innerRadius: number; outerRadius: number } | null {
     const totalLevels = Math.max(1, maxDepth);
     const availableRadius = maxRadius - startInnerRadius;
-    const radiusStep = Math.max(BASE_RING_THICKNESS, availableRadius / totalLevels);
 
+    // Calculate ideal radius step, but ensure we can fit all rings
+    const idealRadiusStep = availableRadius / totalLevels;
+    const radiusStep = Math.max(MIN_RING_THICKNESS, idealRadiusStep);
+
+    // For the outermost ring, ensure it reaches maxRadius
+    if (depth === maxDepth) {
+        const outerRadius = maxRadius;
+        // Calculate inner radius based on previous rings
+        // For inner rings, we use: innerRadius = startInnerRadius + (depth - 1) * radiusStep
+        // So for the outer ring, we want the inner radius to be where the previous ring ended
+        const innerRadius = startInnerRadius + (depth - 1) * radiusStep;
+
+        // Ensure minimum thickness, but don't exceed maxRadius
+        const minInnerRadius = outerRadius - Math.max(MIN_RING_THICKNESS, idealRadiusStep);
+        const finalInnerRadius = Math.max(innerRadius, minInnerRadius);
+
+        // Validate dimensions
+        if (finalInnerRadius >= outerRadius || finalInnerRadius < startInnerRadius) {
+            return null;
+        }
+
+        return { innerRadius: finalInnerRadius, outerRadius };
+    }
+
+    // For inner rings, use standard calculation
     let innerRadius = startInnerRadius + (depth - 1) * radiusStep;
     let outerRadius = innerRadius + radiusStep;
 
@@ -305,7 +329,7 @@ function calculateRingRadii(
         outerRadius = innerRadius + MIN_RING_THICKNESS;
     }
 
-    // Clamp to maxRadius
+    // Clamp to maxRadius (shouldn't happen for inner rings, but safety check)
     if (outerRadius > maxRadius) {
         outerRadius = maxRadius;
         if (outerRadius - MIN_RING_THICKNESS >= startInnerRadius) {
@@ -424,6 +448,7 @@ function CenterInfo({
                             WebkitBoxOrient: 'vertical',
                         }}
                         title={hoveredNode.name}
+                        aria-label={hoveredNode.name}
                     >
                         {hoveredNode.name}
                     </div>
