@@ -53,7 +53,9 @@ type ChartDimensions = {
 };
 
 // Utility functions
-function getCoverageColor(ratio: number, theme: ThemeType): string {
+// Note: theme parameter is the base stitches theme (themeContext.theme.theme), not the full ThemeType
+// Uses the same color calculation as the table view for consistency
+function getCoverageColor(ratio: number, theme: ThemeType['theme']): string {
     const good = new Color(theme.colors.positivebg.value);
     const bad = new Color(theme.colors.negativebg.value);
 
@@ -64,8 +66,16 @@ function getCoverageColor(ratio: number, theme: ThemeType): string {
     } else if (ratio >= 1) {
         return good.toString();
     } else {
-        const mix = Color.mix(bad, good, ratio, { space: 'hsl' });
-        return mix.toString();
+        // Use the same color range calculation as the table view
+        // Creates a gradient between 0.2 and 0.6 mix ratios for better visibility
+        const mix = Color.range(
+            Color.mix(bad, good, 0.2, { space: 'hsl' }),
+            Color.mix(bad, good, 0.6, { space: 'hsl' }),
+            { space: 'hsl' }
+        );
+        // Clamp ratio to [0, 1] and map to the gradient
+        const clamped = Math.min(Math.max(ratio, 0), 1);
+        return mix(clamped).toString();
     }
 }
 
@@ -131,7 +141,7 @@ function buildNode(node: PointNode): HierarchicalData {
 function buildHierarchicalData(
     tree: CoverageTree,
     node: PointNode,
-    theme: ThemeType
+    theme: ThemeType['theme']
 ): HierarchicalData | null {
     const isRoot = node.key == CoverageTree.ROOT;
 
@@ -347,7 +357,7 @@ function CenterInfo({
     hoveredNode: SunburstNode;
     centerRadius: number;
     textScaleFactor: number;
-    theme: ThemeType;
+    theme: ThemeType['theme'];
 }) {
     const centerSize = centerRadius * 2;
 
