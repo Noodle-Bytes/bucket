@@ -56,6 +56,9 @@ export function getCoverageColor(
         return defaultColor;
     } else if (ratio < 0) {
         return bad.toString();
+    } else if (ratio === 0) {
+        // Unhit buckets should be pure red (bad color)
+        return bad.toString();
     } else if (ratio >= 1) {
         return good.toString();
     } else {
