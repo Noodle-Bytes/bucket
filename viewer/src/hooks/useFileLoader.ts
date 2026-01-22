@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { notification } from "antd";
+import { notification, Modal } from "antd";
 import CoverageTree from "@/features/Dashboard/lib/coveragetree";
 import {
     isElectron,
@@ -103,8 +103,17 @@ export function useFileLoader() {
      * Clear coverage data and reset to empty tree
      */
     const clearCoverage = (): void => {
-        setTree(getDefaultTree());
-        setError(null);
+        Modal.confirm({
+            title: 'Clear Coverage',
+            content: 'Are you sure you want to clear all coverage data?',
+            okText: 'Clear',
+            okType: 'danger',
+            cancelText: 'Cancel',
+            onOk: () => {
+                setTree(getDefaultTree());
+                setError(null);
+            },
+        });
     };
 
     /**
