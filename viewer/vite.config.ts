@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
 import { defineConfig } from "vite";
@@ -85,6 +85,9 @@ const getPluginPWA = ((env) => {
         registerType: 'autoUpdate',
         includeAssets,
         manifest,
+        workbox: {
+            maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB limit
+        },
         ...devConfig
     })
 })

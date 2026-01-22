@@ -9,8 +9,10 @@ import { view } from "../theme";
 import { TreeKey } from "./tree";
 import {Theme as ThemeType} from "@/theme";
 import { natCompare, numCompare } from "./compare";
-import Color from "colorjs.io";
 import Theme from "@/providers/Theme";
+import { FolderOutlined, FileTextOutlined, CaretRightOutlined, CaretDownOutlined } from "@ant-design/icons";
+import { hexToRgba, getCoverageColor } from "@/utils/colors";
+import React, { useState } from "react";
 
 type CoverageRecord = {
     key: number;
@@ -23,8 +25,10 @@ type CoverageRecord = {
 
 type SummaryRecord = {
     key: TreeKey;
-    path: string;
+    name: string;
     desc: string;
+    depth: number;
+    isCovergroup: boolean;
     target: number;
     hits: number;
     target_buckets: number;
@@ -35,16 +39,19 @@ type SummaryRecord = {
     buckets_full_ratio: number;
 };
 
+// Type for records that have ratio properties used by getCoverageColumnConfig
+type RecordWithRatio = {
+    [key: string]: string | number;
+    hit_ratio?: number;
+    buckets_hit_ratio?: number;
+    buckets_full_ratio?: number;
+};
+
 export type PointGridProps = {
     node: PointNode;
 };
 
 function getCoverageColumnConfig(theme: ThemeType, columnKey: string) {
-    const good = new Color(theme.theme.colors.positivebg.value);
-    const bad = new Color(theme.theme.colors.negativebg.value);
-    const mix = Color.range(Color.mix(bad, good, 0.2, {space:'hsl'}),
-                            Color.mix(bad, good, 0.6, {space:'hsl'}),
-                            {space:'hsl'});
     return {
         render: (ratio: number) => {
             if (Number.isNaN(ratio) || Object.is(ratio, -0)) {
@@ -54,26 +61,23 @@ function getCoverageColumnConfig(theme: ThemeType, columnKey: string) {
             }
             return `${(Math.min(ratio, 1) * 100).toFixed(1)}%`;
         },
-        onCell: (record: CoverageRecord) => {
-            const ratio = record[columnKey];
+        onCell: (record: RecordWithRatio) => {
+            const ratio = record[columnKey] as number;
             let backgroundColor = "unset";
             let fontWeight = "unset";
             if (ratio >= 1) {
                 // >=1 if target is fully hit
-                backgroundColor = good.toString();
+                backgroundColor = getCoverageColor(ratio, theme.theme.colors);
             } else if (Number.isNaN(ratio) || Object.is(ratio, -0)) {
                 // NaN if target is zero (don't care)
                 // -0 if target is negative (illegal) and not hit
             } else if (ratio <= 0) {
                 // <0 if target is negative (illegal) and hit
-                backgroundColor = bad.toString();
+                backgroundColor = getCoverageColor(ratio, theme.theme.colors);
                 fontWeight = "bold"
             } else {
                 // 0<x<1 if target is hit but not fully
-                // Interpolate between bad and good, leaving some margin
-                // so full hit and fully missed is distinguishable
-                const clamped = Math.min(Math.max(ratio, 0), 1);
-                backgroundColor = mix(clamped).toString();
+                backgroundColor = getCoverageColor(ratio, theme.theme.colors);
             }
             return {
                 style: {
@@ -274,21 +278,121 @@ export type PointSummaryGridProps = {
 
 
 export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummaryGridProps) {
+    // Initialize all covergroups as expanded by default
+    const [expandedCovergroups, setExpandedCovergroups] = useState<Set<TreeKey>>(() => {
+        const initialExpanded = new Set<TreeKey>();
+        const isRoot = node.key == CoverageTree.ROOT;
+        const root = isRoot ? null : [node];
+        for (const [subNode, _parent] of tree.walk(root)) {
+            const isCovergroup = (subNode.children?.length ?? 0) > 0;
+            if (isCovergroup) {
+                initialExpanded.add(subNode.key);
+            }
+        }
+        return initialExpanded;
+    });
+
+    const toggleCovergroup = (key: TreeKey, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent row click
+        setExpandedCovergroups(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(key)) {
+                newSet.delete(key);
+            } else {
+                newSet.add(key);
+            }
+            return newSet;
+        });
+    };
+
     const getColumns = (theme: ThemeType): TableProps['columns'] => [
         {
-            title: "Path",
-            dataIndex: "path",
-            key: "path",
-            render: text => <a>{text}</a>,
+            title: "Name",
+            dataIndex: "name",
+            key: "name",
+            render: (text: string, record: SummaryRecord) => {
+                const indent = record.depth * 20;
+                const isExpanded = expandedCovergroups.has(record.key);
+                const hasArrow = record.isCovergroup;
+                const arrowIcon = hasArrow ? (
+                    isExpanded ? (
+                        <CaretDownOutlined
+                            style={{
+                                color: theme.theme.colors.accentbg.value,
+                                marginRight: 4,
+                                fontSize: '12px',
+                                cursor: 'pointer'
+                            }}
+                            onClick={(e) => toggleCovergroup(record.key, e)}
+                        />
+                    ) : (
+                        <CaretRightOutlined
+                            style={{
+                                color: theme.theme.colors.accentbg.value,
+                                marginRight: 4,
+                                fontSize: '12px',
+                                cursor: 'pointer'
+                            }}
+                            onClick={(e) => toggleCovergroup(record.key, e)}
+                        />
+                    )
+                ) : (
+                    <span style={{ width: '16px', display: 'inline-block' }} />
+                );
+                const icon = record.isCovergroup ? (
+                    <FolderOutlined style={{
+                        color: theme.theme.colors.accentbg.value,
+                        marginRight: 8,
+                        fontSize: '16px'
+                    }} />
+                ) : (
+                    <FileTextOutlined style={{
+                        color: theme.theme.colors.desaturatedtxt.value,
+                        marginRight: 8,
+                        fontSize: '14px'
+                    }} />
+                );
+                return (
+                    <a
+                        style={{
+                            paddingLeft: `${indent}px`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            fontWeight: record.isCovergroup ? 700 : 400,
+                            fontSize: record.isCovergroup ? '14px' : '13px',
+                            color: record.isCovergroup
+                                ? theme.theme.colors.primarytxt.value
+                                : theme.theme.colors.desaturatedtxt.value
+                        }}
+                    >
+                        {arrowIcon}
+                        {icon}
+                        {text}
+                    </a>
+                );
+            },
             onCell: record => ({
                 onClick: () => setSelectedTreeKeys([record.key]),
+                style: { cursor: 'pointer' }
             }),
-            sorter: getColumnMixedCompare('path')
+            sorter: getColumnMixedCompare('name')
         },
         {
             title: "Description",
             dataIndex: "desc",
             key: "desc",
+            onCell: (record: SummaryRecord) => ({
+                style: {
+                    backgroundColor: record.isCovergroup
+                        ? hexToRgba(theme.theme.colors.accentbg.value, 0.2)
+                        : 'transparent',
+                    borderLeft: record.isCovergroup
+                        ? `4px solid ${theme.theme.colors.accentbg.value}`
+                        : 'none',
+                    fontWeight: record.isCovergroup ? 500 : 400,
+                    paddingLeft: record.isCovergroup ? '12px' : '8px',
+                }
+            }),
             sorter: getColumnMixedCompare('desc')
         },
         {
@@ -298,20 +402,49 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
                     title: "Target",
                     dataIndex: "target",
                     key: "target",
-                    sorter: getColumnNumCompare('target')
+                    sorter: getColumnNumCompare('target'),
+                    onCell: (record: SummaryRecord) => ({
+                        style: {
+                            backgroundColor: record.isCovergroup
+                                ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                                : 'transparent',
+                        }
+                    }),
                 },
                 {
                     title: "Hits",
                     dataIndex: "hits",
                     key: "hits",
-                    sorter: getColumnNumCompare('hits')
+                    sorter: getColumnNumCompare('hits'),
+                    onCell: (record: SummaryRecord) => ({
+                        style: {
+                            backgroundColor: record.isCovergroup
+                                ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                                : 'transparent',
+                        }
+                    }),
                 },
                 {
                     title: "Hit %",
                     dataIndex: "hit_ratio",
                     key: "hit_ratio",
                     ...getCoverageColumnConfig(theme, "hit_ratio"),
-                    sorter: getColumnNumCompare('hit_ratio')
+                    sorter: getColumnNumCompare('hit_ratio'),
+                    onCell: (record: SummaryRecord) => {
+                        const coverageConfig = getCoverageColumnConfig(theme, "hit_ratio");
+                        const coverageStyle = coverageConfig.onCell ? coverageConfig.onCell(record).style : {} as React.CSSProperties;
+                        const covergroupBg = record.isCovergroup
+                            ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                            : 'transparent';
+                        return {
+                            style: {
+                                ...coverageStyle,
+                                backgroundColor: coverageStyle.backgroundColor && coverageStyle.backgroundColor !== "unset"
+                                    ? coverageStyle.backgroundColor
+                                    : covergroupBg,
+                            }
+                        };
+                    },
                 },
             ]
         },
@@ -322,33 +455,84 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
                     title: "Target",
                     dataIndex: "target_buckets",
                     key: "target_buckets",
-                    sorter:  getColumnNumCompare('target_buckets')
+                    sorter:  getColumnNumCompare('target_buckets'),
+                    onCell: (record: SummaryRecord) => ({
+                        style: {
+                            backgroundColor: record.isCovergroup
+                                ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                                : 'transparent',
+                        }
+                    }),
                 },
                 {
                     title: "Hit",
                     dataIndex: "hit_buckets",
                     key: "hit_buckets",
-                    sorter:  getColumnNumCompare('hit_buckets')
+                    sorter:  getColumnNumCompare('hit_buckets'),
+                    onCell: (record: SummaryRecord) => ({
+                        style: {
+                            backgroundColor: record.isCovergroup
+                                ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                                : 'transparent',
+                        }
+                    }),
                 },
                 {
                     title: "Full",
                     dataIndex: "full_buckets",
                     key: "full_buckets",
-                    sorter:  getColumnNumCompare('full_buckets')
+                    sorter:  getColumnNumCompare('full_buckets'),
+                    onCell: (record: SummaryRecord) => ({
+                        style: {
+                            backgroundColor: record.isCovergroup
+                                ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                                : 'transparent',
+                        }
+                    }),
                 },
                 {
                     title: "Hit %",
                     dataIndex: "buckets_hit_ratio",
                     key: "buckets_hit_ratio",
                     ...getCoverageColumnConfig(theme, "buckets_hit_ratio"),
-                    sorter:  getColumnNumCompare('buckets_hit_ratio')
+                    sorter:  getColumnNumCompare('buckets_hit_ratio'),
+                    onCell: (record: SummaryRecord) => {
+                        const coverageConfig = getCoverageColumnConfig(theme, "buckets_hit_ratio");
+                        const coverageStyle = coverageConfig.onCell ? coverageConfig.onCell(record).style : {} as React.CSSProperties;
+                        const covergroupBg = record.isCovergroup
+                            ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                            : 'transparent';
+                        return {
+                            style: {
+                                ...coverageStyle,
+                                backgroundColor: coverageStyle.backgroundColor && coverageStyle.backgroundColor !== "unset"
+                                    ? coverageStyle.backgroundColor
+                                    : covergroupBg,
+                            }
+                        };
+                    },
                 },
                 {
                     title: "Full %",
                     dataIndex: "buckets_full_ratio",
                     key: "buckets_full_ratio",
                     ...getCoverageColumnConfig(theme, "buckets_full_ratio"),
-                    sorter:  getColumnNumCompare('buckets_full_ratio')
+                    sorter:  getColumnNumCompare('buckets_full_ratio'),
+                    onCell: (record: SummaryRecord) => {
+                        const coverageConfig = getCoverageColumnConfig(theme, "buckets_full_ratio");
+                        const coverageStyle = coverageConfig.onCell ? coverageConfig.onCell(record).style : {} as React.CSSProperties;
+                        const covergroupBg = record.isCovergroup
+                            ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                            : 'transparent';
+                        return {
+                            style: {
+                                ...coverageStyle,
+                                backgroundColor: coverageStyle.backgroundColor && coverageStyle.backgroundColor !== "unset"
+                                    ? coverageStyle.backgroundColor
+                                    : covergroupBg,
+                            }
+                        };
+                    },
                 },
             ]
         }
@@ -361,12 +545,48 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
     const isRoot = node.key == CoverageTree.ROOT;
 
     const root = isRoot ? null : [node];
-    const nodePath = tree.getAncestorsByKey(node.key)
+    const nodePath = tree.getAncestorsByKey(node.key);
+    const baseDepth = isRoot ? 1 : nodePath.length; // For root, subtract 1 (the root itself); for nodes, use full path length
+
+    // Build a map of node keys to their parent keys for filtering
+    const parentMap = new Map<TreeKey, TreeKey | null>();
+    for (const [subNode, parent] of tree.walk(root)) {
+        const parentKey = parent?.key;
+        parentMap.set(subNode.key, parentKey !== undefined ? parentKey : null);
+    }
+
+    // Filter function to check if a node should be visible
+    const isVisible = (nodeKey: TreeKey): boolean => {
+        const parentKey = parentMap.get(nodeKey);
+        if (parentKey === null || parentKey === undefined) {
+            // Root level nodes are always visible
+            return true;
+        }
+        const parentNode = tree.getNodeByKey(parentKey);
+        if (!parentNode || !parentNode.children || parentNode.children.length === 0) {
+            // Not a covergroup, always visible
+            return true;
+        }
+        // Check if parent is expanded
+        if (!expandedCovergroups.has(parentKey)) {
+            return false; // Parent is collapsed, hide this node
+        }
+        // Recursively check ancestors
+        return isVisible(parentKey);
+    };
+
     for (const [subNode, _parent] of tree.walk(root)) {
-        const path = tree.getAncestorsByKey(subNode.key)
-                          .slice(nodePath.length - 1)
-                          .map(n => n.title as string).join(' / ')
+        // Skip if any ancestor is collapsed
+        if (!isVisible(subNode.key)) {
+            continue;
+        }
+
+        const ancestors = tree.getAncestorsByKey(subNode.key);
+        const depth = isRoot
+            ? ancestors.length - 1  // For root view, subtract 1 to account for root
+            : ancestors.length - baseDepth; // For node view, relative to selected node
         const {point, point_hit} = subNode.data;
+        const isCovergroup = (subNode.children?.length ?? 0) > 0;
 
         const hit_ratio =
             point_hit.hits / point.target;
@@ -377,8 +597,10 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
 
         dataSource.push({
             key: subNode.key,
-            path: path,
+            name: subNode.title as string,
             desc: point.description,
+            depth: depth,
+            isCovergroup: isCovergroup,
             target: point.target,
             hits: point_hit.hits,
             target_buckets: point.target_buckets,
@@ -396,6 +618,18 @@ export function PointSummaryGrid({tree, node, setSelectedTreeKeys}: PointSummary
                 key={node.key}
                 columns={getColumns(theme)}
                 dataSource={dataSource}
+                onRow={(record: SummaryRecord) => {
+                    return {
+                        style: {
+                            backgroundColor: record.isCovergroup
+                                ? hexToRgba(theme.theme.colors.accentbg.value, 0.12)
+                                : 'transparent',
+                            borderLeft: record.isCovergroup
+                                ? `3px solid ${theme.theme.colors.accentbg.value}`
+                                : '3px solid transparent',
+                        },
+                    };
+                }}
             />
         }}
     </Theme.Consumer>

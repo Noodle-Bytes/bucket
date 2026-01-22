@@ -107,7 +107,7 @@ const body = {
             style: {
                 margin: 0,
                 minHeight: 280,
-                overflow: "scroll",
+                overflow: "auto", // Use auto instead of scroll - scrollbars hidden via CSS
             },
         } as ComponentPropsWithoutRef<"div">,
         table: {
