@@ -1,37 +1,33 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
 import { useRoutes } from "react-router-dom";
 import Dashboard from "@/features/Dashboard";
-import CoverageTree from "@/features/Dashboard/lib/coveragetree";
-import treeMock from "@/features/Dashboard/test/mocks/tree";
-import { readFileHandle } from "@/features/Dashboard/lib/readers";
-import { useEffect, useState } from "react";
-
-function getDefaultTree() {
-    return new CoverageTree(treeMock);
-}
+import { useFileLoader } from "@/hooks/useFileLoader";
 
 export const AppRoutes = () => {
+    const { tree, fileInputRef, handleFileInput, openFileDialog } = useFileLoader();
 
-    const [tree, setTree] = useState(getDefaultTree());
-    useEffect(() => {
-        if ("launchQueue" in window) {
-            launchQueue.setConsumer(async (launchParams) => {
-                const readouts: Readout[] = [];
-                for (const file of launchParams.files as FileSystemFileHandle[]) {
-                    const reader = await readFileHandle(file);
-                    for await (const readout of reader.read_all()) {
-                        readouts.push(readout)
-                    }
-                }
-                setTree(CoverageTree.fromReadouts(readouts));
-            });
-        }
-    }, [])
+    const element = useRoutes([
+        {
+            path: "*",
+            element: (
+                <>
+                    {/* Hidden file input for web browsers */}
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileInput}
+                        accept=".bktgz"
+                        style={{ display: 'none' }}
+                    />
+                    <Dashboard tree={tree} onOpenFile={openFileDialog} />
+                </>
+            ),
+        },
+    ]);
 
-    const element = useRoutes([{ path: "*", element: <Dashboard tree={tree}/> }]);
     return <>{element}</>;
 };
