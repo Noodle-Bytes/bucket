@@ -25,6 +25,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
 import { LayoutOutlined } from "@ant-design/icons";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
+import { hexToRgba } from "@/utils/colors";
 const { Header, Content } = Layout;
 
 const ColorModeToggleButton = (props: FloatButtonProps) => {
@@ -151,9 +152,10 @@ function getBreadCrumbItems({
 export type DashboardProps = {
     tree: Tree;
     onOpenFile?: () => void | Promise<void>;
+    isDragging?: boolean;
 };
 
-export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
+export default function Dashboard({ tree, onOpenFile, isDragging = false }: DashboardProps) {
     const [selectedTreeKeys, setSelectedTreeKeys] = useState<TreeKey[]>([]);
     const [expandedTreeKeys, setExpandedTreeKeys] = useState<TreeKey[]>([]);
     const [autoExpandTreeParent, setAutoExpandTreeParent] = useState(true);
@@ -208,11 +210,15 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
         });
     };
 
+
+    // Determine logo path based on the runtime environment:
+    // - Electron production: Use app:// protocol (custom protocol registered in main.js)
+    // - Browser with file://: Use relative path (when opening HTML directly)
+    // - Browser with http://: Use Vite's BASE_URL (development server)
     // Check if we're running in Electron (will be used in a following PR)
     const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
     void isElectron; // Suppress unused variable warning - will be used in following PR
     // Get logo path - in Electron production, use app:// protocol
-    // Check if we're using app:// protocol (Electron production) or http:// (dev)
     const isElectronProduction = typeof window !== 'undefined' && window.location.protocol === 'app:';
     // For file:// protocol (browser opening HTML directly), use relative path
     const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
@@ -320,7 +326,22 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
 
     return (
         <ConfigProvider theme={antTheme}>
-            <Layout {...view.props}>
+            <Theme.Consumer>
+                {({ theme: themeContext }) => {
+                    const dragStyle = isDragging ? {
+                        border: '3px dashed',
+                        borderColor: themeContext.theme.colors.accentbg.value,
+                        backgroundColor: hexToRgba(themeContext.theme.colors.highlightbg.value, 0.25),
+                        transition: 'all 0.2s ease-in-out',
+                    } : {};
+                    return (
+                        <Layout
+                            {...view.props}
+                            style={{
+                                ...view.props.style,
+                                ...dragStyle,
+                            }}
+                        >
                 {!isEmpty && (
                     <Sider
                         tree={tree}
@@ -376,7 +397,10 @@ export default function Dashboard({ tree, onOpenFile }: DashboardProps) {
                         {selectedViewContent}
                     </Content>
                 </Layout>
-            </Layout>
+                        </Layout>
+                    );
+                }}
+            </Theme.Consumer>
             <ColorModeToggleButton {...view.float.theme.props} />
         </ConfigProvider>
     );

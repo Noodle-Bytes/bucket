@@ -1,5 +1,10 @@
 /*
  * SPDX-License-Identifier: MIT
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+ */
+
+/*
+ * SPDX-License-Identifier: MIT
  * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
  */
 
@@ -32,6 +37,8 @@ const sider = {
             borderRightWidth: 1,
             borderRightStyle: "solid",
             maxWidth: "auto",
+            overflowY: "auto",
+            overflowX: "hidden",
         },
         zeroWidthTriggerStyle: {
             background: cl.accentbg.toString(),
@@ -117,7 +124,10 @@ const body = {
 
 export const view = {
     props: {
-        style: { height: "100vh" },
+        style: {
+            height: "100vh",
+            overflow: "hidden",
+        },
     } as LayoutProps,
     body,
     sider,
