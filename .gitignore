@@ -11,6 +11,8 @@ uv.lock
 bin/zsh/.zcompdump
 
 example_file_store.db
+example_*.bktgz
+example_*.db
 
 # test coverage
 .coverage
