@@ -31,5 +31,6 @@ export const AppRoutes = () => {
             ),
         },
     ]);
+
     return <>{element}</>;
 };

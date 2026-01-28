@@ -13,12 +13,13 @@ import {
     Segmented,
     Flex,
     FloatButton,
+    Button,
+    Typography,
 } from "antd";
-import { BgColorsOutlined } from "@ant-design/icons";
+import { BgColorsOutlined, FolderOpenOutlined } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 
 import Sider from "./components/Sider";
-import EmptyState from "./components/EmptyState";
 import { antTheme, view } from "./theme";
 import { useEffect, useMemo, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
@@ -214,7 +215,12 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
     // - Electron production: Use app:// protocol (custom protocol registered in main.js)
     // - Browser with file://: Use relative path (when opening HTML directly)
     // - Browser with http://: Use Vite's BASE_URL (development server)
+    // Check if we're running in Electron (will be used in a following PR)
+    const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
+    void isElectron; // Suppress unused variable warning - will be used in following PR
+    // Get logo path - in Electron production, use app:// protocol
     const isElectronProduction = typeof window !== 'undefined' && window.location.protocol === 'app:';
+    // For file:// protocol (browser opening HTML directly), use relative path
     const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
     const logoSrc = isElectronProduction
         ? 'app://logo.svg'
@@ -247,7 +253,51 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
     const selectedViewContent = useMemo(() => {
         // Show empty state if no coverage is loaded
         if (isEmpty) {
-            return <EmptyState logoSrc={logoSrc} onOpenFile={onOpenFile} />;
+            return (
+                <Theme.Consumer>
+                    {({ theme }) => {
+                        const primaryTextColor = theme.theme.colors.primarytxt.value;
+                        const secondaryTextColor = theme.theme.colors.desaturatedtxt.value;
+
+                        return (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px', padding: '40px 20px' }}>
+                                <div style={{ marginBottom: '40px', display: 'flex', justifyContent: 'center' }}>
+                                    <img src={logoSrc} alt="Bucket" style={{ width: '120px', height: 'auto', opacity: 0.8 }} />
+                                </div>
+                                <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
+                                    <Typography.Title level={4} style={{ marginBottom: '16px', marginTop: 0 }}>
+                                        No Coverage Loaded
+                                    </Typography.Title>
+                                    <Typography.Paragraph style={{ marginBottom: '24px', color: primaryTextColor }}>
+                                        Load a Bucket coverage archive file (`.bktgz`) to view coverage data.
+                                    </Typography.Paragraph>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
+                                        {onOpenFile ? (
+                                            <>
+                                                <Button
+                                                    type="primary"
+                                                    icon={<FolderOpenOutlined />}
+                                                    size="large"
+                                                    onClick={onOpenFile}
+                                                >
+                                                    Open File...
+                                                </Button>
+                                                <Typography.Text style={{ fontSize: '12px', color: secondaryTextColor }}>
+                                                    Or drag and drop a `.bktgz` file here
+                                                </Typography.Text>
+                                            </>
+                                        ) : (
+                                            <Typography.Text style={{ color: secondaryTextColor }}>
+                                                Drag and drop a `.bktgz` file here
+                                            </Typography.Text>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }}
+                </Theme.Consumer>
+            );
         }
 
         const currentNode = tree.getNodeByKey(viewKey);
@@ -272,7 +322,7 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
             default:
                 throw new Error("Invalid view!?");
         }
-    }, [viewKey, currentContentKey, tree, isEmpty, onOpenFile, logoSrc]);
+    }, [viewKey, currentContentKey, tree, isEmpty, onOpenFile]);
 
     return (
         <ConfigProvider theme={antTheme}>
