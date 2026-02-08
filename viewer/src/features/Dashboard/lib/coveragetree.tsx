@@ -78,11 +78,8 @@ export default class CoverageTree extends Tree<PointData> {
                 {
                     value: "Summary",
                     icon: <TableOutlined />,
-<<<<<<< HEAD
                     label: "Summary",
                     title: "View coverage summary as a table or donut chart",
-=======
->>>>>>> main
                 },
             ];
         }
