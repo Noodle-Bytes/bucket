@@ -367,6 +367,8 @@ function CenterInfo({
     textScaleFactor: number;
     theme: ThemeType['theme'];
 }) {
+    if (!hoveredNode) return null;
+
     const centerSize = centerRadius * 2;
 
     return (
@@ -674,23 +676,6 @@ function CoverageDonutInner({
                         })}
                     </g>
                 </svg>
-                {/* Only show the root node's name below the donut */}
-                <div
-                    style={{
-                        marginTop: 10,
-                        textAlign: 'center',
-                        color: theme.colors.primarytxt.value,
-                        fontSize: 14,
-                        fontWeight: 500,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        maxWidth: dimensions.size,
-                    }}
-                    title={hierarchicalData.name}
-                >
-                    {hierarchicalData.name}
-                </div>
             </div>
         );
     }
@@ -840,17 +825,20 @@ export function CoverageDonut({
                                     </div>
                                     <div
                                         style={{
-                                            marginTop: '12px',
-                                            fontSize: '15px',
-                                            color: themeContextRaw.theme.theme.colors.primarytxt.value,
+                                            marginTop: 10,
                                             textAlign: 'center',
+                                            color: themeContextRaw.theme.theme.colors.primarytxt.value,
                                             fontWeight: 500,
+                                            fontSize: 16,
                                             wordBreak: 'break-word',
-                                            maxWidth: '90%',
-                                            lineHeight: 1.3,
+                                            maxWidth: '100%',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
                                         }}
+                                        title={typeof rootNode.title === 'function' ? '[unnamed]' : String(rootNode.title)}
                                     >
-                                        {typeof rootNode.title === 'function' ? '[unnamed]' : rootNode.title}
+                                        {typeof rootNode.title === 'function' ? '[unnamed]' : String(rootNode.title)}
                                     </div>
                                 </div>
                             ))}
