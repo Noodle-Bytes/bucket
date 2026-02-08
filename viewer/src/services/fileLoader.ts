@@ -61,16 +61,19 @@ export async function loadFileFromFileHandle(file: FileSystemFileHandle): Promis
 }
 
 /**
- * Open file dialog in Electron and load the selected file
+ * Open file dialog in Electron and load the selected file(s)
+ * Returns the first file's tree, or null if cancelled
  */
 export async function openElectronFileDialog(): Promise<CoverageTree | null> {
     if (!isElectron() || !window.electronAPI) {
         return null;
     }
-    const filePath = await window.electronAPI.openFileDialog();
-    if (!filePath) {
+    const filePaths = await window.electronAPI.openFileDialog();
+    if (!filePaths || filePaths.length === 0) {
         return null;
     }
-    const bytes = await window.electronAPI.readFile(filePath);
+    // Load the first file (for now, single file support)
+    // TODO: Support multi-file loading
+    const bytes = await window.electronAPI.readFile(filePaths[0]);
     return loadFileFromBytes(bytes);
 }

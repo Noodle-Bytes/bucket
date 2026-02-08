@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 import csv
 import tarfile
@@ -271,7 +271,7 @@ class ArchiveWriter(Writer):
 
             if self.path.exists():
                 with tarfile.open(self.path, mode="r:gz") as tar:
-                    tar.extractall(work_path)
+                    tar.extractall(work_path, filter="data")
 
             # Write tables and get byte offsets/ends
             point_offset, point_end = _write(
@@ -362,7 +362,7 @@ class ArchiveReader(Reader):
         tempdir = tempfile.TemporaryDirectory()
         path = Path(tempdir.name)
         with tarfile.open(self.path, mode="r:gz") as tar:
-            tar.extractall(path)
+            tar.extractall(path, filter="data")
         return path, tempdir
 
     def read(self, rec_ref: int):

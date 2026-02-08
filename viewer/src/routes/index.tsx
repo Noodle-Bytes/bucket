@@ -6,9 +6,10 @@
 import { useRoutes } from "react-router-dom";
 import Dashboard from "@/features/Dashboard";
 import { useFileLoader } from "@/hooks/useFileLoader";
+import { Spin } from "antd";
 
 export const AppRoutes = () => {
-    const { tree, fileInputRef, handleFileInput, openFileDialog } = useFileLoader();
+    const { tree, isLoading, isDragging, fileInputRef, handleFileInput, openFileDialog } = useFileLoader();
 
     const element = useRoutes([
         {
@@ -23,7 +24,9 @@ export const AppRoutes = () => {
                         accept=".bktgz"
                         style={{ display: 'none' }}
                     />
-                    <Dashboard tree={tree} onOpenFile={openFileDialog} />
+                    <Spin spinning={isLoading} size="large" tip="Loading coverage data...">
+                        <Dashboard tree={tree} onOpenFile={openFileDialog} isDragging={isDragging} />
+                    </Spin>
                 </>
             ),
         },
