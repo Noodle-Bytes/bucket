@@ -11,11 +11,10 @@ import { getCoverageColor } from "@/utils/colors";
 import React, { useEffect, useState, useMemo, Component } from "react";
 
 // Constants
-const CHART_MARGIN = 3; // Margin in pixels around the chart
+const CHART_MARGIN = 16; // Increased margin in pixels around the chart
 const MIN_CENTER_RADIUS = 150; // Minimum center circle radius
 const MAX_CENTER_RADIUS_RATIO = 0.45; // Maximum center circle as ratio of maxRadius
 const MIN_RING_SPACE_RATIO = 0.3; // Minimum space reserved for rings as ratio of maxRadius
-const BASE_RING_THICKNESS = 2; // Base thickness for rings in pixels
 const MIN_RING_THICKNESS = 2; // Minimum ring thickness in pixels
 const CENTER_PADDING = 16; // Padding inside center circle
 const ESTIMATED_CHAR_WIDTH = 7.5; // Average character width at 14px font size
@@ -96,7 +95,7 @@ function buildNode(node: PointNode): HierarchicalData {
     const pointTarget = Number(node.data.point.target);
     const pointHits = Number(node.data.point_hit.hits);
     const nodeTitle = String(node.title || '');
-    const isCovergroup = (node.children?.length ?? 0) > 0;
+    const isCovergroup = Array.isArray(node.children) && node.children.length > 0;
     const value = Math.max(pointTarget, 1);
     const coverage = pointTarget > 0 ? pointHits / pointTarget : 0;
 
@@ -111,7 +110,10 @@ function buildNode(node: PointNode): HierarchicalData {
     };
 
     if (isCovergroup) {
-        const children = node.children!.map(child => buildNode(child));
+        // Only include children that have a 'data' property (i.e., are PointNode)
+        const children = (node.children as unknown[])
+            .filter((child): child is PointNode => !!child && typeof child === 'object' && 'data' in child)
+            .map(child => buildNode(child));
         const childrenValue = children.reduce((sum, child) => sum + child.value, 0);
         nodeData.value = Math.max(value, childrenValue);
         nodeData.children = children;
@@ -508,12 +510,14 @@ function CoverageDonutInner({
     setSelectedTreeKeys,
 }: CoverageDonutProps & {
     themeContext: {
-        theme: { name: string; theme: ThemeType };
+        theme: ThemeType;
         setTheme: (theme: any) => void;
     };
 }) {
     const theme = themeContext.theme.theme;
     const [mounted, setMounted] = useState(false);
+    const isGridMode = !setSelectedTreeKeys;
+    const [isGridHovered, setIsGridHovered] = useState(false);
     const [hoveredNode, setHoveredNode] = useState<SunburstNode | null>(null);
     const containerRef = React.useRef<HTMLDivElement>(null);
     const [containerSize, setContainerSize] = useState(() => {
@@ -528,14 +532,13 @@ function CoverageDonutInner({
 
     useEffect(() => {
         setMounted(true);
-
         const updateSize = () => {
             if (containerRef.current) {
                 const rect = containerRef.current.getBoundingClientRect();
                 const padding = 40;
                 setContainerSize({
-                    width: Math.max(400, rect.width - padding),
-                    height: Math.max(400, rect.height - padding),
+                    width: Math.max(260, rect.width - padding),
+                    height: Math.max(260, rect.height - padding),
                 });
             } else {
                 setContainerSize({
@@ -544,11 +547,9 @@ function CoverageDonutInner({
                 });
             }
         };
-
         updateSize();
         const timeout1 = setTimeout(updateSize, 0);
         const timeout2 = setTimeout(updateSize, 100);
-
         window.addEventListener('resize', updateSize);
         return () => {
             window.removeEventListener('resize', updateSize);
@@ -561,7 +562,6 @@ function CoverageDonutInner({
         () => buildHierarchicalData(tree, node, theme),
         [tree, node.key, theme]
     );
-
     if (!hierarchicalData) {
         return (
             <div
@@ -570,7 +570,6 @@ function CoverageDonutInner({
                     display: 'flex',
                     justifyContent: 'center',
                     alignItems: 'center',
-                    minHeight: '400px',
                     color: theme.colors.desaturatedtxt.value,
                 }}
             >
@@ -578,170 +577,217 @@ function CoverageDonutInner({
             </div>
         );
     }
-
     const totals = useMemo(
         () => calculateTotalCoverage(hierarchicalData),
         [hierarchicalData]
     );
     const overallCoverage = totals.target > 0 ? totals.hits / totals.target : 0;
-
     const flatData = useMemo(() => {
         return flattenData(hierarchicalData, 0, 0, hierarchicalData.value);
     }, [hierarchicalData]);
-
     const longestName = useMemo(
         () => findLongestName(hierarchicalData),
         [hierarchicalData]
     );
-
     const maxDepth = useMemo(() => {
         return Math.max(...flatData.map(n => n.depth).filter(d => d > 0), 0);
     }, [flatData]);
-
     const dimensions = useMemo(
         () => calculateChartDimensions(containerSize, longestName, maxDepth),
         [containerSize, longestName, maxDepth]
     );
-
     const handleNodeClick = (node: SunburstNode) => {
         if (node.nodeKey && setSelectedTreeKeys) {
             setSelectedTreeKeys([node.nodeKey]);
         }
     };
-
     if (!mounted) {
-        return (
-            <div
-                style={{
-                    padding: '24px',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    minHeight: '400px',
-                    color: theme.colors.desaturatedtxt.value,
-                }}
-            >
-                Loading chart...
-            </div>
-        );
+        return null;
     }
-
     const startInnerRadius = dimensions.centerCircleRadius + 2;
 
-    return (
-        <div
-            style={{
-                padding: '20px',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'center',
-                width: '100%',
-                height: '100%',
-                minHeight: '400px',
-                boxSizing: 'border-box',
-            }}
-        >
+    // Only apply minHeight/height in single-donut mode
+    // In grid mode, highlight the whole donut on hover/focus
+    if (isGridMode) {
+        // Grid mode: render a non-interactive donut with whole-donut highlight
+        return (
             <div
                 ref={containerRef}
                 style={{
                     width: '100%',
                     height: '100%',
-                    border: `2px solid ${theme.colors.secondarybg.value}`,
-                    backgroundColor: theme.colors.primarybg.value,
-                    borderRadius: '4px',
-                    padding: '3px',
+                    minHeight: 180,
                     display: 'flex',
-                    justifyContent: 'center',
+                    flexDirection: 'column',
                     alignItems: 'center',
-                    minHeight: '400px',
+                    justifyContent: 'center',
+                    position: 'relative',
+                    cursor: 'pointer',
+                    outline: isGridHovered ? `2px solid ${theme.colors.accentbg.value}` : 'none',
+                    borderRadius: 12,
+                    transition: 'outline 0.15s',
                 }}
+                tabIndex={0}
+                onMouseEnter={() => setIsGridHovered(true)}
+                onMouseLeave={() => setIsGridHovered(false)}
+                onFocus={() => setIsGridHovered(true)}
+                onBlur={() => setIsGridHovered(false)}
             >
-                <ErrorBoundary
-                    fallback={
-                        <div
-                            style={{
-                                padding: '20px',
-                                color: theme.colors.primarytxt.value,
-                            }}
-                        >
-                            Chart failed to render. Check console for errors.
-                        </div>
-                    }
+                <svg
+                    width={dimensions.size}
+                    height={dimensions.size}
+                    viewBox={`0 0 ${dimensions.size} ${dimensions.size}`}
+                    style={{ display: 'block', margin: '0 auto', overflow: 'visible' }}
                 >
-                    <svg width={dimensions.size} height={dimensions.size} style={{ display: 'block' }}>
-                        <g transform={`translate(${dimensions.center}, ${dimensions.center})`}>
-                            {flatData
-                                .filter(node => node.depth > 0)
-                                .map((node, index) => {
-                                    const radii = calculateRingRadii(
-                                        node.depth,
-                                        maxDepth,
-                                        startInnerRadius,
-                                        dimensions.maxRadius
-                                    );
-
-                                    if (!radii) {
-                                        return null;
-                                    }
-
-                                    const coverage = node.coverage ?? 0;
-                                    const color = getCoverageColorForDonut(coverage, theme);
-                                    const isHovered = hoveredNode === node;
-
-                                    return (
-                                        <g key={index}>
-                                            <path
-                                                d={arcPath(
-                                                    radii.innerRadius,
-                                                    radii.outerRadius,
-                                                    node.startAngle,
-                                                    node.endAngle
-                                                )}
-                                                fill={color}
-                                                fillOpacity={isHovered ? 0.9 : 0.7}
-                                                stroke={
-                                                    isHovered
-                                                        ? theme.colors.primarytxt.value
-                                                        : theme.colors.secondarybg.value
-                                                }
-                                                strokeWidth={isHovered ? 4 : 2}
-                                                style={{
-                                                    cursor: node.nodeKey ? 'pointer' : 'default',
-                                                    transition: 'all 0.2s ease',
-                                                }}
-                                                onMouseEnter={() => setHoveredNode(node)}
-                                                onMouseLeave={() => setHoveredNode(null)}
-                                                onClick={() => handleNodeClick(node)}
-                                            />
-                                        </g>
-                                    );
-                                })
-                                .filter(Boolean)}
-
-                            {hoveredNode && (
-                                <CenterInfo
-                                    hoveredNode={hoveredNode}
-                                    centerRadius={dimensions.centerCircleRadius}
-                                    textScaleFactor={dimensions.textScaleFactor}
-                                    theme={theme}
+                    <g transform={`translate(${dimensions.center},${dimensions.center})`}>
+                        {/* Render all donut segments as a single group, no per-segment hover */}
+                        {flatData.filter(n => n.depth > 0).map((n, idx) => {
+                            const ring = calculateRingRadii(
+                                n.depth,
+                                maxDepth,
+                                startInnerRadius,
+                                dimensions.maxRadius
+                            );
+                            if (!ring) return null;
+                            const color = getCoverageColorForDonut(
+                                n.coverage ?? 0,
+                                theme
+                            );
+                            return (
+                                <path
+                                    key={n.nodeKey || idx}
+                                    d={arcPath(
+                                        ring.innerRadius,
+                                        ring.outerRadius,
+                                        n.startAngle,
+                                        n.endAngle
+                                    )}
+                                    fill={color}
+                                    fillOpacity={isGridHovered ? 0.95 : 0.8}
+                                    stroke={theme.colors.secondarybg.value}
+                                    strokeWidth={1.5}
+                                    style={{
+                                        transition: 'fill-opacity 0.15s',
+                                    }}
                                 />
-                            )}
-                        </g>
-                    </svg>
-                </ErrorBoundary>
+                            );
+                        })}
+                    </g>
+                </svg>
+                {/* Only show the root node's name below the donut */}
+                <div
+                    style={{
+                        marginTop: 10,
+                        textAlign: 'center',
+                        color: theme.colors.primarytxt.value,
+                        fontSize: 14,
+                        fontWeight: 500,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        maxWidth: dimensions.size,
+                    }}
+                    title={hierarchicalData.name}
+                >
+                    {hierarchicalData.name}
+                </div>
             </div>
+        );
+    }
+
+    // Single-donut mode: render interactive donut
+    return (
+        <div
+            ref={containerRef}
+            style={{
+                width: '100%',
+                height: '100%',
+                minHeight: 480, // Increased minHeight
+                padding: 24, // Add padding to prevent clipping
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative',
+                boxSizing: 'border-box',
+            }}
+        >
+            <svg
+                width={dimensions.size}
+                height={dimensions.size}
+                viewBox={`0 0 ${dimensions.size} ${dimensions.size}`}
+                style={{ display: 'block', margin: '0 auto', overflow: 'visible' }}
+            >
+                <g transform={`translate(${dimensions.center},${dimensions.center})`}>
+                    {/* Render donut segments */}
+                    {flatData.filter(n => n.depth > 0).map((n, idx) => {
+                        const ring = calculateRingRadii(
+                            n.depth,
+                            maxDepth,
+                            startInnerRadius,
+                            dimensions.maxRadius
+                        );
+                        if (!ring) return null;
+                        const color = getCoverageColorForDonut(
+                            n.coverage ?? 0,
+                            theme
+                        );
+                        const isHovered = hoveredNode && hoveredNode.nodeKey === n.nodeKey;
+                        return (
+                            <path
+                                key={n.nodeKey || idx}
+                                d={arcPath(
+                                    ring.innerRadius,
+                                    ring.outerRadius,
+                                    n.startAngle,
+                                    n.endAngle
+                                )}
+                                fill={color}
+                                fillOpacity={isHovered ? 0.95 : 0.8}
+                                stroke={theme.colors.secondarybg.value}
+                                strokeWidth={1.5}
+                                style={{
+                                    cursor: n.nodeKey ? 'pointer' : 'default',
+                                    transition: 'fill-opacity 0.15s',
+                                }}
+                                onMouseEnter={() => setHoveredNode(n)}
+                                onMouseLeave={() => setHoveredNode(null)}
+                                onClick={() => handleNodeClick(n)}
+                                tabIndex={n.nodeKey ? 0 : -1}
+                                aria-label={n.name}
+                            />
+                        );
+                    })}
+                    {/* Center info */}
+                    {hoveredNode ? (
+                        <CenterInfo
+                            hoveredNode={hoveredNode}
+                            centerRadius={dimensions.centerCircleRadius}
+                            textScaleFactor={dimensions.textScaleFactor}
+                            theme={theme}
+                        />
+                    ) : (
+                        <CenterInfo
+                            hoveredNode={flatData[0]}
+                            centerRadius={dimensions.centerCircleRadius}
+                            textScaleFactor={dimensions.textScaleFactor}
+                            theme={theme}
+                        />
+                    )}
+                </g>
+            </svg>
+            {/* Stats below donut */}
             <div
                 style={{
-                    marginTop: '20px',
-                    padding: '10px',
-                    fontSize: '14px',
-                    color: theme.colors.desaturatedtxt.value,
+                    marginTop: 18,
                     textAlign: 'center',
+                    color: theme.colors.desaturatedtxt.value,
+                    fontSize: 15,
+                    fontWeight: 400,
                 }}
             >
                 <div>
-                    <strong>Overall Coverage: {(overallCoverage * 100).toFixed(1)}%</strong>
+                    <b>Overall Coverage:</b> {(overallCoverage * 100).toFixed(1)}%
                 </div>
                 <div>Target: {totals.target.toLocaleString()}</div>
                 <div>Hits: {totals.hits.toLocaleString()}</div>
@@ -757,14 +803,70 @@ export function CoverageDonut({
 }: CoverageDonutProps) {
     return (
         <Theme.Consumer>
-            {(themeContext) => (
-                <CoverageDonutInner
-                    tree={tree}
-                    node={node}
-                    themeContext={themeContext}
-                    setSelectedTreeKeys={setSelectedTreeKeys}
-                />
-            )}
+            {(themeContextRaw) => {
+                const isRoot = node.key === CoverageTree.ROOT;
+                const roots = tree.getRoots();
+                if (isRoot && roots.length > 1) {
+                    // Grid layout for multiple root donuts
+                    return (
+                        <div
+                            style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                                gap: '32px',
+                                width: '100%',
+                                alignItems: 'start',
+                                justifyItems: 'center',
+                                padding: '24px 0',
+                                background: 'none',
+                            }}
+                        >
+                            {roots.map((rootNode) => (
+                                <div
+                                    key={rootNode.key}
+                                    style={{ cursor: 'pointer', width: '100%', maxWidth: 320, background: 'none', boxShadow: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+                                    onClick={() => setSelectedTreeKeys && setSelectedTreeKeys([rootNode.key])}
+                                    tabIndex={0}
+                                    role="button"
+                                    aria-label={`Show donut for ${typeof rootNode.title === 'function' ? '[unnamed]' : rootNode.title}`}
+                                >
+                                    <div style={{ width: '100%', background: 'none', boxShadow: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                                        <CoverageDonutInner
+                                            tree={tree}
+                                            node={rootNode}
+                                            themeContext={themeContextRaw}
+                                            setSelectedTreeKeys={undefined}
+                                        />
+                                    </div>
+                                    <div
+                                        style={{
+                                            marginTop: '12px',
+                                            fontSize: '15px',
+                                            color: themeContextRaw.theme.theme.colors.primarytxt.value,
+                                            textAlign: 'center',
+                                            fontWeight: 500,
+                                            wordBreak: 'break-word',
+                                            maxWidth: '90%',
+                                            lineHeight: 1.3,
+                                        }}
+                                    >
+                                        {typeof rootNode.title === 'function' ? '[unnamed]' : rootNode.title}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    );
+                }
+                // Default: single donut view
+                return (
+                    <CoverageDonutInner
+                        tree={tree}
+                        node={node}
+                        themeContext={themeContextRaw}
+                        setSelectedTreeKeys={setSelectedTreeKeys}
+                    />
+                );
+            }}
         </Theme.Consumer>
     );
 }
