@@ -814,6 +814,12 @@ export function CoverageDonut({
                                     tabIndex={0}
                                     role="button"
                                     aria-label={`Show donut for ${typeof rootNode.title === 'function' ? '[unnamed]' : rootNode.title}`}
+                                    onKeyDown={e => {
+                                        if ((e.key === 'Enter' || e.key === ' ') && setSelectedTreeKeys) {
+                                            setSelectedTreeKeys([rootNode.key]);
+                                            e.preventDefault();
+                                        }
+                                    }}
                                 >
                                     <div style={{ width: '100%', background: 'none', boxShadow: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                                         <CoverageDonutInner
@@ -823,18 +829,11 @@ export function CoverageDonut({
                                             setSelectedTreeKeys={undefined}
                                         />
                                     </div>
+                                    {/* Show root node name below each donut in grid view */}
                                     <div
+                                        className="donut-grid-title"
                                         style={{
-                                            marginTop: 10,
-                                            textAlign: 'center',
-                                            color: themeContextRaw.theme.theme.colors.primarytxt.value,
-                                            fontWeight: 500,
-                                            fontSize: 16,
-                                            wordBreak: 'break-word',
-                                            maxWidth: '100%',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            whiteSpace: 'nowrap',
+                                            color: themeContextRaw.theme.theme.colors.primarytxt.value
                                         }}
                                         title={typeof rootNode.title === 'function' ? '[unnamed]' : String(rootNode.title)}
                                     >
