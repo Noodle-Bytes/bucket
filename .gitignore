@@ -27,5 +27,11 @@ index.html
 # Node modules
 electron/node_modules/
 
+# VSCode settings (do not check in)
+.vscode/settings.json
+
 # Local Copilot instructions (do not check in)
 .github/copilot-instructions.md
+
+# Example coverage files (do not check in)
+example*.bktgz
