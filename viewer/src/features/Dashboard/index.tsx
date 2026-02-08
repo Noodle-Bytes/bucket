@@ -14,8 +14,9 @@ import {
     Flex,
     FloatButton,
     Button,
+    Typography,
 } from "antd";
-import { BgColorsOutlined, FileAddOutlined, ClearOutlined } from "@ant-design/icons";
+import { BgColorsOutlined, FileAddOutlined, ClearOutlined, FolderOpenOutlined } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 
 import Sider from "./components/Sider";

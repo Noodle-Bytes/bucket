@@ -47,6 +47,29 @@ type RecordWithRatio = {
     buckets_full_ratio?: number;
 };
 
+type CoverageRecord = {
+    key: number;
+    target: number;
+    hits: number;
+    hit_ratio: number;
+    goal_name: string;
+    [axisName: string]: string | number; // Dynamic axis names
+};
+
+type SummaryRecord = {
+    key: TreeKey;
+    path: string;
+    desc: string;
+    target: number;
+    hits: number;
+    target_buckets: number;
+    hit_buckets: number;
+    full_buckets: number;
+    hit_ratio: number;
+    buckets_hit_ratio: number;
+    buckets_full_ratio: number;
+};
+
 export type PointGridProps = {
     node: PointNode;
 };
