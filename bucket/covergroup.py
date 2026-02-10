@@ -280,6 +280,9 @@ class Covergroup(CoverBase):
 
     @validate_call
     def iter_children(self) -> Iterable[CoverBase]:
+        # We maintain a cache for the ordered sequence of children (coverpoints then
+        # covergroups, each sorted by name) to avoid repeated sorting on every iteration.
+        # The cache is invalidated when add_coverpoint or add_covergroup is called.
         if self._ordered_children_cache is None:
             self._ordered_children_cache = tuple(
                 itertools.chain(
