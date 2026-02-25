@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
 type PointTuple = {
@@ -37,6 +37,9 @@ type AxisTuple = {
 type AxisValueTuple = {
     start: number;
     value: string;
+    sort_kind?: string | null;
+    sort_low?: number | null;
+    sort_high?: number | null;
 };
 
 type GoalTuple = {

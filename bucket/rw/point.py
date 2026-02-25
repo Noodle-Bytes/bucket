@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 from ..axis import Axis
 from ..covergroup import CoverBase
@@ -16,6 +16,21 @@ from .common import (
     PuppetReadout,
     Reader,
 )
+
+
+def _axis_value_sort(value):
+    if isinstance(value, int | float):
+        numeric = float(value)
+        return ("number", numeric, numeric)
+    if (
+        isinstance(value, list)
+        and len(value) == 2
+        and all(isinstance(item, int) for item in value)
+    ):
+        low = float(min(value))
+        high = float(max(value))
+        return ("range", low, high)
+    return ("text", None, None)
 
 
 class PointReader(Reader):
@@ -79,8 +94,17 @@ class PointReader(Reader):
             readout.axes.append(AxisTuple.from_link(axis_link))
 
             start = axis_link.start.axis_value
-            for offset, axis_value in enumerate(axis_link.item.values.keys()):
-                av_tuple = AxisValueTuple(start=(start + offset), value=axis_value)
+            for offset, (axis_value, raw_value) in enumerate(
+                axis_link.item.values.items()
+            ):
+                sort_kind, sort_low, sort_high = _axis_value_sort(raw_value)
+                av_tuple = AxisValueTuple(
+                    start=(start + offset),
+                    value=axis_value,
+                    sort_kind=sort_kind,
+                    sort_low=sort_low,
+                    sort_high=sort_high,
+                )
                 readout.axis_values.append(av_tuple)
 
         for goal_link in chain.index.iter(GoalItem):

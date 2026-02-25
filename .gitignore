@@ -29,3 +29,4 @@ electron/node_modules/
 
 # Local Copilot instructions (do not check in)
 .github/copilot-instructions.md
+.vscode/settings.json
