@@ -183,7 +183,7 @@ class Coverpoint(CoverBase):
         """
         Call user defined sample function if active
         """
-        if self._active and self._tier_active:
+        if self._active and self._tier_active and self.should_sample(trace):
             self.sample(trace)
 
     def _all_axis_value_combinations(self):
@@ -338,3 +338,12 @@ class Coverpoint(CoverBase):
         """
         for bucket in self._all_axis_value_combinations():
             yield self._cvg_hits[bucket]
+
+    def should_sample(self, trace) -> bool:
+        """
+        Optional hook: return False to skip sampling this trace. By default returns True.
+
+        Override this to separate \"is this trace relevant?\" from \"how to sample it\".
+        All logic can instead live in sample() (e.g. early return); this is optional.
+        """
+        return True
