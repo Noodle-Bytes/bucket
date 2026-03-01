@@ -319,13 +319,10 @@ export class ArchiveReadout implements Readout {
             start,
             end,
         )) {
-            const [value, sort_kind, sort_low, sort_high] = row;
+            const [value] = row;
             yield {
                 start: idx,
                 value: toString(value),
-                sort_kind: toNullableString(sort_kind),
-                sort_low: toNullableNumber(sort_low),
-                sort_high: toNullableNumber(sort_high),
             };
             idx += 1;
         }

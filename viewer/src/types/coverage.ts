@@ -37,9 +37,6 @@ type AxisTuple = {
 type AxisValueTuple = {
     start: number;
     value: string;
-    sort_kind?: string | null;
-    sort_low?: number | null;
-    sort_high?: number | null;
 };
 
 type GoalTuple = {

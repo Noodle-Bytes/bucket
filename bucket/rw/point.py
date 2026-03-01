@@ -18,10 +18,11 @@ from .common import (
 )
 
 
-def _axis_value_sort(value):
+def _axis_value_sort_key(value):
+    """Return (kind_order, low, high, value) for ordering axis values when creating axes."""
     if isinstance(value, int | float):
         numeric = float(value)
-        return ("number", numeric, numeric)
+        return (0, numeric, numeric, str(value))
     if (
         isinstance(value, list)
         and len(value) == 2
@@ -29,8 +30,8 @@ def _axis_value_sort(value):
     ):
         low = float(min(value))
         high = float(max(value))
-        return ("range", low, high)
-    return ("text", None, None)
+        return (1, low, high, str(value))
+    return (2, 0.0, 0.0, str(value))
 
 
 class PointReader(Reader):
@@ -94,18 +95,14 @@ class PointReader(Reader):
             readout.axes.append(AxisTuple.from_link(axis_link))
 
             start = axis_link.start.axis_value
-            for offset, (axis_value, raw_value) in enumerate(
-                axis_link.item.values.items()
-            ):
-                sort_kind, sort_low, sort_high = _axis_value_sort(raw_value)
-                av_tuple = AxisValueTuple(
-                    start=(start + offset),
-                    value=axis_value,
-                    sort_kind=sort_kind,
-                    sort_low=sort_low,
-                    sort_high=sort_high,
+            items = sorted(
+                axis_link.item.values.items(),
+                key=lambda kv: _axis_value_sort_key(kv[1]),
+            )
+            for offset, (axis_value, _raw_value) in enumerate(items):
+                readout.axis_values.append(
+                    AxisValueTuple(start=(start + offset), value=axis_value)
                 )
-                readout.axis_values.append(av_tuple)
 
         for goal_link in chain.index.iter(GoalItem):
             readout.goals.append(GoalTuple.from_link(goal_link))

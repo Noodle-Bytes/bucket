@@ -254,8 +254,8 @@ class TestApplyGoalsWithValues:
         assert cp._cvg_goals[("1",)] == cp._goal_dict["SINGLE"]
         assert cp._cvg_goals[("10",)] == cp._goal_dict["SINGLE"]
 
-    def test_point_reader_axis_value_sort_metadata(self):
-        """PointReader includes semantic sort metadata for axis values."""
+    def test_point_reader_axis_values_ordered_by_start(self):
+        """Axis values are ordered when creating axes (number, range, text); sort by start."""
 
         class TestCoverpoint(Coverpoint):
             def setup(self, ctx):
@@ -277,19 +277,11 @@ class TestApplyGoalsWithValues:
 
         cvg = TopCoverage()
         readout = PointReader("").read(cvg)
-        axis_values = {av.value: av for av in readout.iter_axis_values()}
+        axis_values = list(readout.iter_axis_values())
 
-        assert axis_values["high"].sort_kind == "number"
-        assert axis_values["high"].sort_low == 10
-        assert axis_values["high"].sort_high == 10
-
-        assert axis_values["small"].sort_kind == "range"
-        assert axis_values["small"].sort_low == 0
-        assert axis_values["small"].sort_high == 3
-
-        assert axis_values["label"].sort_kind == "text"
-        assert axis_values["label"].sort_low is None
-        assert axis_values["label"].sort_high is None
+        # Order: number (high=10), then range (small=0-3), then text (label)
+        assert [av.value for av in axis_values] == ["high", "small", "label"]
+        assert [av.start for av in axis_values] == [0, 1, 2]
 
     def test_mixed_comparison_patterns(self):
         """Test mixing .name and .value comparisons"""

@@ -75,11 +75,10 @@ class AxisTuple(NamedTuple):
 
 
 class AxisValueTuple(NamedTuple):
+    """Axis value with start index. Order axis values when creating axes; sort by start."""
+
     start: int
     value: str
-    sort_kind: str | None = None
-    sort_low: float | None = None
-    sort_high: float | None = None
 
 
 class GoalTuple(NamedTuple):

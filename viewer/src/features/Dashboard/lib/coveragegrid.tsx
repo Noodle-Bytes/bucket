@@ -8,7 +8,7 @@ import { Table, TableProps } from "antd";
 import { view } from "../theme";
 import { TreeKey } from "./tree";
 import {Theme as ThemeType} from "@/theme";
-import { axisValueCompare, AxisSortMeta, natCompare, numCompare } from "./compare";
+import { natCompare, numCompare } from "./compare";
 import Color from "colorjs.io";
 import Theme from "@/providers/Theme";
 
@@ -89,16 +89,14 @@ function getColumnMixedCompare(columnKey: string) {
     return (a: CoverageRecord | SummaryRecord, b: CoverageRecord | SummaryRecord) => natCompare(a[columnKey], b[columnKey]);
 }
 
-function getAxisColumnCompare(columnKey: string, sortMetaByValue: Map<string, AxisSortMeta>) {
+function getAxisColumnCompareByPosition(
+    columnKey: string,
+    orderByValue: Map<string, number>,
+) {
     return (a: CoverageRecord | SummaryRecord, b: CoverageRecord | SummaryRecord) => {
-        const aValue = a[columnKey];
-        const bValue = b[columnKey];
-        return axisValueCompare(
-            aValue,
-            bValue,
-            sortMetaByValue.get(String(aValue)),
-            sortMetaByValue.get(String(bValue)),
-        );
+        const aIdx = orderByValue.get(String(a[columnKey])) ?? -1;
+        const bIdx = orderByValue.get(String(b[columnKey])) ?? -1;
+        return aIdx - bIdx;
     };
 }
 
@@ -149,15 +147,9 @@ export function PointGrid({node}: PointGridProps) {
                     axis.value_start - axis_value_start,
                     axis.value_end - axis_value_start,
                 );
-                const sortMetaByValue = new Map<string, AxisSortMeta>(
-                    axisValueSlice.map(axisValue => [
-                        axisValue.value,
-                        {
-                            sort_kind: axisValue.sort_kind,
-                            sort_low: axisValue.sort_low,
-                            sort_high: axisValue.sort_high,
-                        },
-                    ]),
+                // Order is fixed when axes are created; sort by position (start)
+                const orderByValue = new Map(
+                    axisValueSlice.map((av, i) => [av.value, i]),
                 );
                 return {
                     title: axis.name,
@@ -170,7 +162,7 @@ export function PointGrid({node}: PointGridProps) {
                     filterMode: 'tree',
                     filterSearch: true,
                     onFilter: (value, record) => record[axis.name] == value,
-                    sorter: getAxisColumnCompare(axis.name, sortMetaByValue)
+                    sorter: getAxisColumnCompareByPosition(axis.name, orderByValue)
                 }
             })
         },
