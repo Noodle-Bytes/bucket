@@ -78,6 +78,8 @@ export default class CoverageTree extends Tree<PointData> {
                 {
                     value: "Summary",
                     icon: <TableOutlined />,
+                    label: "Summary",
+                    title: "View coverage summary as a table or donut chart",
                 },
             ];
         }
@@ -86,6 +88,8 @@ export default class CoverageTree extends Tree<PointData> {
                 {
                     value: "Summary",
                     icon: <TableOutlined />,
+                    label: "Summary",
+                    title: "View coverage summary as a table or donut chart",
                 },
             ];
         } else {
@@ -93,10 +97,14 @@ export default class CoverageTree extends Tree<PointData> {
                 {
                     value: "Point",
                     icon: <TableOutlined />,
+                    label: "Point",
+                    title: "View detailed coverage point data",
                 },
                 {
                     value: "Pivot",
                     icon: <LayoutOutlined />,
+                    label: "Pivot",
+                    title: "View coverage in pivot layout (coming soon)",
                 },
             ];
         }

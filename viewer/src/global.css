@@ -1,0 +1,27 @@
+/*
+ * SPDX-License-Identifier: MIT
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+ */
+
+/* Hide scrollbars for Chrome, Safari and Opera */
+*::-webkit-scrollbar {
+  display: none;
+}
+/* Hide scrollbars for IE, Edge and Firefox */
+* {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Donut grid title below each donut in grid view */
+.donut-grid-title {
+  margin-top: 10px;
+  text-align: center;
+  font-weight: 500;
+  font-size: 16px;
+  word-break: break-word;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
