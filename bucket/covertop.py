@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2025 Vypercore. All Rights Reserved
@@ -54,7 +54,7 @@ class Covertop(Covergroup):
     def sample(self, trace):
         """Go through the coverage tree and recursively call sample, passing in trace"""
         processed_trace = self.process_trace(trace)
-        if processed_trace is not None:
+        if processed_trace is not None and self.should_sample(processed_trace):
             for child in self.iter_children():
                 child._sample(processed_trace)
 

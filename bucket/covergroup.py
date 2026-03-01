@@ -62,6 +62,7 @@ class Covergroup(CoverBase):
         self._active = True
         self._coverpoints = {}
         self._covergroups = {}
+        self._ordered_children_cache: tuple[CoverBase, ...] | None = None
         self._sha = hashlib.sha256((self._name + self._description).encode())
         self._setup()
 
@@ -197,6 +198,7 @@ class Covergroup(CoverBase):
         if coverpoint._name in self._coverpoints:
             raise Exception("Coverpoint names must be unique within a covergroup")
         self._coverpoints[coverpoint._name] = coverpoint
+        self._ordered_children_cache = None
 
     def add_covergroup(
         self,
@@ -223,6 +225,7 @@ class Covergroup(CoverBase):
         if covergroup._name in self._covergroups:
             raise Exception("Covergroup names must be unique within a covergroup")
         self._covergroups[covergroup._name] = covergroup
+        self._ordered_children_cache = None
 
     def __getattr__(self, key: str):
         """
@@ -277,12 +280,17 @@ class Covergroup(CoverBase):
 
     @validate_call
     def iter_children(self) -> Iterable[CoverBase]:
-        self._coverpoints = dict(sorted(self._coverpoints.items()))
-        self._covergroups = dict(sorted(self._covergroups.items()))
-
-        yield from itertools.chain(
-            self._coverpoints.values(), self._covergroups.values()
-        )
+        # We maintain a cache for the ordered sequence of children (coverpoints then
+        # covergroups, each sorted by name) to avoid repeated sorting on every iteration.
+        # The cache is invalidated when add_coverpoint or add_covergroup is called.
+        if self._ordered_children_cache is None:
+            self._ordered_children_cache = tuple(
+                itertools.chain(
+                    (v for _, v in sorted(self._coverpoints.items())),
+                    (v for _, v in sorted(self._covergroups.items())),
+                )
+            )
+        yield from self._ordered_children_cache
 
     def _chain_def(self, start: OpenLink[CovDef] | None = None) -> Link[CovDef]:
         start = start or OpenLink(CovDef())
