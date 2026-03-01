@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { notification } from "antd";
+import { notification, Modal } from "antd";
 import CoverageTree from "@/features/Dashboard/lib/coveragetree";
 import {
     isElectron,
@@ -97,6 +97,23 @@ export function useFileLoader() {
             // Web browser file picker
             fileInputRef.current?.click();
         }
+    };
+
+    /**
+     * Clear coverage data and reset to empty tree
+     */
+    const clearCoverage = (): void => {
+        Modal.confirm({
+            title: 'Clear Coverage',
+            content: 'Are you sure you want to clear all coverage data?',
+            okText: 'Clear',
+            okType: 'danger',
+            cancelText: 'Cancel',
+            onOk: () => {
+                setTree(getDefaultTree());
+                setError(null);
+            },
+        });
     };
 
     /**
@@ -206,6 +223,11 @@ export function useFileLoader() {
                     });
                 }
             });
+
+            // Handle clear coverage event from Electron
+            electronAPI.onClearCoverage(() => {
+                clearCoverage();
+            });
         }
 
         return () => {
@@ -229,5 +251,6 @@ export function useFileLoader() {
         fileInputRef,
         handleFileInput,
         openFileDialog,
+        clearCoverage,
     };
 }

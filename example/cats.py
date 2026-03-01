@@ -119,10 +119,10 @@ class CatStats(Coverpoint):
         if bucket.age.value >= 13 and bucket.evil_thoughts.name in ["low"]:
             return goals.SUSPICIOUS
 
-    def sample(self, trace):
-        if trace.name not in self.important_names:
-            return
+    def should_sample(self, trace):
+        return trace.name in self.important_names
 
+    def sample(self, trace):
         self.bucket.clear()
         self.bucket.set_axes(
             name=trace.name,
@@ -208,12 +208,12 @@ class PlayToysByName(Coverpoint):
             description="Types of cat toys",
         )
 
+    def should_sample(self, trace):
+        return trace.name in self.valid_names
+
     def sample(self, trace):
         # 'with bucket' is used, so bucket values are cleared each time
         # bucket can also be manually cleared by using bucket.clear()
-        if trace.name not in self.valid_names:
-            return
-
         with self.bucket as bucket:
             bucket.set_axes(
                 breed=trace.breed,

@@ -133,6 +133,16 @@ If multiple values are to be sampled for a given call of the sample method, then
                 bucket.set_axes(my_axis_3=trace.registers[gpr])
                 bucket.hit()
 ```
+
+---
+### Optional: should_sample()
+
+You can keep all logic in `sample()`: decide there whether the trace is relevant and only then call `bucket.set_axes()` / `bucket.hit()`. That is fully supported.
+
+Optionally, you can override `should_sample(trace)` to separate **whether this trace is relevant** from **how to sample it**. When you override it, the coverpoint only calls `sample(trace)` when `should_sample(trace)` returns `True`. By default it returns `True`, so behaviour is unchanged if you do not override it.
+
+Use `should_sample()` when you want to skip sampling entirely for some traces (e.g. by trace type or validity); use `sample()` for mapping the trace into buckets and recording hits. The example coverpoints in `example/cats.py` and `example/dogs.py` use `should_sample()` for name-based filtering so that `sample()` only handles bucketing and hitting.
+
 ---
 ### Passing the coverpoint extra arguments
 

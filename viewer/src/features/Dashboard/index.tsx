@@ -16,15 +16,17 @@ import {
     Button,
     Typography,
 } from "antd";
-import { BgColorsOutlined, FolderOpenOutlined } from "@ant-design/icons";
+import { BgColorsOutlined, FileAddOutlined, ClearOutlined, FolderOpenOutlined } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 
 import Sider from "./components/Sider";
+import EmptyState from "./components/EmptyState";
 import { antTheme, view } from "./theme";
 import { useEffect, useMemo, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
-import { LayoutOutlined } from "@ant-design/icons";
+import { LayoutOutlined, TableOutlined, PieChartOutlined } from "@ant-design/icons";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
+import { CoverageDonut } from "./lib/coveragedonut";
 import { hexToRgba } from "@/utils/colors";
 const { Header, Content } = Layout;
 
@@ -46,6 +48,7 @@ const ColorModeToggleButton = (props: FloatButtonProps) => {
                         {...props}
                         onClick={onClick}
                         icon={<BgColorsOutlined />}
+                        tooltip="Toggle theme (light/dark/auto)"
                     />
                 );
             }}
@@ -152,16 +155,18 @@ function getBreadCrumbItems({
 export type DashboardProps = {
     tree: Tree;
     onOpenFile?: () => void | Promise<void>;
+    onClearCoverage?: () => void;
     isDragging?: boolean;
 };
 
-export default function Dashboard({ tree, onOpenFile, isDragging = false }: DashboardProps) {
+export default function Dashboard({ tree, onOpenFile, onClearCoverage, isDragging = false }: DashboardProps) {
     const [selectedTreeKeys, setSelectedTreeKeys] = useState<TreeKey[]>([]);
     const [expandedTreeKeys, setExpandedTreeKeys] = useState<TreeKey[]>([]);
     const [autoExpandTreeParent, setAutoExpandTreeParent] = useState(true);
     const [treeKeyContentKey, setTreeKeyContentKey] = useState(
         {} as { [key: TreeKey]: string | number },
     );
+    const [summaryViewMode, setSummaryViewMode] = useState<'table' | 'donut'>('table');
 
     // Check if tree is empty (no coverage loaded)
     const isEmpty = tree.getRoots().length === 0;
@@ -215,12 +220,7 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
     // - Electron production: Use app:// protocol (custom protocol registered in main.js)
     // - Browser with file://: Use relative path (when opening HTML directly)
     // - Browser with http://: Use Vite's BASE_URL (development server)
-    // Check if we're running in Electron (will be used in a following PR)
-    const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
-    void isElectron; // Suppress unused variable warning - will be used in following PR
-    // Get logo path - in Electron production, use app:// protocol
     const isElectronProduction = typeof window !== 'undefined' && window.location.protocol === 'app:';
-    // For file:// protocol (browser opening HTML directly), use relative path
     const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
     const logoSrc = isElectronProduction
         ? 'app://logo.svg'
@@ -253,51 +253,7 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
     const selectedViewContent = useMemo(() => {
         // Show empty state if no coverage is loaded
         if (isEmpty) {
-            return (
-                <Theme.Consumer>
-                    {({ theme }) => {
-                        const primaryTextColor = theme.theme.colors.primarytxt.value;
-                        const secondaryTextColor = theme.theme.colors.desaturatedtxt.value;
-
-                        return (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px', padding: '40px 20px' }}>
-                                <div style={{ marginBottom: '40px', display: 'flex', justifyContent: 'center' }}>
-                                    <img src={logoSrc} alt="Bucket" style={{ width: '120px', height: 'auto', opacity: 0.8 }} />
-                                </div>
-                                <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
-                                    <Typography.Title level={4} style={{ marginBottom: '16px', marginTop: 0 }}>
-                                        No Coverage Loaded
-                                    </Typography.Title>
-                                    <Typography.Paragraph style={{ marginBottom: '24px', color: primaryTextColor }}>
-                                        Load a Bucket coverage archive file (`.bktgz`) to view coverage data.
-                                    </Typography.Paragraph>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
-                                        {onOpenFile ? (
-                                            <>
-                                                <Button
-                                                    type="primary"
-                                                    icon={<FolderOpenOutlined />}
-                                                    size="large"
-                                                    onClick={onOpenFile}
-                                                >
-                                                    Open File...
-                                                </Button>
-                                                <Typography.Text style={{ fontSize: '12px', color: secondaryTextColor }}>
-                                                    Or drag and drop a `.bktgz` file here
-                                                </Typography.Text>
-                                            </>
-                                        ) : (
-                                            <Typography.Text style={{ color: secondaryTextColor }}>
-                                                Drag and drop a `.bktgz` file here
-                                            </Typography.Text>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    }}
-                </Theme.Consumer>
-            );
+            return <EmptyState logoSrc={logoSrc} onOpenFile={onOpenFile} />;
         }
 
         const currentNode = tree.getNodeByKey(viewKey);
@@ -310,6 +266,15 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
             case "Pivot":
                 return <LayoutOutlined />;
             case "Summary":
+                if (summaryViewMode === 'donut') {
+                    return (
+                        <CoverageDonut
+                            tree={tree}
+                            node={currentNode}
+                            setSelectedTreeKeys={onSelect}
+                        />
+                    );
+                }
                 return (
                     <PointSummaryGrid
                         tree={tree}
@@ -322,7 +287,7 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
             default:
                 throw new Error("Invalid view!?");
         }
-    }, [viewKey, currentContentKey, tree, isEmpty, onOpenFile]);
+    }, [viewKey, currentContentKey, tree, isEmpty, onOpenFile, logoSrc, summaryViewMode]);
 
     return (
         <ConfigProvider theme={antTheme}>
@@ -384,12 +349,54 @@ export default function Dashboard({ tree, onOpenFile, isDragging = false }: Dash
                                         </>
                                     )}
                                 </Theme.Consumer>
-                                <Segmented
-                                    {...view.body.header.flex.segmented.props}
-                                    options={contentViews}
-                                    value={currentContentKey}
-                                    onChange={onViewChange}
-                                />
+                                <Flex gap="small" align="center">
+                                    <Segmented
+                                        {...view.body.header.flex.segmented.props}
+                                        options={contentViews}
+                                        value={currentContentKey}
+                                        onChange={onViewChange}
+                                    />
+                                    {currentContentKey === "Summary" && (
+                                        <Segmented
+                                            options={[
+                                                {
+                                                    value: 'table',
+                                                    icon: <TableOutlined />,
+                                                    label: 'Table',
+                                                    title: 'View coverage as a table',
+                                                },
+                                                {
+                                                    value: 'donut',
+                                                    icon: <PieChartOutlined />,
+                                                    label: 'Donut',
+                                                    title: 'View coverage as a donut chart',
+                                                },
+                                            ]}
+                                            value={summaryViewMode}
+                                            onChange={(value) => setSummaryViewMode(value as 'table' | 'donut')}
+                                        />
+                                    )}
+                                    {onOpenFile && (
+                                        <Button
+                                            icon={<FileAddOutlined />}
+                                            onClick={onOpenFile}
+                                            size="small"
+                                            type="primary"
+                                        >
+                                            Load
+                                        </Button>
+                                    )}
+                                    {onClearCoverage && (
+                                        <Button
+                                            icon={<ClearOutlined />}
+                                            onClick={onClearCoverage}
+                                            size="small"
+                                            danger
+                                        >
+                                            Clear
+                                        </Button>
+                                    )}
+                                </Flex>
                             </Flex>
                         </Header>
                     )}
