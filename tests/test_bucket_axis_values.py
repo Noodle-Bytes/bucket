@@ -9,6 +9,7 @@ import pytest
 
 from bucket import Coverpoint, Covertop
 from bucket.common.types import BucketValCompError
+from bucket.rw import PointReader
 
 
 class TestBucketAxisStructure:
@@ -252,6 +253,43 @@ class TestApplyGoalsWithValues:
         assert cp._cvg_goals[("0",)] == cp._goal_dict["SINGLE"]
         assert cp._cvg_goals[("1",)] == cp._goal_dict["SINGLE"]
         assert cp._cvg_goals[("10",)] == cp._goal_dict["SINGLE"]
+
+    def test_point_reader_axis_value_sort_metadata(self):
+        """PointReader includes semantic sort metadata for axis values."""
+
+        class TestCoverpoint(Coverpoint):
+            def setup(self, ctx):
+                self.add_axis(
+                    name="mixed",
+                    values={"small": [0, 3], "high": 10, "label": "zebra"},
+                    description="Mixed axis values",
+                )
+
+            def apply_goals(self, bucket, goals):
+                return None
+
+            def sample(self, trace):
+                pass
+
+        class TopCoverage(Covertop):
+            def setup(self, ctx):
+                self.add_coverpoint(TestCoverpoint())
+
+        cvg = TopCoverage()
+        readout = PointReader("").read(cvg)
+        axis_values = {av.value: av for av in readout.iter_axis_values()}
+
+        assert axis_values["high"].sort_kind == "number"
+        assert axis_values["high"].sort_low == 10
+        assert axis_values["high"].sort_high == 10
+
+        assert axis_values["small"].sort_kind == "range"
+        assert axis_values["small"].sort_low == 0
+        assert axis_values["small"].sort_high == 3
+
+        assert axis_values["label"].sort_kind == "text"
+        assert axis_values["label"].sort_low is None
+        assert axis_values["label"].sort_high is None
 
     def test_mixed_comparison_patterns(self):
         """Test mixing .name and .value comparisons"""

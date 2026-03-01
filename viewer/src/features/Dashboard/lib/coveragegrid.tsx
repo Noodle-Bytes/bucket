@@ -8,7 +8,7 @@ import { Table, TableProps } from "antd";
 import { view } from "../theme";
 import { TreeKey } from "./tree";
 import {Theme as ThemeType} from "@/theme";
-import { natCompare, numCompare } from "./compare";
+import { axisValueCompare, AxisSortMeta, natCompare, numCompare } from "./compare";
 import Color from "colorjs.io";
 import Theme from "@/providers/Theme";
 
@@ -89,6 +89,19 @@ function getColumnMixedCompare(columnKey: string) {
     return (a: CoverageRecord | SummaryRecord, b: CoverageRecord | SummaryRecord) => natCompare(a[columnKey], b[columnKey]);
 }
 
+function getAxisColumnCompare(columnKey: string, sortMetaByValue: Map<string, AxisSortMeta>) {
+    return (a: CoverageRecord | SummaryRecord, b: CoverageRecord | SummaryRecord) => {
+        const aValue = a[columnKey];
+        const bValue = b[columnKey];
+        return axisValueCompare(
+            aValue,
+            bValue,
+            sortMetaByValue.get(String(aValue)),
+            sortMetaByValue.get(String(bValue)),
+        );
+    };
+}
+
 
 function getColumnNumCompare(columnKey: string) {
     return (a: CoverageRecord | SummaryRecord, b: CoverageRecord | SummaryRecord) => numCompare(a[columnKey], b[columnKey]);
@@ -132,18 +145,32 @@ export function PointGrid({node}: PointGridProps) {
         {
             title: "Axes",
             children: axes.map(axis => {
+                const axisValueSlice = axis_values.slice(
+                    axis.value_start - axis_value_start,
+                    axis.value_end - axis_value_start,
+                );
+                const sortMetaByValue = new Map<string, AxisSortMeta>(
+                    axisValueSlice.map(axisValue => [
+                        axisValue.value,
+                        {
+                            sort_kind: axisValue.sort_kind,
+                            sort_low: axisValue.sort_low,
+                            sort_high: axisValue.sort_high,
+                        },
+                    ]),
+                );
                 return {
                     title: axis.name,
                     dataIndex: axis.name,
                     key: axis.name,
-                    filters: axis_values.slice(axis.value_start - axis_value_start, axis.value_end - axis_value_start).map(axis_value => ({
+                    filters: axisValueSlice.map(axis_value => ({
                         text: axis_value.value,
                         value: axis_value.value
                     })),
                     filterMode: 'tree',
                     filterSearch: true,
                     onFilter: (value, record) => record[axis.name] == value,
-                    sorter: getColumnMixedCompare(axis.name)
+                    sorter: getAxisColumnCompare(axis.name, sortMetaByValue)
                 }
             })
         },
