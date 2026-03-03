@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+
+# SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2025 Vypercore. All Rights Reserved
 
 import hashlib
+from bisect import bisect_right
 from functools import lru_cache
 
 from .common.chain import Link, OpenLink
@@ -51,12 +55,82 @@ class Axis:
         self.other_name = enable_other if isinstance(enable_other, str) else "Other"
 
         self.values = self.sanitise_values(values)
+        self._ordered_values = tuple(self.values.items())
+        self._init_lookup_index()
 
         self.size = 0
         self.sha = hashlib.sha256((self.name + self.description).encode())
         for key in self.values.keys():
             self.size += 1
             self.sha.update(key.encode())
+
+    def _init_lookup_index(self):
+        """
+        Build lookup indexes for fast resolution while preserving existing matching semantics.
+        """
+        self._lookup_mode = "generic"
+
+        scalar_entries = []
+        range_entries = []
+        for order, (key, resolved_value) in enumerate(self._ordered_values):
+            if isinstance(resolved_value, list):
+                range_entries.append((order, key, resolved_value))
+            else:
+                scalar_entries.append((order, key, resolved_value))
+
+        # Fast path: only scalar values.
+        if range_entries == []:
+            self._lookup_mode = "scalar_only"
+            self._exact_lookup = {}
+            self._unhashable_exact_values = []
+            for _order, key, resolved_value in scalar_entries:
+                try:
+                    hash(resolved_value)
+                except TypeError:
+                    self._unhashable_exact_values.append((key, resolved_value))
+                else:
+                    self._exact_lookup.setdefault(resolved_value, key)
+            return
+
+        # Fast path: ranges (plus optional "Other"/None scalar), non-overlapping.
+        has_only_ranges_and_other = True
+        for _order, key, resolved_value in scalar_entries:
+            if not (
+                self.enable_other and key == self.other_name and resolved_value is None
+            ):
+                has_only_ranges_and_other = False
+                break
+
+        if has_only_ranges_and_other:
+            ordered_ranges = []
+            for _order, key, resolved_value in range_entries:
+                ordered_ranges.append((resolved_value[0], resolved_value[1], key))
+
+            sorted_ranges = sorted(ordered_ranges, key=lambda it: (it[0], it[1], it[2]))
+            overlaps = False
+            if sorted_ranges:
+                _prev_start, prev_end, _prev_key = sorted_ranges[0]
+                for start, end, _key in sorted_ranges[1:]:
+                    if start <= prev_end:
+                        overlaps = True
+                        break
+                    _prev_start, prev_end = start, end
+
+            if not overlaps:
+                self._lookup_mode = "ranges_non_overlapping"
+                self._range_starts = [it[0] for it in sorted_ranges]
+                self._range_ends = [it[1] for it in sorted_ranges]
+                self._range_keys = [it[2] for it in sorted_ranges]
+                self._exact_lookup = {}
+                self._unhashable_exact_values = []
+                for _order, key, resolved_value in scalar_entries:
+                    try:
+                        hash(resolved_value)
+                    except TypeError:
+                        self._unhashable_exact_values.append((key, resolved_value))
+                    else:
+                        self._exact_lookup.setdefault(resolved_value, key)
+                return
 
     def chain(self, start: OpenLink[CovDef] | None = None) -> Link[CovDef]:
         start = start or OpenLink(CovDef())
@@ -118,26 +192,53 @@ class Axis:
 
         return dict(sorted(values_dict.items()))
 
-    @lru_cache(maxsize=128)  # noqa: B019
+    @lru_cache(maxsize=4096)  # noqa: B019
     def get_named_value(self, value: str | int):
         """
         Retrieve the name of the value/range for a given value
         """
         if (value_str := str(value)) in self.values:
             return value_str
+
+        if self._lookup_mode == "scalar_only":
+            try:
+                return self._exact_lookup[value]
+            except (KeyError, TypeError):
+                pass
+
+            for key, resolved_value in self._unhashable_exact_values:
+                if value == resolved_value:
+                    return key
+
+        elif self._lookup_mode == "ranges_non_overlapping":
+            try:
+                return self._exact_lookup[value]
+            except (KeyError, TypeError):
+                pass
+
+            for key, resolved_value in self._unhashable_exact_values:
+                if value == resolved_value:
+                    return key
+
+            if isinstance(value, int) and self._range_starts:
+                idx = bisect_right(self._range_starts, value) - 1
+                if idx >= 0 and value <= self._range_ends[idx]:
+                    return self._range_keys[idx]
+
         else:
+            # Generic semantics-preserving path.
             # Must be named, in a range or 'other'
-            for k, v in self.values.items():
+            for k, v in self._ordered_values:
                 if value == v:
                     return k
                 elif isinstance(v, list) and isinstance(value, int):
                     if v[0] <= value <= v[1]:
                         return k
 
-            # Value not recognised as user defined
-            # If 'other' category has been enabled, then return other name
-            if not self.enable_other:
-                raise AxisUnrecognisedValue(
-                    f'Unrecognised value for axis "{self.name}": {value}',
-                )
-            return self.other_name
+        # Value not recognised as user defined
+        # If 'other' category has been enabled, then return other name
+        if not self.enable_other:
+            raise AxisUnrecognisedValue(
+                f'Unrecognised value for axis "{self.name}": {value}',
+            )
+        return self.other_name
