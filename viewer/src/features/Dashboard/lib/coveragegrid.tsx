@@ -17,13 +17,7 @@ import {
     CaretDownOutlined,
 } from "@ant-design/icons";
 import { hexToRgba, getCoverageColor } from "@/utils/colors";
-import {
-    CSSProperties,
-    MouseEvent,
-    useEffect,
-    useMemo,
-    useState,
-} from "react";
+import { CSSProperties, MouseEvent, useEffect, useMemo, useState } from "react";
 import {
     LARGE_TABLE_SCROLL_Y,
     LargeModeOverrideState,
@@ -454,6 +448,7 @@ export function PointGrid({ node }: PointGridProps) {
     const [largeGoalFilter, setLargeGoalFilter] = useState<string>("all");
     const [largeHitFilter, setLargeHitFilter] = useState<HitClassFilter>("all");
     const [largeSort, setLargeSort] = useState<LargeSortOption>("bucket_asc");
+    const [largeScrollY, setLargeScrollY] = useState<number>(LARGE_TABLE_SCROLL_Y);
 
     const model = useMemo(() => buildPointTableModel(node), [node]);
 
@@ -465,6 +460,23 @@ export function PointGrid({ node }: PointGridProps) {
         setLargeHitFilter("all");
         setLargeSort("bucket_asc");
     }, [node.key]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") {
+            return;
+        }
+
+        const updateScrollY = () => {
+            const viewportHeight = window.innerHeight || LARGE_TABLE_SCROLL_Y;
+            const reservedHeight = 260;
+            const next = Math.max(LARGE_TABLE_SCROLL_Y, viewportHeight - reservedHeight);
+            setLargeScrollY(next);
+        };
+
+        updateScrollY();
+        window.addEventListener("resize", updateScrollY);
+        return () => window.removeEventListener("resize", updateScrollY);
+    }, []);
 
     useEffect(() => {
         if (overrideState.warningAcknowledged) {
@@ -703,7 +715,7 @@ export function PointGrid({ node }: PointGridProps) {
                                 virtual
                                 scroll={{
                                     x: "max-content",
-                                    y: LARGE_TABLE_SCROLL_Y,
+                                    y: largeScrollY,
                                 }}
                             />
                         </>
