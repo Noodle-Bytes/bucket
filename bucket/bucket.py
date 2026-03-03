@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+
+# SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2025 Vypercore. All Rights Reserved
 import logging
 from typing import TYPE_CHECKING
@@ -46,18 +49,18 @@ class Bucket:
         # If axis values are passed in, set axes
         self.set_axes(**kwargs)
 
-        assert len(self.axis_values) == len(
-            self.parent._axes
+        axis_values = self.axis_values
+        assert (
+            len(axis_values) == self.parent._axis_count
         ), "Incorrect number of axes have been set"
+
         axis_value_list = []
-        for i, axis in enumerate(self.parent._axes):
-            if axis.name in self.axis_values:
-                result = self.parent._axes[i].get_named_value(
-                    self.axis_values[axis.name]
-                )
+        for axis_name, axis_resolver in self.parent._axis_resolvers:
+            if axis_name in axis_values:
+                result = axis_resolver(axis_values[axis_name])
                 axis_value_list.append(result)
             else:
-                raise Exception(f"Axis {axis.name} has not been set")
+                raise Exception(f"Axis {axis_name} has not been set")
 
         # make it a tuple, increment cvg_hits
         axis_value_tuple = tuple(axis_value_list)
@@ -82,4 +85,4 @@ class Bucket:
         """
         Update dictionary of axis values, overwriting existing axis values if same key is set again
         """
-        self.axis_values |= kwargs
+        self.axis_values.update(kwargs)

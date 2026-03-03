@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+
+site_name: Bucket
+site_description: Functional coverage tool documentation
+site_url: ""
+
+docs_dir: docs
+
+theme:
+  name: mkdocs
+
+nav:
+  - Getting Started: index.md
+  - Introduction: introduction.md
+  - Coverpoints: coverpoints.md
+  - Covergroups: covergroups.md
+  - Covertop: covertop.md
+  - Adding coverage to the testbench: add_to_testbench.md
+  - Exporting and merging coverage: export_and_merge.md
+  - Reading and Writing: reading_and_writing.md
+  - Viewing coverage: viewing_coverage.md
+  - Performance guide: performance.md

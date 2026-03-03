@@ -111,8 +111,13 @@ class Coverpoint(CoverBase):
         self._description = description if description is not None else self.DESCRIPTION
         self._motivation = motivation if motivation is not None else self.MOTIVATION
 
+        self._default_goal = self._goal_dict["DEFAULT"]
         self._sha = hashlib.sha256((self._name + self._description).encode())
         self._axis_names = [x.name for x in self._axes]
+        self._axis_resolvers = tuple(
+            (axis.name, axis.get_named_value) for axis in self._axes
+        )
+        self._axis_count = len(self._axis_resolvers)
         goals = SimpleNamespace(**self._goal_dict)
         for combination in self._all_axis_value_combinations():
             # Create bucket with both name and value for each axis
@@ -256,10 +261,7 @@ class Coverpoint(CoverBase):
         """
         Retrieve goal for a given bucket
         """
-        if bucket in self._cvg_goals:
-            return self._cvg_goals[bucket]
-        else:
-            return self._goal_dict["DEFAULT"]
+        return self._cvg_goals.get(bucket, self._default_goal)
 
     def _chain_def(self, start: OpenLink[CovDef] | None = None) -> Link[CovDef]:
         start = start or OpenLink(CovDef())
