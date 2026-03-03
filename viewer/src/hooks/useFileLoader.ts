@@ -142,6 +142,7 @@ export function useFileLoader() {
      * Handle drag over (prevent default to allow drop)
      */
     const handleDragOver = (e: DragEvent): void => {
+        if (e.dataTransfer?.types?.includes("application/x-pivot-axis")) return;
         e.preventDefault();
         e.stopPropagation();
         if (e.dataTransfer) {
@@ -154,6 +155,7 @@ export function useFileLoader() {
      * Handle drag enter
      */
     const handleDragEnter = (e: DragEvent): void => {
+        if (e.dataTransfer?.types?.includes("application/x-pivot-axis")) return;
         e.preventDefault();
         e.stopPropagation();
         if (e.dataTransfer) {
