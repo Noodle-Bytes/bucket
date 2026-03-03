@@ -1,11 +1,9 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Vypercore. All Rights Reserved
-
 import hashlib
 from bisect import bisect_right
+from enum import Enum, auto
 from functools import lru_cache
 
 from .common.chain import Link, OpenLink
@@ -41,6 +39,16 @@ class AxisUnrecognisedValue(AxisException):
     pass
 
 
+class AxisOverlappingRanges(AxisException):
+    pass
+
+
+class AxisLookupMode(Enum):
+    GENERIC = auto()
+    SCALAR_ONLY = auto()
+    RANGES_NON_OVERLAPPING = auto()
+
+
 class Axis:
     def __init__(
         self,
@@ -68,7 +76,7 @@ class Axis:
         """
         Build lookup indexes for fast resolution while preserving existing matching semantics.
         """
-        self._lookup_mode = "generic"
+        self._lookup_mode = AxisLookupMode.GENERIC
 
         scalar_entries = []
         range_entries = []
@@ -80,7 +88,7 @@ class Axis:
 
         # Fast path: only scalar values.
         if range_entries == []:
-            self._lookup_mode = "scalar_only"
+            self._lookup_mode = AxisLookupMode.SCALAR_ONLY
             self._exact_lookup = {}
             self._unhashable_exact_values = []
             for _order, key, resolved_value in scalar_entries:
@@ -92,6 +100,23 @@ class Axis:
                     self._exact_lookup.setdefault(resolved_value, key)
             return
 
+        # Validate that ranges do not overlap. Gaps are allowed, but overlaps
+        # are disallowed and must be caught during setup rather than sampling.
+        ordered_ranges = []
+        for _order, key, resolved_value in range_entries:
+            start, end = resolved_value
+            ordered_ranges.append((start, end, key))
+
+        sorted_ranges = sorted(ordered_ranges, key=lambda it: (it[0], it[1], it[2]))
+        if sorted_ranges:
+            _prev_start, prev_end, _prev_key = sorted_ranges[0]
+            for start, end, _key in sorted_ranges[1:]:
+                if start <= prev_end:
+                    raise AxisOverlappingRanges(
+                        f'Axis "{self.name}" has overlapping ranges defined'
+                    )
+                _prev_start, prev_end = start, end
+
         # Fast path: ranges (plus optional "Other"/None scalar), non-overlapping.
         has_only_ranges_and_other = True
         for _order, key, resolved_value in scalar_entries:
@@ -102,35 +127,20 @@ class Axis:
                 break
 
         if has_only_ranges_and_other:
-            ordered_ranges = []
-            for _order, key, resolved_value in range_entries:
-                ordered_ranges.append((resolved_value[0], resolved_value[1], key))
-
-            sorted_ranges = sorted(ordered_ranges, key=lambda it: (it[0], it[1], it[2]))
-            overlaps = False
-            if sorted_ranges:
-                _prev_start, prev_end, _prev_key = sorted_ranges[0]
-                for start, end, _key in sorted_ranges[1:]:
-                    if start <= prev_end:
-                        overlaps = True
-                        break
-                    _prev_start, prev_end = start, end
-
-            if not overlaps:
-                self._lookup_mode = "ranges_non_overlapping"
-                self._range_starts = [it[0] for it in sorted_ranges]
-                self._range_ends = [it[1] for it in sorted_ranges]
-                self._range_keys = [it[2] for it in sorted_ranges]
-                self._exact_lookup = {}
-                self._unhashable_exact_values = []
-                for _order, key, resolved_value in scalar_entries:
-                    try:
-                        hash(resolved_value)
-                    except TypeError:
-                        self._unhashable_exact_values.append((key, resolved_value))
-                    else:
-                        self._exact_lookup.setdefault(resolved_value, key)
-                return
+            self._lookup_mode = AxisLookupMode.RANGES_NON_OVERLAPPING
+            self._range_starts = [it[0] for it in sorted_ranges]
+            self._range_ends = [it[1] for it in sorted_ranges]
+            self._range_keys = [it[2] for it in sorted_ranges]
+            self._exact_lookup = {}
+            self._unhashable_exact_values = []
+            for _order, key, resolved_value in scalar_entries:
+                try:
+                    hash(resolved_value)
+                except TypeError:
+                    self._unhashable_exact_values.append((key, resolved_value))
+                else:
+                    self._exact_lookup.setdefault(resolved_value, key)
+            return
 
     def chain(self, start: OpenLink[CovDef] | None = None) -> Link[CovDef]:
         start = start or OpenLink(CovDef())
@@ -200,7 +210,7 @@ class Axis:
         if (value_str := str(value)) in self.values:
             return value_str
 
-        if self._lookup_mode == "scalar_only":
+        if self._lookup_mode == AxisLookupMode.SCALAR_ONLY:
             try:
                 return self._exact_lookup[value]
             except (KeyError, TypeError):
@@ -210,7 +220,7 @@ class Axis:
                 if value == resolved_value:
                     return key
 
-        elif self._lookup_mode == "ranges_non_overlapping":
+        elif self._lookup_mode == AxisLookupMode.RANGES_NON_OVERLAPPING:
             try:
                 return self._exact_lookup[value]
             except (KeyError, TypeError):

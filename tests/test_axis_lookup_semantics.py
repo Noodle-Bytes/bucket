@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
-from bucket.axis import Axis
+import pytest
+
+from bucket.axis import Axis, AxisOverlappingRanges
 
 
 class TestAxisLookupSemantics:
@@ -23,14 +25,13 @@ class TestAxisLookupSemantics:
 
         assert axis.get_named_value(5) == "A_RANGE"
 
-    def test_overlapping_ranges_keep_first_match(self):
-        axis = Axis(
-            name="overlap",
-            values={"A": [0, 10], "B": [5, 15]},
-            description="First key by sorted name should win for overlaps",
-        )
-
-        assert axis.get_named_value(7) == "A"
+    def test_overlapping_ranges_raise_error(self):
+        with pytest.raises(AxisOverlappingRanges):
+            Axis(
+                name="overlap",
+                values={"A": [0, 10], "B": [5, 15]},
+                description="Overlapping ranges are not allowed",
+            )
 
     def test_duplicate_exact_values_keep_first_match(self):
         axis = Axis(
