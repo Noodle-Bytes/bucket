@@ -142,8 +142,14 @@ export function useFileLoader() {
      * Handle drag over (prevent default to allow drop)
      */
     const handleDragOver = (e: DragEvent): void => {
-        if (e.dataTransfer?.types?.includes("application/x-pivot-axis")) return;
+        const isPivotAxisDrag = e.dataTransfer?.types?.includes("application/x-pivot-axis");
+        // Always prevent default browser handling so we don't trigger navigation or
+        // other native drag behaviors, even when the pivot table owns the drag.
         e.preventDefault();
+        if (isPivotAxisDrag) {
+            // Let the event propagate so the pivot table's own handlers still run.
+            return;
+        }
         e.stopPropagation();
         if (e.dataTransfer) {
             e.dataTransfer.dropEffect = 'copy';
@@ -155,8 +161,14 @@ export function useFileLoader() {
      * Handle drag enter
      */
     const handleDragEnter = (e: DragEvent): void => {
-        if (e.dataTransfer?.types?.includes("application/x-pivot-axis")) return;
+        const isPivotAxisDrag = e.dataTransfer?.types?.includes("application/x-pivot-axis");
+        // Always prevent default browser handling so we don't trigger navigation or
+        // other native drag behaviors, even when the pivot table owns the drag.
         e.preventDefault();
+        if (isPivotAxisDrag) {
+            // Let the event propagate so the pivot table's own handlers still run.
+            return;
+        }
         e.stopPropagation();
         if (e.dataTransfer) {
             e.dataTransfer.dropEffect = 'copy';
