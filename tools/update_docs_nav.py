@@ -57,7 +57,7 @@ def build_nav_footer(
     ]
 
     if is_last:
-        lines.append("---: [Back to index](index.md)")
+        lines.append("Back to index: [Index](index.md)")
     elif next_title and next_filename:
         lines.append(f"Next: [{next_title}]({next_filename})")
 

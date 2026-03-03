@@ -75,4 +75,4 @@ uv run python tools/perf/gen_large_viewer_fixture.py --output /tmp/large_200k.js
 
 Prev: [Viewing coverage](viewing_coverage.md)
 <br>
----: [Back to index](index.md)
+Back to index: [Index](index.md)

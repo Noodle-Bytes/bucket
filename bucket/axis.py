@@ -81,7 +81,7 @@ class Axis:
         scalar_entries = []
         range_entries = []
         for order, (key, resolved_value) in enumerate(self._ordered_values):
-            if isinstance(resolved_value, list):
+            if isinstance(resolved_value, (list, tuple)):
                 range_entries.append((order, key, resolved_value))
             else:
                 scalar_entries.append((order, key, resolved_value))
@@ -241,7 +241,7 @@ class Axis:
             for k, v in self._ordered_values:
                 if value == v:
                     return k
-                elif isinstance(v, list) and isinstance(value, int):
+                elif isinstance(v, (list, tuple)) and isinstance(value, int):
                     if v[0] <= value <= v[1]:
                         return k
 
