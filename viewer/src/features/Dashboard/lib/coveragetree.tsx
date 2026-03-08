@@ -104,7 +104,7 @@ export default class CoverageTree extends Tree<PointData> {
                     value: "Pivot",
                     icon: <LayoutOutlined />,
                     label: "Pivot",
-                    title: "View coverage in pivot layout (coming soon)",
+                    title: "View coverage as a pivot table by dragging axes to rows and columns",
                 },
             ];
         }
