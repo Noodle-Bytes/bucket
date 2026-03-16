@@ -235,14 +235,12 @@ class ChewToysByNameAndBreed(Coverpoint):
         ]:
             return goals.WEIRDO_DOG
 
+    def should_sample(self, trace):
+        return trace.name in self.name_group
+
     def sample(self, trace):
         # 'with bucket' is used, so bucket values are cleared each time
         # bucket can also be manually cleared by using bucket.clear()
-
-        # We're only covering a subset of names in this coverpoint instance
-        if trace.name not in self.name_group:
-            return
-
         with self.bucket as bucket:
             bucket.set_axes(
                 breed=trace.breed,
