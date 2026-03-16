@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 from pathlib import Path
 from typing import Iterable, overload
@@ -111,7 +111,8 @@ class AxisValueRow(BaseRow):
 
     @classmethod
     def from_tuple(cls, definition: int, tup: AxisValueTuple):
-        return cls(definition=definition, **tup._asdict())
+        # Keep SQL schema stable (start/value only); sort metadata is optional.
+        return cls(definition=definition, start=tup.start, value=tup.value)
 
 
 class BucketGoalRow(BaseRow):

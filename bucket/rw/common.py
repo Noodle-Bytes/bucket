@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 from datetime import datetime
 from typing import Any, Iterable, NamedTuple, Protocol
@@ -75,6 +75,8 @@ class AxisTuple(NamedTuple):
 
 
 class AxisValueTuple(NamedTuple):
+    """Axis value with start index. Order axis values when creating axes; sort by start."""
+
     start: int
     value: str
 

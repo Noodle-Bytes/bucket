@@ -7,14 +7,14 @@ import { gunzipSync } from "fflate";
 
 type JSONDefinition = {
     sha: string,
-} & {[key:string]: (string | number)[][]};
+} & {[key:string]: (string | number | null)[][]};
 
 type JSONRecord = {
     def: number,
     sha: string,
     source?: string | null,
     source_key?: string | null,
-} & {[key:string]: (string | number)[][]};
+} & {[key:string]: (string | number | null)[][]};
 
 type JSONTables = Record<string, string[]>;
 
@@ -319,9 +319,10 @@ export class ArchiveReadout implements Readout {
             start,
             end,
         )) {
+            const [value] = row;
             yield {
                 start: idx,
-                value: toString(row[0]),
+                value: toString(value),
             };
             idx += 1;
         }
@@ -653,6 +654,20 @@ function toNumber(value: string | number): number {
 
 function toString(value: string | number): string {
     return typeof value === "string" ? value : String(value);
+}
+
+function toNullableNumber(value: string | number | undefined): number | null {
+    if (value === undefined || value === "") {
+        return null;
+    }
+    return toNumber(value);
+}
+
+function toNullableString(value: string | number | undefined): string | null {
+    if (value === undefined || value === "") {
+        return null;
+    }
+    return toString(value);
 }
 
 export async function readFileHandle(file: FileSystemFileHandle): Promise<Reader> {

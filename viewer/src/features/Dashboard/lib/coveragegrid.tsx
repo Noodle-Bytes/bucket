@@ -116,6 +116,17 @@ function getColumnMixedCompare(columnKey: string) {
     return (a: CoverageRecord | SummaryRecord, b: CoverageRecord | SummaryRecord) => natCompare(a[columnKey], b[columnKey]);
 }
 
+function getAxisColumnCompareByPosition(
+    columnKey: string,
+    orderByValue: Map<string, number>,
+) {
+    return (a: CoverageRecord | SummaryRecord, b: CoverageRecord | SummaryRecord) => {
+        const aIdx = orderByValue.get(String(a[columnKey])) ?? -1;
+        const bIdx = orderByValue.get(String(b[columnKey])) ?? -1;
+        return aIdx - bIdx;
+    };
+}
+
 
 function getColumnNumCompare(columnKey: string) {
     return (a: CoverageRecord | SummaryRecord, b: CoverageRecord | SummaryRecord) => numCompare(a[columnKey], b[columnKey]);
@@ -159,18 +170,26 @@ export function PointGrid({node}: PointGridProps) {
         {
             title: "Axes",
             children: axes.map(axis => {
+                const axisValueSlice = axis_values.slice(
+                    axis.value_start - axis_value_start,
+                    axis.value_end - axis_value_start,
+                );
+                // Order is fixed when axes are created; sort by position (start)
+                const orderByValue = new Map(
+                    axisValueSlice.map((av, i) => [av.value, i]),
+                );
                 return {
                     title: axis.name,
                     dataIndex: axis.name,
                     key: axis.name,
-                    filters: axis_values.slice(axis.value_start - axis_value_start, axis.value_end - axis_value_start).map(axis_value => ({
+                    filters: axisValueSlice.map(axis_value => ({
                         text: axis_value.value,
                         value: axis_value.value
                     })),
                     filterMode: 'tree',
                     filterSearch: true,
                     onFilter: (value, record) => record[axis.name] == value,
-                    sorter: getColumnMixedCompare(axis.name)
+                    sorter: getAxisColumnCompareByPosition(axis.name, orderByValue)
                 }
             })
         },
