@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
-PROJECT_SECTION_RE = re.compile(r"(?ms)^\[project\]\n(?P<body>.*?)(?=^\[|\Z)")
+PROJECT_SECTION_RE = re.compile(r"(?ms)^\[project\]\r?\n(?P<body>.*?)(?=^\[|\Z)")
 PROJECT_VERSION_RE = re.compile(r'(?m)^version\s*=\s*"([^"]+)"\s*$')
 PACKAGE_JSON_CANDIDATES = ("electron/package.json",)
 
