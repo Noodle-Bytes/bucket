@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+# Copyright (c) 2023-2025 Noodle-Bytes
 
 from __future__ import annotations
 
