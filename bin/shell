@@ -1,6 +1,6 @@
 #!/bin/zsh
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Vypercore
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 # Check for BUCKET_ROOT already being set in the shell
 if [[ -n "$BUCKET_ROOT" ]]; then
