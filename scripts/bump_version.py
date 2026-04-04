@@ -107,13 +107,14 @@ def main() -> int:
     repo_root = Path(__file__).resolve().parent.parent
     pyproject_path = repo_root / "pyproject.toml"
 
-    if args.set_version:
-        parse_semver(args.set_version)
+    normalized_set_version = args.set_version.strip() if args.set_version else None
+    if normalized_set_version:
+        parse_semver(normalized_set_version)
 
     current_version = read_pyproject_version(pyproject_path)
     target_version = (
-        args.set_version
-        if args.set_version
+        normalized_set_version
+        if normalized_set_version
         else bump_semver(current_version, args.bump)
     )
 
