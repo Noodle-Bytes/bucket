@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+
+# SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2024 Vypercore. All Rights Reserved
 
 repos:
@@ -52,3 +55,10 @@ repos:
           - --license-filepath=license_header.txt
           - "--comment-style=<!--|  ~|  -->"
           - --use-current-year
+  - repo: local
+    hooks:
+      - id: update-docs-nav
+        name: Update docs navigation footers
+        entry: tools/update_docs_nav.py
+        language: system
+        pass_filenames: false
