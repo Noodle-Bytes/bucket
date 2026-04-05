@@ -636,6 +636,36 @@ ipcMain.handle('read-file', async (event, filePath) => {
   }
 });
 
+// Handle exporting files
+ipcMain.handle('save-export-file', async (event, payload) => {
+  try {
+    if (!mainWindow) {
+      return { canceled: true };
+    }
+
+    const format = payload?.format === 'json' ? 'json' : 'bktgz';
+    const defaultFileName = payload?.defaultFileName || `bucket_export.${format}`;
+    const filters = format === 'json'
+      ? [{ name: 'JSON Coverage', extensions: ['json'] }, { name: 'All Files', extensions: ['*'] }]
+      : [{ name: 'Bucket Archive', extensions: ['bktgz'] }, { name: 'All Files', extensions: ['*'] }];
+
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: defaultFileName,
+      filters,
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+
+    const bytes = Array.isArray(payload?.bytes) ? payload.bytes : [];
+    await fsp.writeFile(result.filePath, Buffer.from(bytes));
+    return { canceled: false, path: result.filePath };
+  } catch (error) {
+    throw new Error(`Failed to save export file: ${error.message}`);
+  }
+});
+
 // Handle drag and drop
 ipcMain.handle('get-dropped-file', async (event, filePath) => {
   try {

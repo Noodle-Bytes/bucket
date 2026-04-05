@@ -3,8 +3,7 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-import { readFileHandle, readElectronFile } from "@/features/Dashboard/lib/readers";
-import CoverageTree from "@/features/Dashboard/lib/coveragetree";
+import { readFileHandle, readElectronFile } from "../features/Dashboard/lib/readers";
 
 /**
  * Check if we're running in Electron
@@ -14,41 +13,36 @@ export function isElectron(): boolean {
 }
 
 /**
- * Load a file from bytes and return a CoverageTree
+ * Load readouts from bytes
  */
-export async function loadFileFromBytes(bytes: number[]): Promise<CoverageTree> {
-    console.log('Loading file, bytes length:', bytes.length);
+export async function loadReadoutsFromBytes(bytes: number[]): Promise<Readout[]> {
     const reader = await readElectronFile(bytes);
-    console.log('Reader created, reading readouts...');
     const readouts: Readout[] = [];
     for await (const readout of reader.read_all()) {
         readouts.push(readout);
     }
-    console.log('Readouts loaded:', readouts.length);
     if (readouts.length === 0) {
         throw new Error('File loaded but contains no coverage data.');
     }
-    const newTree = CoverageTree.fromReadouts(readouts);
-    console.log('Tree created, roots:', newTree.getRoots().length);
-    return newTree;
+    return readouts;
 }
 
 /**
- * Load a file from a File object (web browser)
+ * Load readouts from a File object (web browser)
  */
-export async function loadFileFromFileObject(file: File): Promise<CoverageTree> {
+export async function loadReadoutsFromFileObject(file: File): Promise<Readout[]> {
     if (!file.name.endsWith('.bktgz')) {
         throw new Error('File must be a .bktgz file');
     }
     const arrayBuffer = await file.arrayBuffer();
     const bytes = Array.from(new Uint8Array(arrayBuffer));
-    return loadFileFromBytes(bytes);
+    return loadReadoutsFromBytes(bytes);
 }
 
 /**
- * Load a file from a FileSystemFileHandle (PWA file handling)
+ * Load readouts from a FileSystemFileHandle (PWA file handling)
  */
-export async function loadFileFromFileHandle(file: FileSystemFileHandle): Promise<CoverageTree> {
+export async function loadReadoutsFromFileHandle(file: FileSystemFileHandle): Promise<Readout[]> {
     const reader = await readFileHandle(file);
     const readouts: Readout[] = [];
     for await (const readout of reader.read_all()) {
@@ -57,23 +51,26 @@ export async function loadFileFromFileHandle(file: FileSystemFileHandle): Promis
     if (readouts.length === 0) {
         throw new Error('File loaded but contains no coverage data.');
     }
-    return CoverageTree.fromReadouts(readouts);
+    return readouts;
 }
 
 /**
- * Open file dialog in Electron and load the selected file(s)
- * Returns the first file's tree, or null if cancelled
+ * Open file dialog in Electron and return selected file path(s)
  */
-export async function openElectronFileDialog(): Promise<CoverageTree | null> {
+export async function openElectronFileDialog(): Promise<string[] | null> {
     if (!isElectron() || !window.electronAPI) {
         return null;
     }
-    const filePaths = await window.electronAPI.openFileDialog();
-    if (!filePaths || filePaths.length === 0) {
-        return null;
+    return window.electronAPI.openFileDialog();
+}
+
+/**
+ * Load readouts from an Electron file path
+ */
+export async function loadReadoutsFromElectronPath(filePath: string): Promise<Readout[]> {
+    if (!window.electronAPI) {
+        throw new Error("Electron API unavailable");
     }
-    // Load the first file (for now, single file support)
-    // TODO: Support multi-file loading
-    const bytes = await window.electronAPI.readFile(filePaths[0]);
-    return loadFileFromBytes(bytes);
+    const bytes = await window.electronAPI.readFile(filePath);
+    return loadReadoutsFromBytes(bytes);
 }

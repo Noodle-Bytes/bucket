@@ -187,6 +187,18 @@ export const antTheme: ThemeConfig = (() => {
                 itemSelectedBg: cl.highlightbg.toString(),
                 trackPadding: 0,
             },
+            Button: {
+                // Keep default (non-primary/non-danger) buttons readable in dark themes.
+                defaultBg: cl.tertiarybg.toString(),
+                defaultColor: cl.saturatedtxt.toString(),
+                defaultBorderColor: cl.lowlightbg.toString(),
+                defaultHoverBg: cl.highlightbg.toString(),
+                defaultHoverColor: cl.saturatedtxt.toString(),
+                defaultHoverBorderColor: cl.highlightbg.toString(),
+                defaultActiveBg: cl.lowlightbg.toString(),
+                defaultActiveColor: cl.saturatedtxt.toString(),
+                defaultActiveBorderColor: cl.lowlightbg.toString(),
+            },
             FloatButton: {
                 colorBgElevated: cl.highlightbg.toString(),
             },
