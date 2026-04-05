@@ -632,7 +632,8 @@ ipcMain.handle('read-file', async (event, filePath) => {
     const buffer = await fsp.readFile(filePath);
     return Array.from(new Uint8Array(buffer));
   } catch (error) {
-    throw new Error(`Failed to read file: ${error.message}`);
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read file: ${detail}`);
   }
 });
 
@@ -662,7 +663,8 @@ ipcMain.handle('save-export-file', async (event, payload) => {
     await fsp.writeFile(result.filePath, Buffer.from(bytes));
     return { canceled: false, path: result.filePath };
   } catch (error) {
-    throw new Error(`Failed to save export file: ${error.message}`);
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to save export file: ${detail}`);
   }
 });
 
