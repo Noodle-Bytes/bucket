@@ -20,10 +20,12 @@ class TestAxisLookupSemantics:
         axis = Axis(
             name="mixed",
             values={"A_RANGE": [0, 10], "B_EXACT": 5},
-            description="Range should match before later exact values",
+            description="Numeric exact values sort before ranges in the canonical order",
         )
 
-        assert axis.get_named_value(5) == "A_RANGE"
+        # With semantic ordering, numerics (kind 0) sort before ranges (kind 1),
+        # so B_EXACT (value=5) is checked before A_RANGE ([0, 10]).
+        assert axis.get_named_value(5) == "B_EXACT"
 
     def test_overlapping_ranges_raise_error(self):
         with pytest.raises(AxisOverlappingRanges):

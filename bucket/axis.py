@@ -49,6 +49,26 @@ class AxisLookupMode(Enum):
     RANGES_NON_OVERLAPPING = auto()
 
 
+def _axis_value_sort_key(value):
+    """Return (kind_order, low, high, str_value) for ordering axis values.
+
+    Numerics sort first (kind 0), then ranges (kind 1), then everything else (kind 2).
+    Within each kind values are ordered by their numeric or string representation.
+    """
+    if isinstance(value, (int, float)):
+        numeric = float(value)
+        return (0, numeric, numeric, str(value))
+    if (
+        isinstance(value, (list, tuple, set))
+        and len(value) == 2
+        and all(isinstance(item, int) for item in value)
+    ):
+        low = float(min(value))
+        high = float(max(value))
+        return (1, low, high, str(value))
+    return (2, 0.0, 0.0, str(value))
+
+
 class Axis:
     def __init__(
         self,
@@ -62,7 +82,12 @@ class Axis:
         self.enable_other = True if enable_other is not None else False
         self.other_name = enable_other if isinstance(enable_other, str) else "Other"
 
-        self.values = self.sanitise_values(values)
+        self.values = dict(
+            sorted(
+                self.sanitise_values(values).items(),
+                key=lambda kv: _axis_value_sort_key(kv[1]),
+            )
+        )
         self._ordered_values = tuple(self.values.items())
         self._init_lookup_index()
 
