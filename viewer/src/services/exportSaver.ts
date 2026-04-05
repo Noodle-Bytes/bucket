@@ -29,6 +29,14 @@ function getExtension(format: ExportFormat): string {
     return format === "json" ? "json" : "bktgz";
 }
 
+/** User closed the save picker without choosing a file — not a write failure. */
+function isSavePickerUserAbort(error: unknown): boolean {
+    if (error instanceof DOMException && error.name === "AbortError") {
+        return true;
+    }
+    return error instanceof Error && error.name === "AbortError";
+}
+
 export function getDefaultExportFileName(format: ExportFormat, merged: boolean): string {
     const now = new Date();
     const year = now.getFullYear();
@@ -78,7 +86,10 @@ export async function saveExportBytes(
             await writable.close();
             return { canceled: false };
         } catch (error) {
-            return { canceled: true };
+            if (isSavePickerUserAbort(error)) {
+                return { canceled: true };
+            }
+            throw error instanceof Error ? error : new Error(String(error));
         }
     }
 

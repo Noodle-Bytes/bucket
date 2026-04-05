@@ -424,6 +424,8 @@ export default function Dashboard({
                 fileBaseName: exportFileName.trim() || undefined,
             });
             setExportModalOpen(false);
+        } catch {
+            // Failure: caller (e.g. useFileLoader) shows notification; keep modal open to retry
         } finally {
             setExportBusy(false);
         }

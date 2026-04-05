@@ -522,6 +522,7 @@ export function useFileLoader() {
                 description: errorMessage,
                 duration: 5,
             });
+            throw err;
         }
     };
 
