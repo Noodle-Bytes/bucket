@@ -11,7 +11,6 @@ from bucket import CoverageContext
 from bucket.rw import (
     ArchiveAccessor,
     ConsoleWriter,
-    HTMLWriter,
     MergeReadout,
     PointReader,
 )
@@ -156,16 +155,12 @@ def merge(log, archive_path_1, archive_path_2, merged_archive_path):
     log.info(
         f"To view this coverage, open the archive file in the Bucket viewer: {merged_archive_path}"
     )
+    log.info("You can use the hosted viewer at: https://noodle-bytes.github.io/bucket/")
+    log.info(
+        "Open that URL in your browser and use 'Open archive' to load the .bktgz file."
+    )
     ConsoleWriter().write(merged_readout)
     log.info("-------------------------------------------------------")
-
-    # Generating web viewer
-    log.info("Generating a local web viewer for viewing coverage")
-    try:
-        HTMLWriter().write(merged_readout)
-        log.info("To see the coverage in your browser open: index.html")
-    except Exception:
-        log.error("Web viewer failed")
 
 
 def run(output_dir: Path = Path(".")):

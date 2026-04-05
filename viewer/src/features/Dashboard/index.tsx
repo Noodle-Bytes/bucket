@@ -24,8 +24,9 @@ import EmptyState from "./components/EmptyState";
 import { antTheme, view } from "./theme";
 import { useEffect, useMemo, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
-import { LayoutOutlined, TableOutlined, PieChartOutlined } from "@ant-design/icons";
+import { TableOutlined, PieChartOutlined } from "@ant-design/icons";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
+import { PointPivotView } from "./lib/pivottable";
 import { CoverageDonut } from "./lib/coveragedonut";
 import { hexToRgba } from "@/utils/colors";
 const { Header, Content } = Layout;
@@ -264,7 +265,7 @@ export default function Dashboard({ tree, onOpenFile, onClearCoverage, isDraggin
 
         switch (currentContentKey) {
             case "Pivot":
-                return <LayoutOutlined />;
+                return <PointPivotView node={currentNode} />;
             case "Summary":
                 if (summaryViewMode === 'donut') {
                     return (

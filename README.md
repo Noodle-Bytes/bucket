@@ -1,6 +1,6 @@
 <!--
   ~ SPDX-License-Identifier: MIT
-  ~ Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+  ~ Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
   -->
 
 <!--
@@ -19,8 +19,18 @@ Bucket is a python library to create nicer functional coverpoints. There are sev
 * No commercial EDA license required
 * Vendor independence - easily collect coverage from multiple tools/sources (eg. models, log parsers, etc)
 
-## Documentation:
-[Read the Documentation](docs/index.md)
+## Documentation
+
+The user documentation lives in the `docs/` directory and can be read directly on GitHub, starting from [`docs/index.md`](docs/index.md).
+
+For a richer browsing experience, you can also run the MkDocs site locally:
+
+```bash
+./bin/shell
+mkdocs serve
+```
+
+Then open `http://127.0.0.1:8000/` in your browser.
 
 ## Support
 This library is being actively built, and is expected to change while it matures and key features are added.

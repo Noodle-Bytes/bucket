@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 name: Deploy Viewer to GitHub Pages
 
@@ -40,6 +40,17 @@ jobs:
         working-directory: viewer
         env:
           GITHUB_PAGES: "true"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install MkDocs
+        run: pip install mkdocs
+
+      - name: Build docs into viewer site
+        run: mkdocs build -d viewer/dist/docs
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
