@@ -283,6 +283,34 @@ class TestApplyGoalsWithValues:
         assert [av.value for av in axis_values] == ["high", "small", "label"]
         assert [av.start for av in axis_values] == [0, 1, 2]
 
+    def test_point_reader_dict_axis_tuple_range_sorts_with_numeric_ranges(self):
+        """Dict axis values preserve range container type; tuple ranges must not sort as text."""
+
+        class TestCoverpoint(Coverpoint):
+            def setup(self, ctx):
+                self.add_axis(
+                    name="mixed",
+                    values={"r": (10, 20), "n": 50, "sp": " "},
+                    description="Tuple range vs scalar vs short text label",
+                )
+
+            def apply_goals(self, bucket, goals):
+                return None
+
+            def sample(self, trace):
+                pass
+
+        class TopCoverage(Covertop):
+            def setup(self, ctx):
+                self.add_coverpoint(TestCoverpoint())
+
+        cvg = TopCoverage()
+        readout = PointReader("").read(cvg)
+        axis_values = list(readout.iter_axis_values())
+
+        # " " sorts before "(10, 20)" as strings; range must still follow numeric kind ordering.
+        assert [av.value for av in axis_values] == ["n", "r", "sp"]
+
     def test_mixed_comparison_patterns(self):
         """Test mixing .name and .value comparisons"""
 

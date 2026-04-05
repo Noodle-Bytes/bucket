@@ -24,7 +24,7 @@ def _axis_value_sort_key(value):
         numeric = float(value)
         return (0, numeric, numeric, str(value))
     if (
-        isinstance(value, list)
+        isinstance(value, list | tuple | set)
         and len(value) == 2
         and all(isinstance(item, int) for item in value)
     ):
