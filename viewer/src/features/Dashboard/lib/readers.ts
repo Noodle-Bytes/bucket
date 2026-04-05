@@ -656,20 +656,6 @@ function toString(value: string | number): string {
     return typeof value === "string" ? value : String(value);
 }
 
-function toNullableNumber(value: string | number | undefined): number | null {
-    if (value === undefined || value === "") {
-        return null;
-    }
-    return toNumber(value);
-}
-
-function toNullableString(value: string | number | undefined): string | null {
-    if (value === undefined || value === "") {
-        return null;
-    }
-    return toString(value);
-}
-
 export async function readFileHandle(file: FileSystemFileHandle): Promise<Reader> {
 
     if (file.name.endsWith(".json")) {
