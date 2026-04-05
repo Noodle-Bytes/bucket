@@ -24,6 +24,7 @@ class TopCats(Covergroup):
         self.add_coverpoint(CatStats())
         self.add_covergroup(CatsAndToys())
         self.add_coverpoint(VIPNames())
+        self.add_coverpoint(CatNapMultiverse())
 
     def should_sample(self, trace):
         """
@@ -257,5 +258,55 @@ class VIPNames(Coverpoint):
                 breed=trace.breed,
                 name=trace.name,
                 superiority_factor=trace.info.superiority_factor,
+            )
+            bucket.hit()
+
+
+class CatNapMultiverse(Coverpoint):
+    """
+    A deliberately huge, whimsical coverpoint used to exercise the viewer's
+    large-table performance mode. It has more than 50k buckets.
+    """
+
+    NAME = "cat_nap_multiverse"
+    DESCRIPTION = "Every possible interdimensional cat nap"
+    TIER = 9
+    TAGS = ["performance_demo", "cats", "whimsical"]
+
+    def setup(self, ctx):
+        universes = [f"universe_{i:02d}" for i in range(40)]
+        sofas = [f"sofa_{i:02d}" for i in range(40)]
+        minutes = list(range(32))
+
+        self.add_axis(
+            name="universe",
+            values=universes,
+            description="Parallel universe where the nap happens",
+        )
+        self.add_axis(
+            name="sofa",
+            values=sofas,
+            description="Sofa chosen for maximum comfort",
+        )
+        self.add_axis(
+            name="minute",
+            values=minutes,
+            description="Minute of the hour when the nap starts",
+        )
+
+    def sample(self, trace):
+        # Use trace fields to spread hits across the giant bucket space
+        universe_idx = hash(trace.name) % 40 if trace.name is not None else 0
+        age = trace.age or 0
+        evil = getattr(trace.info, "evil_thoughts_per_hour", 0) or 0
+
+        sofa_idx = age % 40
+        minute = evil % 32
+
+        with self.bucket as bucket:
+            bucket.set_axes(
+                universe=f"universe_{universe_idx:02d}",
+                sofa=f"sofa_{sofa_idx:02d}",
+                minute=minute,
             )
             bucket.hit()
