@@ -8,39 +8,62 @@ import Theme from "@/providers/Theme";
 import type { FloatButtonProps, TreeDataNode } from "antd";
 import {
     Breadcrumb,
+    Button,
+    Checkbox,
     ConfigProvider,
-    Layout,
-    Segmented,
     Flex,
     FloatButton,
-    Button,
+    Input,
+    Layout,
+    Modal,
+    Segmented,
+    Select,
+    Switch,
+    Table,
     Typography,
 } from "antd";
-import { BgColorsOutlined, FileAddOutlined, ClearOutlined, FolderOpenOutlined } from "@ant-design/icons";
+import {
+    BgColorsOutlined,
+    ClearOutlined,
+    EditOutlined,
+    ExportOutlined,
+    FileAddOutlined,
+    PieChartOutlined,
+    ReloadOutlined,
+    TableOutlined,
+} from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
-
 import Sider from "./components/Sider";
 import EmptyState from "./components/EmptyState";
 import { antTheme, view } from "./theme";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
-import { TableOutlined, PieChartOutlined } from "@ant-design/icons";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
 import { PointPivotView } from "./lib/pivottable";
 import { CoverageDonut } from "./lib/coveragedonut";
 import { hexToRgba } from "@/utils/colors";
+import type { CoverageRecord, CoverageSourceRef, ExportFormat } from "@/types/coverageSession";
+import { getDefaultExportFileName } from "@/services/exportSaver";
+
 const { Header, Content } = Layout;
+
+type RecordTableRow = {
+    id: string;
+    key: string;
+    label: string;
+    sourceLabel: string;
+    sourceKind: string;
+    recordIndex: number;
+    isLoaded: boolean;
+};
 
 const ColorModeToggleButton = (props: FloatButtonProps) => {
     return (
         <Theme.Consumer>
             {(context) => {
                 const onClick = () => {
-                    // Roll around the defined themes, with one extra to return to auto
                     const currentIdx =
-                        themes.findIndex(
-                            (v) => v.name === context.theme.name,
-                        ) ?? 0;
+                        themes.findIndex((v) => v.name === context.theme.name) ?? 0;
                     const nextIdx = (currentIdx + 1) % (themes.length + 1);
                     context.setTheme(themes[nextIdx] ?? null);
                 };
@@ -57,27 +80,19 @@ const ColorModeToggleButton = (props: FloatButtonProps) => {
     );
 };
 
-type breadCrumbMenuProps = {
-    /** The node we're creating a menu for */
+type BreadCrumbMenuProps = {
     pathNode: TreeDataNode;
-    /** The nodes we want to be in the menu */
     menuNodes: TreeDataNode[];
-    /** Callback when a menu node is selected */
     onSelect: (selectedKeys: TreeKey[]) => void;
-    /** Theme object */
     theme: ThemeType;
 };
-/**
- * Factory for bread crumb menus (dropdowns on breadcrumb)
- * @param breadCrumbMenuProps
- * @returns a bread crumb menu
- */
+
 function getBreadCrumbMenu({
     pathNode,
     menuNodes,
     onSelect,
     theme,
-}: breadCrumbMenuProps) {
+}: BreadCrumbMenuProps) {
     let menu: BreadcrumbItemType["menu"] | undefined = undefined;
     if (menuNodes.length > 1 || pathNode !== menuNodes[0]) {
         menu = {
@@ -94,29 +109,22 @@ function getBreadCrumbMenu({
     return menu;
 }
 
-type breadCrumbItemsProps = {
-    /** The tree of nodes */
+type BreadCrumbItemsProps = {
     tree: Tree;
-    /** The ancestor path to the selected node */
     selectedTreeKeys: TreeKey[];
-    /** Callback when a node is selected */
     onSelect: (newSelectedKeys: TreeKey[]) => void;
-    /** Theme object */
     theme: ThemeType;
 };
-/**
- * Create bread crumb items from the tree data
- */
+
 function getBreadCrumbItems({
     tree,
     selectedTreeKeys,
     onSelect,
     theme,
-}: breadCrumbItemsProps): BreadcrumbItemType[] {
+}: BreadCrumbItemsProps): BreadcrumbItemType[] {
     const pathNodes = tree.getAncestorsByKey(selectedTreeKeys[0]);
-
     const breadCrumbItems: BreadcrumbItemType[] = [];
-    // Create the root
+
     {
         const pathNode = { title: "Root", key: "_ROOT" };
         breadCrumbItems.push({
@@ -127,7 +135,6 @@ function getBreadCrumbItems({
         });
     }
 
-    // Create the nodes down to the selected node
     let menuNodes: TreeNode[] = tree.getRoots();
     for (const pathNode of pathNodes) {
         breadCrumbItems.push({
@@ -139,8 +146,6 @@ function getBreadCrumbItems({
         menuNodes = pathNode.children ?? [];
     }
 
-    // Create an extra node if we're not a leaf node to add an
-    // extra dropdown to select a leaf
     if (menuNodes.length) {
         const pathNode = { title: "...", key: "_CHILD" };
         breadCrumbItems.push({
@@ -153,26 +158,125 @@ function getBreadCrumbItems({
     return breadCrumbItems;
 }
 
+function getReadoutLabel(record: CoverageRecord, source: CoverageSourceRef | undefined): string {
+    const sourceLabel = source?.label ?? "Unknown Source";
+    let readoutSource = "";
+    try {
+        const sourceValue = record.readout.get_source();
+        const sourceKeyValue = record.readout.get_source_key();
+        if (sourceValue && sourceKeyValue) {
+            readoutSource = `${sourceValue}[${sourceKeyValue}]`;
+        } else if (sourceValue) {
+            readoutSource = sourceValue;
+        } else if (sourceKeyValue) {
+            readoutSource = `[${sourceKeyValue}]`;
+        }
+    } catch {
+        readoutSource = "";
+    }
+    const prefix = readoutSource ? `${readoutSource} - ` : "";
+    return `${prefix}${sourceLabel} (record ${record.sourceRecordIndex})`;
+}
+
+function stripExportExtension(fileName: string): string {
+    return fileName.replace(/\.(bktgz|json)$/i, "");
+}
+
 export type DashboardProps = {
     tree: Tree;
+    records: CoverageRecord[];
+    sources: CoverageSourceRef[];
     onOpenFile?: () => void | Promise<void>;
     onClearCoverage?: () => void;
+    onSetLoadedRecords?: (loadedRecordIds: string[]) => void;
+    onMergeRecords?: (recordIds: string[]) => Promise<void> | void;
+    onRefreshRecords?: () => Promise<void> | void;
+    onExportRecords?: (options: {
+        recordIds: string[];
+        format: ExportFormat;
+        mergeBeforeExport: boolean;
+        fileBaseName?: string;
+    }) => Promise<void> | void;
     isDragging?: boolean;
 };
 
-export default function Dashboard({ tree, onOpenFile, onClearCoverage, isDragging = false }: DashboardProps) {
+export default function Dashboard({
+    tree,
+    records,
+    sources,
+    onOpenFile,
+    onClearCoverage,
+    onSetLoadedRecords,
+    onMergeRecords,
+    onRefreshRecords,
+    onExportRecords,
+    isDragging = false,
+}: DashboardProps) {
+    const isElectronRuntime = typeof window !== "undefined" && window.electronAPI !== undefined;
+
     const [selectedTreeKeys, setSelectedTreeKeys] = useState<TreeKey[]>([]);
     const [expandedTreeKeys, setExpandedTreeKeys] = useState<TreeKey[]>([]);
     const [autoExpandTreeParent, setAutoExpandTreeParent] = useState(true);
     const [treeKeyContentKey, setTreeKeyContentKey] = useState(
         {} as { [key: TreeKey]: string | number },
     );
-    const [summaryViewMode, setSummaryViewMode] = useState<'table' | 'donut'>('table');
+    const [summaryViewMode, setSummaryViewMode] = useState<"table" | "donut">("table");
+    const [editModalOpen, setEditModalOpen] = useState(false);
+    const [editLoadedById, setEditLoadedById] = useState<Record<string, boolean>>({});
+    const [mergeSelectedIds, setMergeSelectedIds] = useState<string[]>([]);
+    const [editActionBusy, setEditActionBusy] = useState(false);
+    const [exportModalOpen, setExportModalOpen] = useState(false);
+    const [exportSelectedIds, setExportSelectedIds] = useState<string[]>([]);
+    const [exportFormat, setExportFormat] = useState<ExportFormat>("bktgz");
+    const [exportMergeBeforeWrite, setExportMergeBeforeWrite] = useState(false);
+    const [exportFileName, setExportFileName] = useState("");
+    const [exportBusy, setExportBusy] = useState(false);
 
-    // Check if tree is empty (no coverage loaded)
     const isEmpty = tree.getRoots().length === 0;
 
-    // Reset selected keys when tree becomes empty or selected key no longer exists (e.g., after clearing coverage)
+    const sourceById = useMemo(() => {
+        return new Map(sources.map((source) => [source.id, source]));
+    }, [sources]);
+
+    const recordRows = useMemo<RecordTableRow[]>(() => {
+        return records.map((record) => {
+            const source = sourceById.get(record.sourceRef);
+            return {
+                id: record.id,
+                key: record.id,
+                label: getReadoutLabel(record, source),
+                sourceLabel: source?.label ?? "Unknown",
+                sourceKind: source?.kind ?? "unknown",
+                recordIndex: record.sourceRecordIndex,
+                isLoaded: record.isLoaded,
+            };
+        });
+    }, [records, sourceById]);
+
+    const loadedRecordRows = useMemo(
+        () => recordRows.filter((record) => record.isLoaded),
+        [recordRows],
+    );
+
+    useEffect(() => {
+        if (!editModalOpen) {
+            return;
+        }
+        setEditLoadedById(
+            Object.fromEntries(records.map((record) => [record.id, record.isLoaded])),
+        );
+    }, [records, editModalOpen]);
+
+    useEffect(() => {
+        if (!exportModalOpen) {
+            return;
+        }
+        setExportSelectedIds(loadedRecordRows.map((record) => record.id));
+        setExportFormat("bktgz");
+        setExportMergeBeforeWrite(false);
+        setExportFileName(stripExportExtension(getDefaultExportFileName("bktgz", false)));
+    }, [exportModalOpen, loadedRecordRows]);
+
     useEffect(() => {
         if (isEmpty) {
             if (selectedTreeKeys.length > 0) {
@@ -181,17 +285,15 @@ export default function Dashboard({ tree, onOpenFile, onClearCoverage, isDraggin
                 setTreeKeyContentKey({});
             }
         } else if (selectedTreeKeys.length > 0) {
-            // Check if the selected key still exists in the tree
             const viewKey = selectedTreeKeys[0];
             if (viewKey !== Tree.ROOT && !tree.getNodeByKey(viewKey)) {
-                // Selected key no longer exists, reset to root
                 setSelectedTreeKeys([]);
                 setExpandedTreeKeys([]);
             }
         }
     }, [tree, selectedTreeKeys, isEmpty]);
 
-    const onSelect = (newSelectedKeys: TreeKey[]) => {
+    const onSelect = useCallback((newSelectedKeys: TreeKey[]) => {
         const newExpandedKeys = new Set<TreeKey>(expandedTreeKeys);
         for (const newSelectedKey of newSelectedKeys) {
             for (const ancestor of tree.getAncestorsByKey(newSelectedKey)) {
@@ -200,14 +302,16 @@ export default function Dashboard({ tree, onOpenFile, onClearCoverage, isDraggin
         }
         setExpandedTreeKeys(Array.from(newExpandedKeys));
         setSelectedTreeKeys(newSelectedKeys);
-        // We're manually managing the ancestor expansion
         setAutoExpandTreeParent(false);
-    };
+    }, [expandedTreeKeys, tree]);
 
     const viewKey = selectedTreeKeys[0] ?? Tree.ROOT;
     const contentViews = tree.getViewsByKey(viewKey);
     const defaultView = contentViews[0];
     const currentContentKey = treeKeyContentKey[viewKey] ?? defaultView.value;
+    const showContentViewSelector =
+        contentViews.length > 1
+        || (contentViews.length === 1 && contentViews[0].value !== "Summary");
 
     const onViewChange = (newView: string | number) => {
         setTreeKeyContentKey({
@@ -216,21 +320,17 @@ export default function Dashboard({ tree, onOpenFile, onClearCoverage, isDraggin
         });
     };
 
-
-    // Determine logo path based on the runtime environment:
-    // - Electron production: Use app:// protocol (custom protocol registered in main.js)
-    // - Browser with file://: Use relative path (when opening HTML directly)
-    // - Browser with http://: Use Vite's BASE_URL (development server)
-    const isElectronProduction = typeof window !== 'undefined' && window.location.protocol === 'app:';
-    const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
+    const isElectronProduction =
+        typeof window !== "undefined" && window.location.protocol === "app:";
+    const isFileProtocol =
+        typeof window !== "undefined" && window.location.protocol === "file:";
     const logoSrc = isElectronProduction
-        ? 'app://logo.svg'
+        ? "app://logo.svg"
         : isFileProtocol
-        ? './logo.svg'
-        : `${import.meta.env.BASE_URL}logo.svg`;
-    // Get source and source_key from the currently selected node's readout
+          ? "./logo.svg"
+          : `${import.meta.env.BASE_URL}logo.svg`;
+
     const sourceInfo = useMemo(() => {
-        // Don't show source info when at root level
         if (viewKey === Tree.ROOT) {
             return { source: null, source_key: null };
         }
@@ -243,8 +343,7 @@ export default function Dashboard({ tree, onOpenFile, onClearCoverage, isDraggin
                     source: readout.get_source?.() ?? null,
                     source_key: readout.get_source_key?.() ?? null,
                 };
-            } catch (error) {
-                // Fallback if methods don't exist (old readout format)
+            } catch {
                 return { source: null, source_key: null };
             }
         }
@@ -252,14 +351,12 @@ export default function Dashboard({ tree, onOpenFile, onClearCoverage, isDraggin
     }, [tree, viewKey]);
 
     const selectedViewContent = useMemo(() => {
-        // Show empty state if no coverage is loaded
         if (isEmpty) {
             return <EmptyState logoSrc={logoSrc} onOpenFile={onOpenFile} />;
         }
 
         const currentNode = tree.getNodeByKey(viewKey);
         if (!currentNode) {
-            // Node doesn't exist (e.g., after clearing coverage), show empty state
             return null;
         }
 
@@ -267,7 +364,7 @@ export default function Dashboard({ tree, onOpenFile, onClearCoverage, isDraggin
             case "Pivot":
                 return <PointPivotView node={currentNode} />;
             case "Summary":
-                if (summaryViewMode === 'donut') {
+                if (summaryViewMode === "donut") {
                     return (
                         <CoverageDonut
                             tree={tree}
@@ -288,127 +385,388 @@ export default function Dashboard({ tree, onOpenFile, onClearCoverage, isDraggin
             default:
                 throw new Error("Invalid view!?");
         }
-    }, [viewKey, currentContentKey, tree, isEmpty, onOpenFile, logoSrc, summaryViewMode]);
+    }, [viewKey, currentContentKey, tree, isEmpty, onOpenFile, logoSrc, summaryViewMode, onSelect]);
+
+    const applyLoadedEdits = () => {
+        if (!onSetLoadedRecords) {
+            return;
+        }
+        const loadedIds = Object.entries(editLoadedById)
+            .filter(([, loaded]) => loaded)
+            .map(([id]) => id);
+        onSetLoadedRecords(loadedIds);
+        setEditModalOpen(false);
+    };
+
+    const runMergeSelected = async () => {
+        if (!onMergeRecords || mergeSelectedIds.length < 2) {
+            return;
+        }
+        setEditActionBusy(true);
+        try {
+            await onMergeRecords(mergeSelectedIds);
+            setMergeSelectedIds([]);
+        } finally {
+            setEditActionBusy(false);
+        }
+    };
+
+    const runExport = async () => {
+        if (!onExportRecords || exportSelectedIds.length === 0) {
+            return;
+        }
+        setExportBusy(true);
+        try {
+            await onExportRecords({
+                recordIds: exportSelectedIds,
+                format: exportFormat,
+                mergeBeforeExport: exportMergeBeforeWrite,
+                fileBaseName: exportFileName.trim() || undefined,
+            });
+            setExportModalOpen(false);
+        } catch {
+            // Failure: caller (e.g. useFileLoader) shows notification; keep modal open to retry
+        } finally {
+            setExportBusy(false);
+        }
+    };
 
     return (
         <ConfigProvider theme={antTheme}>
             <Theme.Consumer>
                 {({ theme: themeContext }) => {
-                    const dragStyle = isDragging ? {
-                        border: '3px dashed',
-                        borderColor: themeContext.theme.colors.accentbg.value,
-                        backgroundColor: hexToRgba(themeContext.theme.colors.highlightbg.value, 0.25),
-                        transition: 'all 0.2s ease-in-out',
-                    } : {};
+                    const dragStyle = isDragging
+                        ? {
+                              border: "3px dashed",
+                              borderColor: themeContext.theme.colors.accentbg.value,
+                              backgroundColor: hexToRgba(
+                                  themeContext.theme.colors.highlightbg.value,
+                                  0.25,
+                              ),
+                              transition: "all 0.2s ease-in-out",
+                          }
+                        : {};
                     return (
                         <Layout
                             {...view.props}
                             style={{
                                 ...view.props.style,
                                 ...dragStyle,
-                            }}
-                        >
-                {!isEmpty && (
-                    <Sider
-                        tree={tree}
-                        selectedTreeKeys={selectedTreeKeys}
-                        setSelectedTreeKeys={onSelect}
-                        expandedTreeKeys={expandedTreeKeys}
-                        setExpandedTreeKeys={setExpandedTreeKeys}
-                        autoExpandTreeParent={autoExpandTreeParent}
-                        setAutoExpandTreeParent={setAutoExpandTreeParent}></Sider>
-                )}
-                <Layout {...view.body.props}>
-                    {!isEmpty && (
-                        <Header {...view.body.header.props}>
-                            <Flex {...view.body.header.flex.props}>
-                                <Theme.Consumer>
-                                    {/* The breadcrumb menu is placed outside of the main DOM tree
-                                        so we need to pass through the theme class */}
-                                    {({ theme }) => (
-                                        <>
-                                            <Breadcrumb
-                                                {...view.body.header.flex.breadcrumb
-                                                    .props}
-                                                items={getBreadCrumbItems({
-                                                    tree,
-                                                    selectedTreeKeys,
-                                                    onSelect,
-                                                    theme,
-                                                })}></Breadcrumb>
-                                            {(sourceInfo.source || sourceInfo.source_key) && (
-                                                <Flex gap="small" style={{ marginLeft: '16px' }}>
-                                                    <span style={{ color: theme.theme.colors.primarytxt.value }}>
-                                                        {sourceInfo.source && sourceInfo.source_key
-                                                            ? `${sourceInfo.source}[${sourceInfo.source_key}]`
-                                                            : sourceInfo.source
-                                                            ? sourceInfo.source
-                                                            : `[${sourceInfo.source_key}]`}
-                                                    </span>
+                            }}>
+                            {!isEmpty && (
+                                <Sider
+                                    tree={tree}
+                                    selectedTreeKeys={selectedTreeKeys}
+                                    setSelectedTreeKeys={onSelect}
+                                    expandedTreeKeys={expandedTreeKeys}
+                                    setExpandedTreeKeys={setExpandedTreeKeys}
+                                    autoExpandTreeParent={autoExpandTreeParent}
+                                    setAutoExpandTreeParent={setAutoExpandTreeParent}></Sider>
+                            )}
+                            <Layout {...view.body.props}>
+                                {!isEmpty && (
+                                    <Header {...view.body.header.props}>
+                                        <Flex {...view.body.header.flex.props}>
+                                            <Theme.Consumer>
+                                                {({ theme }) => (
+                                                    <>
+                                                        <Breadcrumb
+                                                            {...view.body.header.flex.breadcrumb.props}
+                                                            items={getBreadCrumbItems({
+                                                                tree,
+                                                                selectedTreeKeys,
+                                                                onSelect,
+                                                                theme,
+                                                            })}></Breadcrumb>
+                                                        {(sourceInfo.source || sourceInfo.source_key) && (
+                                                            <Flex
+                                                                gap="small"
+                                                                style={{ marginLeft: "16px" }}>
+                                                                <span
+                                                                    style={{
+                                                                        color: theme.theme.colors
+                                                                            .primarytxt.value,
+                                                                    }}>
+                                                                    {sourceInfo.source &&
+                                                                    sourceInfo.source_key
+                                                                        ? `${sourceInfo.source}[${sourceInfo.source_key}]`
+                                                                        : sourceInfo.source
+                                                                          ? sourceInfo.source
+                                                                          : `[${sourceInfo.source_key}]`}
+                                                                </span>
+                                                            </Flex>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </Theme.Consumer>
+                                            <Flex gap="small" align="center">
+                                                {showContentViewSelector && (
+                                                    <Segmented
+                                                        {...view.body.header.flex.segmented.props}
+                                                        options={contentViews}
+                                                        value={currentContentKey}
+                                                        onChange={onViewChange}
+                                                    />
+                                                )}
+                                                {currentContentKey === "Summary" && (
+                                                    <Flex
+                                                        align="center"
+                                                        gap="small"
+                                                        style={{
+                                                            border: `1px solid ${themeContext.theme.colors.lowlightbg.value}`,
+                                                            borderRadius: 8,
+                                                            padding: "2px 6px",
+                                                            backgroundColor:
+                                                                themeContext.theme.colors.secondarybg
+                                                                    .value,
+                                                        }}>
+                                                        <Typography.Text
+                                                            style={{
+                                                                color: themeContext.theme.colors
+                                                                    .desaturatedtxt.value,
+                                                                fontSize: 12,
+                                                                letterSpacing: 0.3,
+                                                            }}>
+                                                            View
+                                                        </Typography.Text>
+                                                        <Segmented
+                                                            size="small"
+                                                            options={[
+                                                                {
+                                                                    value: "table",
+                                                                    icon: <TableOutlined />,
+                                                                    label: "Table",
+                                                                    title: "View coverage as a table",
+                                                                },
+                                                                {
+                                                                    value: "donut",
+                                                                    icon: <PieChartOutlined />,
+                                                                    label: "Donut",
+                                                                    title:
+                                                                        "View coverage as a donut chart",
+                                                                },
+                                                            ]}
+                                                            value={summaryViewMode}
+                                                            onChange={(value) =>
+                                                                setSummaryViewMode(
+                                                                    value as "table" | "donut",
+                                                                )
+                                                            }
+                                                        />
+                                                    </Flex>
+                                                )}
+
+                                                {(showContentViewSelector
+                                                    || currentContentKey === "Summary")
+                                                && (
+                                                    <div
+                                                        style={{
+                                                            width: 1,
+                                                            height: 24,
+                                                            backgroundColor:
+                                                                themeContext.theme.colors.lowlightbg
+                                                                    .value,
+                                                            margin: "0 2px",
+                                                        }}
+                                                    />
+                                                )}
+
+                                                <Flex gap="small" align="center">
+                                                    {onOpenFile && (
+                                                        <Button
+                                                            icon={<FileAddOutlined />}
+                                                            onClick={onOpenFile}
+                                                            size="small"
+                                                            type="primary">
+                                                            Load
+                                                        </Button>
+                                                    )}
+                                                    {onSetLoadedRecords && (
+                                                        <Button
+                                                            icon={<EditOutlined />}
+                                                            onClick={() => {
+                                                                setEditModalOpen(true);
+                                                                setMergeSelectedIds([]);
+                                                            }}
+                                                            size="small">
+                                                            Edit
+                                                        </Button>
+                                                    )}
+                                                    {onRefreshRecords && isElectronRuntime && (
+                                                        <Button
+                                                            icon={<ReloadOutlined />}
+                                                            onClick={() => onRefreshRecords()}
+                                                            size="small">
+                                                            Refresh
+                                                        </Button>
+                                                    )}
+                                                    {onExportRecords && (
+                                                        <Button
+                                                            icon={<ExportOutlined />}
+                                                            onClick={() => setExportModalOpen(true)}
+                                                            size="small">
+                                                            Export
+                                                        </Button>
+                                                    )}
+                                                    {onClearCoverage && (
+                                                        <Button
+                                                            icon={<ClearOutlined />}
+                                                            onClick={onClearCoverage}
+                                                            size="small"
+                                                            danger>
+                                                            Clear
+                                                        </Button>
+                                                    )}
                                                 </Flex>
-                                            )}
-                                        </>
-                                    )}
-                                </Theme.Consumer>
-                                <Flex gap="small" align="center">
-                                    <Segmented
-                                        {...view.body.header.flex.segmented.props}
-                                        options={contentViews}
-                                        value={currentContentKey}
-                                        onChange={onViewChange}
-                                    />
-                                    {currentContentKey === "Summary" && (
-                                        <Segmented
-                                            options={[
-                                                {
-                                                    value: 'table',
-                                                    icon: <TableOutlined />,
-                                                    label: 'Table',
-                                                    title: 'View coverage as a table',
-                                                },
-                                                {
-                                                    value: 'donut',
-                                                    icon: <PieChartOutlined />,
-                                                    label: 'Donut',
-                                                    title: 'View coverage as a donut chart',
-                                                },
-                                            ]}
-                                            value={summaryViewMode}
-                                            onChange={(value) => setSummaryViewMode(value as 'table' | 'donut')}
-                                        />
-                                    )}
-                                    {onOpenFile && (
-                                        <Button
-                                            icon={<FileAddOutlined />}
-                                            onClick={onOpenFile}
-                                            size="small"
-                                            type="primary"
-                                        >
-                                            Load
-                                        </Button>
-                                    )}
-                                    {onClearCoverage && (
-                                        <Button
-                                            icon={<ClearOutlined />}
-                                            onClick={onClearCoverage}
-                                            size="small"
-                                            danger
-                                        >
-                                            Clear
-                                        </Button>
-                                    )}
-                                </Flex>
-                            </Flex>
-                        </Header>
-                    )}
-                    <Content {...view.body.content.props}>
-                        {selectedViewContent}
-                    </Content>
-                </Layout>
+                                            </Flex>
+                                        </Flex>
+                                    </Header>
+                                )}
+                                <Content {...view.body.content.props}>{selectedViewContent}</Content>
+                            </Layout>
                         </Layout>
                     );
                 }}
             </Theme.Consumer>
+
+            <Modal
+                title="Edit Records"
+                open={editModalOpen}
+                onCancel={() => setEditModalOpen(false)}
+                width={900}
+                footer={[
+                    <Button key="cancel" onClick={() => setEditModalOpen(false)}>
+                        Cancel
+                    </Button>,
+                    <Button
+                        key="merge"
+                        onClick={() => void runMergeSelected()}
+                        disabled={mergeSelectedIds.length < 2}
+                        loading={editActionBusy}>
+                        Merge Selected
+                    </Button>,
+                    <Button key="apply" type="primary" onClick={applyLoadedEdits}>
+                        Apply
+                    </Button>,
+                ]}>
+                <Table<RecordTableRow>
+                    size="small"
+                    pagination={false}
+                    rowKey="id"
+                    dataSource={recordRows}
+                    rowSelection={{
+                        selectedRowKeys: mergeSelectedIds,
+                        onChange: (selectedKeys) =>
+                            setMergeSelectedIds(selectedKeys as string[]),
+                    }}
+                    columns={[
+                        {
+                            title: "Loaded",
+                            width: 90,
+                            render: (_value, row) => (
+                                <Switch
+                                    checked={editLoadedById[row.id] ?? row.isLoaded}
+                                    onChange={(checked) =>
+                                        setEditLoadedById((current) => ({
+                                            ...current,
+                                            [row.id]: checked,
+                                        }))
+                                    }
+                                />
+                            ),
+                        },
+                        {
+                            title: "Record",
+                            dataIndex: "label",
+                        },
+                        {
+                            title: "Source",
+                            dataIndex: "sourceLabel",
+                            width: 190,
+                        },
+                        {
+                            title: "Kind",
+                            dataIndex: "sourceKind",
+                            width: 130,
+                        },
+                        {
+                            title: "Index",
+                            dataIndex: "recordIndex",
+                            width: 90,
+                        },
+                    ]}
+                />
+                <Typography.Text type="secondary" style={{ marginTop: 12, display: "block" }}>
+                    Selected for merge: {mergeSelectedIds.length}
+                </Typography.Text>
+            </Modal>
+
+            <Modal
+                title="Export Records"
+                open={exportModalOpen}
+                onCancel={() => setExportModalOpen(false)}
+                onOk={() => void runExport()}
+                okText="Export"
+                confirmLoading={exportBusy}
+                okButtonProps={{ disabled: exportSelectedIds.length === 0 }}>
+                <Flex vertical gap="middle">
+                    <div>
+                        <Typography.Text strong>Records</Typography.Text>
+                        <div style={{ marginTop: 8, maxHeight: 220, overflowY: "auto" }}>
+                            <Checkbox.Group
+                                style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 8,
+                                }}
+                                value={exportSelectedIds}
+                                onChange={(values) =>
+                                    setExportSelectedIds(values.map((value) => String(value)))
+                                }>
+                                {loadedRecordRows.map((record) => (
+                                    <Checkbox key={record.id} value={record.id}>
+                                        {record.label}
+                                    </Checkbox>
+                                ))}
+                            </Checkbox.Group>
+                        </div>
+                    </div>
+
+                    <div>
+                        <Typography.Text strong>Format</Typography.Text>
+                        <Select
+                            value={exportFormat}
+                            onChange={(value) => setExportFormat(value as ExportFormat)}
+                            style={{ width: 200, marginLeft: 12 }}
+                            options={[
+                                { value: "bktgz", label: ".bktgz (Bucket Archive)" },
+                                { value: "json", label: ".json" },
+                            ]}
+                        />
+                    </div>
+
+                    <div>
+                        <Typography.Text strong>Merge Before Writing</Typography.Text>
+                        <Switch
+                            style={{ marginLeft: 12 }}
+                            checked={exportMergeBeforeWrite}
+                            onChange={setExportMergeBeforeWrite}
+                        />
+                    </div>
+
+                    <div>
+                        <Typography.Text strong>File Name</Typography.Text>
+                        <Input
+                            style={{ marginTop: 8 }}
+                            value={exportFileName}
+                            onChange={(event) => setExportFileName(event.target.value)}
+                            placeholder="coverage_export"
+                            addonAfter={exportFormat === "json" ? ".json" : ".bktgz"}
+                        />
+                    </div>
+                </Flex>
+            </Modal>
+
             <ColorModeToggleButton {...view.float.theme.props} />
         </ConfigProvider>
     );

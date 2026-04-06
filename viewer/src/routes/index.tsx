@@ -9,7 +9,20 @@ import { useFileLoader } from "@/hooks/useFileLoader";
 import { Spin } from "antd";
 
 export const AppRoutes = () => {
-    const { tree, isLoading, isDragging, fileInputRef, handleFileInput, openFileDialog, clearCoverage } = useFileLoader();
+    const {
+        tree,
+        session,
+        isLoading,
+        isDragging,
+        fileInputRef,
+        handleFileInput,
+        openFileDialog,
+        clearCoverage,
+        setLoadedRecords,
+        mergeRecords,
+        refreshLoadedRecords,
+        exportRecords,
+    } = useFileLoader();
 
     const element = useRoutes([
         {
@@ -22,10 +35,22 @@ export const AppRoutes = () => {
                         ref={fileInputRef}
                         onChange={handleFileInput}
                         accept=".bktgz"
+                        multiple
                         style={{ display: 'none' }}
                     />
                     <Spin spinning={isLoading} size="large" tip="Loading coverage data...">
-                        <Dashboard tree={tree} onOpenFile={openFileDialog} onClearCoverage={clearCoverage} isDragging={isDragging} />
+                        <Dashboard
+                            tree={tree}
+                            records={session.records}
+                            sources={session.sources}
+                            onOpenFile={openFileDialog}
+                            onClearCoverage={clearCoverage}
+                            onSetLoadedRecords={setLoadedRecords}
+                            onMergeRecords={mergeRecords}
+                            onRefreshRecords={refreshLoadedRecords}
+                            onExportRecords={exportRecords}
+                            isDragging={isDragging}
+                        />
                     </Spin>
                 </>
             ),

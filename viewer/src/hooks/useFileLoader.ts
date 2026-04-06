@@ -3,58 +3,215 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-import { useEffect, useRef, useState } from "react";
-import { notification, Modal } from "antd";
-import CoverageTree from "@/features/Dashboard/lib/coveragetree";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Modal, notification } from "antd";
+import CoverageTree from "../features/Dashboard/lib/coveragetree";
 import {
     isElectron,
-    loadFileFromBytes,
-    loadFileFromFileObject,
-    loadFileFromFileHandle,
+    loadReadoutsFromElectronPath,
+    loadReadoutsFromFileHandle,
+    loadReadoutsFromFileObject,
     openElectronFileDialog,
 } from "@/services/fileLoader";
+import type {
+    CoverageRecord,
+    CoverageSession,
+    CoverageSourceRef,
+    ExportFormat,
+} from "@/types/coverageSession";
+import { mergeReadoutsStrict } from "@/services/readoutUtils";
+import { serializeReadouts } from "@/services/exportSerializers";
+import { getDefaultExportFileName, saveExportBytes } from "@/services/exportSaver";
 
-/**
- * Get the default empty tree
- */
-function getDefaultTree(): CoverageTree {
-    return new CoverageTree([]);
+type FilePickerWindow = Window & {
+    showOpenFilePicker?: (options?: {
+        multiple?: boolean;
+        types?: Array<{
+            description?: string;
+            accept: Record<string, string[]>;
+        }>;
+    }) => Promise<FileSystemFileHandle[]>;
+};
+
+type RefreshWarning = {
+    sourceLabel: string;
+    detail: string;
+};
+
+type SourceLoadPayload = {
+    readouts: Readout[];
+    source: Omit<CoverageSourceRef, "id">;
+};
+
+type LoadMode = "replace" | "append";
+
+function getDefaultSession(): CoverageSession {
+    return {
+        records: [],
+        sources: [],
+        loadedRecordIds: [],
+    };
 }
 
-/**
- * Custom hook for managing file loading and tree state
- */
+function isNoCoverageError(errorMessage: string): boolean {
+    return errorMessage.toLowerCase().includes("no coverage data");
+}
+
+async function promptCoverageFileReselect(): Promise<File | null> {
+    const pickerWindow = window as FilePickerWindow;
+    if (pickerWindow.showOpenFilePicker) {
+        try {
+            const [handle] = await pickerWindow.showOpenFilePicker({
+                multiple: false,
+                types: [
+                    {
+                        description: "Bucket Archive",
+                        accept: {
+                            "application/gzip": [".bktgz"],
+                        },
+                    },
+                ],
+            });
+            if (!handle) {
+                return null;
+            }
+            return handle.getFile();
+        } catch {
+            return null;
+        }
+    }
+
+    return new Promise((resolve) => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".bktgz";
+        input.style.display = "none";
+        document.body.appendChild(input);
+
+        let settled = false;
+        const cleanup = () => {
+            window.removeEventListener("focus", onFocus, true);
+            input.remove();
+        };
+        const finish = (file: File | null) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            cleanup();
+            resolve(file);
+        };
+        const onFocus = () => {
+            setTimeout(() => {
+                if (!settled) {
+                    finish(null);
+                }
+            }, 500);
+        };
+
+        input.onchange = () => {
+            const file = input.files?.[0] ?? null;
+            finish(file);
+        };
+
+        window.addEventListener("focus", onFocus, true);
+        input.click();
+    });
+}
+
 export function useFileLoader() {
-    const [tree, setTree] = useState<CoverageTree>(getDefaultTree);
+    const [session, setSession] = useState<CoverageSession>(getDefaultSession);
     const [isLoading, setIsLoading] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const sourceCounterRef = useRef(1);
+    const recordCounterRef = useRef(1);
 
-    /**
-     * Load a file and update the tree state
-     */
-    const loadFile = async (loadFn: () => Promise<CoverageTree>, suppressNotification: boolean = false): Promise<{ success: boolean }> => {
+    const tree = useMemo(() => {
+        const loadedSet = new Set(session.loadedRecordIds);
+        const loadedReadouts = session.records
+            .filter((record) => loadedSet.has(record.id))
+            .map((record) => record.readout);
+        return CoverageTree.fromReadouts(loadedReadouts);
+    }, [session.loadedRecordIds, session.records]);
+
+    const setSessionFromSources = (
+        sourcePayloads: SourceLoadPayload[],
+        mode: LoadMode,
+    ): void => {
+        const sources: CoverageSourceRef[] = [];
+        const records: CoverageRecord[] = [];
+
+        for (const payload of sourcePayloads) {
+            const sourceId = `source-${sourceCounterRef.current++}`;
+            const sourceRef: CoverageSourceRef = {
+                id: sourceId,
+                ...payload.source,
+            };
+            sources.push(sourceRef);
+            for (const [index, readout] of payload.readouts.entries()) {
+                records.push({
+                    id: `record-${recordCounterRef.current++}`,
+                    readout,
+                    sourceRef: sourceId,
+                    sourceRecordIndex: index,
+                    isLoaded: true,
+                });
+            }
+        }
+
+        const loadedRecordIds = records.map((record) => record.id);
+        if (mode === "replace") {
+            setSession({
+                sources,
+                records,
+                loadedRecordIds,
+            });
+            return;
+        }
+
+        setSession((current) => {
+            const mergedLoaded = new Set(current.loadedRecordIds);
+            for (const loadedId of loadedRecordIds) {
+                mergedLoaded.add(loadedId);
+            }
+            return {
+                sources: [...current.sources, ...sources],
+                records: [...current.records, ...records],
+                loadedRecordIds: Array.from(mergedLoaded),
+            };
+        });
+    };
+
+    const loadWithSources = async (
+        loadFn: () => Promise<SourceLoadPayload[]>,
+        suppressNotification: boolean = false,
+        mode: LoadMode = "append",
+    ): Promise<{ success: boolean }> => {
         setIsLoading(true);
         setError(null);
         try {
-            const newTree = await loadFn();
-            setTree(newTree);
+            const payloads = await loadFn();
+            if (payloads.length === 0) {
+                throw new Error("No coverage files selected.");
+            }
+            setSessionFromSources(payloads, mode);
             return { success: true };
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err);
-            console.error("Failed to load file:", err);
             setError(errorMessage);
             if (!suppressNotification) {
-                if (errorMessage.includes('no coverage data')) {
+                if (isNoCoverageError(errorMessage)) {
                     notification.error({
-                        message: 'No Coverage Data',
-                        description: 'The loaded .bktgz file contains no coverage data. Please ensure the file was exported correctly from a Bucket coverage run.',
+                        message: "No Coverage Data",
+                        description:
+                            "The loaded .bktgz file contains no coverage data. Please ensure the file was exported correctly from a Bucket coverage run.",
                         duration: 5,
                     });
                 } else {
                     notification.error({
-                        message: 'Failed to Load File',
+                        message: "Failed to Load File",
                         description: errorMessage,
                         duration: 5,
                     });
@@ -66,199 +223,457 @@ export function useFileLoader() {
         }
     };
 
-    /**
-     * Handle file input change (web browser file picker)
-     */
     const handleFileInput = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
-        const file = event.target.files?.[0];
-        if (file) {
-            await loadFile(() => loadFileFromFileObject(file));
+        const files = Array.from(event.target.files ?? []).filter((file) =>
+            file.name.endsWith(".bktgz"),
+        );
+        if (files.length > 0) {
+            await loadWithSources(async () => {
+                const payloads: SourceLoadPayload[] = [];
+                for (const file of files) {
+                    payloads.push({
+                        readouts: await loadReadoutsFromFileObject(file),
+                        source: {
+                            kind: "fileObject",
+                            label: file.name,
+                            fileObject: file,
+                        },
+                    });
+                }
+                return payloads;
+            });
         }
-        // Reset input so same file can be selected again
         if (event.target) {
-            event.target.value = '';
+            event.target.value = "";
         }
     };
 
-    /**
-     * Open file dialog (Electron or web browser)
-     */
     const openFileDialog = async (): Promise<void> => {
         if (isElectron() && window.electronAPI) {
-            // Electron file picker - use loadFile for consistent error handling
-            await loadFile(async () => {
-                const result = await openElectronFileDialog();
-                if (!result) {
-                    throw new Error('File selection was cancelled');
+            const filePaths = await openElectronFileDialog();
+            if (!filePaths || filePaths.length === 0) {
+                return;
+            }
+            await loadWithSources(async () => {
+                const payloads: SourceLoadPayload[] = [];
+                for (const filePath of filePaths) {
+                    payloads.push({
+                        readouts: await loadReadoutsFromElectronPath(filePath),
+                        source: {
+                            kind: "electronPath",
+                            label: filePath.split(/[\\/]/).pop() ?? filePath,
+                            path: filePath,
+                        },
+                    });
                 }
-                return result;
-            }); // loadFile will show notifications
-        } else {
-            // Web browser file picker
-            fileInputRef.current?.click();
+                return payloads;
+            });
+            return;
         }
+        fileInputRef.current?.click();
     };
 
-    /**
-     * Clear coverage data and reset to empty tree
-     */
     const clearCoverage = (): void => {
         Modal.confirm({
-            title: 'Clear Coverage',
-            content: 'Are you sure you want to clear all coverage data?',
-            okText: 'Clear',
-            okType: 'danger',
-            cancelText: 'Cancel',
+            title: "Clear Coverage",
+            content: "Are you sure you want to clear all coverage data?",
+            okText: "Clear",
+            okType: "danger",
+            cancelText: "Cancel",
             onOk: () => {
-                setTree(getDefaultTree());
+                setSession(getDefaultSession());
                 setError(null);
             },
         });
     };
 
-    /**
-     * Handle drag and drop
-     */
+    const setLoadedRecords = (loadedRecordIds: string[]): void => {
+        const loadedSet = new Set(loadedRecordIds);
+        setSession((current) => ({
+            ...current,
+            loadedRecordIds,
+            records: current.records.map((record) => ({
+                ...record,
+                isLoaded: loadedSet.has(record.id),
+            })),
+        }));
+    };
+
+    const mergeRecords = async (recordIds: string[]): Promise<void> => {
+        const selected = session.records.filter((record) => recordIds.includes(record.id));
+        if (selected.length < 2) {
+            notification.warning({
+                message: "Merge Requires Two or More Records",
+                description: "Select at least two records to merge.",
+                duration: 4,
+            });
+            return;
+        }
+
+        try {
+            const mergedReadout = mergeReadoutsStrict(selected.map((record) => record.readout));
+            const sourceId = `source-${sourceCounterRef.current++}`;
+            const mergedSource: CoverageSourceRef = {
+                id: sourceId,
+                kind: "virtualMerged",
+                label: mergedReadout.get_source() ?? "Merged Record",
+            };
+            const mergedRecord: CoverageRecord = {
+                id: `record-${recordCounterRef.current++}`,
+                readout: mergedReadout,
+                sourceRef: sourceId,
+                sourceRecordIndex: 0,
+                isLoaded: true,
+            };
+            setSession((current) => ({
+                sources: [...current.sources, mergedSource],
+                records: [...current.records, mergedRecord],
+                loadedRecordIds: [...current.loadedRecordIds, mergedRecord.id],
+            }));
+            notification.success({
+                message: "Records Merged",
+                description: "Merged record added and loaded.",
+                duration: 3,
+            });
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            notification.error({
+                message: "Merge Failed",
+                description: errorMessage,
+                duration: 5,
+            });
+        }
+    };
+
+    const refreshLoadedRecords = async (): Promise<void> => {
+        setIsLoading(true);
+        setError(null);
+
+        const warnings: RefreshWarning[] = [];
+        const refreshedRecordIds: string[] = [];
+
+        try {
+            const nextSources = session.sources.map((source) => ({ ...source }));
+            const nextRecords = session.records.map((record) => ({ ...record }));
+            const sourceById = new Map(nextSources.map((source) => [source.id, source]));
+
+            const recordsBySource = new Map<string, CoverageRecord[]>();
+            for (const record of nextRecords) {
+                if (!record.isLoaded) {
+                    continue;
+                }
+                const source = sourceById.get(record.sourceRef);
+                if (!source || source.kind === "virtualMerged") {
+                    continue;
+                }
+                const group = recordsBySource.get(source.id) ?? [];
+                group.push(record);
+                recordsBySource.set(source.id, group);
+            }
+
+            for (const [sourceId, records] of recordsBySource.entries()) {
+                const source = sourceById.get(sourceId);
+                if (!source) {
+                    continue;
+                }
+
+                let refreshedReadouts: Readout[] | null = null;
+                try {
+                    if (source.kind === "electronPath") {
+                        if (!source.path) {
+                            throw new Error("Missing source file path.");
+                        }
+                        refreshedReadouts = await loadReadoutsFromElectronPath(source.path);
+                    } else if (source.kind === "fileHandle") {
+                        if (!source.fileHandle) {
+                            throw new Error("Missing file handle.");
+                        }
+                        refreshedReadouts = await loadReadoutsFromFileHandle(source.fileHandle);
+                    } else if (source.kind === "fileObject") {
+                        const replacementFile = await promptCoverageFileReselect();
+                        if (!replacementFile) {
+                            warnings.push({
+                                sourceLabel: source.label,
+                                detail: "Refresh canceled; keeping currently loaded record(s).",
+                            });
+                            continue;
+                        }
+                        source.fileObject = replacementFile;
+                        source.label = replacementFile.name;
+                        refreshedReadouts = await loadReadoutsFromFileObject(replacementFile);
+                    }
+                } catch (err) {
+                    const message = err instanceof Error ? err.message : String(err);
+                    warnings.push({
+                        sourceLabel: source.label,
+                        detail: `Skipping refresh: ${message}`,
+                    });
+                    continue;
+                }
+
+                if (!refreshedReadouts) {
+                    continue;
+                }
+
+                for (const record of records) {
+                    const refreshed = refreshedReadouts[record.sourceRecordIndex];
+                    if (!refreshed) {
+                        warnings.push({
+                            sourceLabel: source.label,
+                            detail: `Record index ${record.sourceRecordIndex} no longer exists; kept stale record.`,
+                        });
+                        continue;
+                    }
+                    record.readout = refreshed;
+                    refreshedRecordIds.push(record.id);
+                }
+            }
+
+            setSession({
+                sources: nextSources,
+                records: nextRecords,
+                loadedRecordIds: session.loadedRecordIds,
+            });
+
+            if (refreshedRecordIds.length > 0) {
+                notification.success({
+                    message: "Refresh Complete",
+                    description: `Refreshed ${refreshedRecordIds.length} loaded record(s).`,
+                    duration: 3,
+                });
+            } else {
+                notification.info({
+                    message: "Nothing Refreshed",
+                    description: "No loaded file-backed records were refreshed.",
+                    duration: 3,
+                });
+            }
+
+            if (warnings.length > 0) {
+                notification.warning({
+                    message: "Refresh Warnings",
+                    description: warnings
+                        .map((warning) => `${warning.sourceLabel}: ${warning.detail}`)
+                        .join(" "),
+                    duration: 7,
+                });
+            }
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            setError(errorMessage);
+            notification.error({
+                message: "Refresh Failed",
+                description: errorMessage,
+                duration: 5,
+            });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const exportRecords = async (options: {
+        recordIds: string[];
+        format: ExportFormat;
+        mergeBeforeExport: boolean;
+        fileBaseName?: string;
+    }): Promise<void> => {
+        const selected = session.records.filter(
+            (record) => record.isLoaded && options.recordIds.includes(record.id),
+        );
+        if (selected.length === 0) {
+            notification.warning({
+                message: "No Records Selected",
+                description: "Select at least one loaded record to export.",
+                duration: 4,
+            });
+            return;
+        }
+
+        try {
+            const exportReadouts = options.mergeBeforeExport
+                ? [mergeReadoutsStrict(selected.map((record) => record.readout))]
+                : selected.map((record) => record.readout);
+            const bytes = serializeReadouts(exportReadouts, options.format);
+            const defaultFileName = getDefaultExportFileName(
+                options.format,
+                options.mergeBeforeExport,
+            );
+            const defaultBaseName = defaultFileName.replace(/\.(bktgz|json)$/i, "");
+            const rawBaseName = (options.fileBaseName ?? "").trim();
+            const extension = options.format === "json" ? ".json" : ".bktgz";
+            const safeBaseName =
+                rawBaseName.length === 0
+                    ? defaultBaseName
+                    : rawBaseName.replace(/\.(bktgz|json)$/i, "");
+            const fileName =
+                safeBaseName.length === 0 ? defaultBaseName + extension : `${safeBaseName}${extension}`;
+            const result = await saveExportBytes(bytes, options.format, fileName);
+            if (!result.canceled) {
+                notification.success({
+                    message: "Export Complete",
+                    description: `Exported ${exportReadouts.length} record(s).`,
+                    duration: 3,
+                });
+            }
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            notification.error({
+                message: "Export Failed",
+                description: errorMessage,
+                duration: 5,
+            });
+            throw err;
+        }
+    };
+
     const handleDrop = async (e: DragEvent): Promise<void> => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(false);
         const files = e.dataTransfer?.files;
         if (files && files.length > 0) {
-            const file = files[0];
-            if (file.name.endsWith('.bktgz')) {
-                await loadFile(() => loadFileFromFileObject(file));
+            const archiveFiles = Array.from(files).filter((file) =>
+                file.name.endsWith(".bktgz"),
+            );
+            if (archiveFiles.length > 0) {
+                await loadWithSources(async () => {
+                    const payloads: SourceLoadPayload[] = [];
+                    for (const file of archiveFiles) {
+                        payloads.push({
+                            readouts: await loadReadoutsFromFileObject(file),
+                            source: {
+                                kind: "fileObject",
+                                label: file.name,
+                                fileObject: file,
+                            },
+                        });
+                    }
+                    return payloads;
+                });
             } else {
                 notification.warning({
-                    message: 'Invalid File Type',
-                    description: 'Please drop a .bktgz file.',
+                    message: "Invalid File Type",
+                    description: "Please drop a .bktgz file.",
                     duration: 3,
                 });
             }
         }
     };
 
-    /**
-     * Handle drag over (prevent default to allow drop)
-     */
     const handleDragOver = (e: DragEvent): void => {
         const isPivotAxisDrag = e.dataTransfer?.types?.includes("application/x-pivot-axis");
-        // Always prevent default browser handling so we don't trigger navigation or
-        // other native drag behaviors, even when the pivot table owns the drag.
         e.preventDefault();
         if (isPivotAxisDrag) {
-            // Let the event propagate so the pivot table's own handlers still run.
             return;
         }
         e.stopPropagation();
         if (e.dataTransfer) {
-            e.dataTransfer.dropEffect = 'copy';
+            e.dataTransfer.dropEffect = "copy";
         }
         setIsDragging(true);
     };
 
-    /**
-     * Handle drag enter
-     */
     const handleDragEnter = (e: DragEvent): void => {
         const isPivotAxisDrag = e.dataTransfer?.types?.includes("application/x-pivot-axis");
-        // Always prevent default browser handling so we don't trigger navigation or
-        // other native drag behaviors, even when the pivot table owns the drag.
         e.preventDefault();
         if (isPivotAxisDrag) {
-            // Let the event propagate so the pivot table's own handlers still run.
             return;
         }
         e.stopPropagation();
         if (e.dataTransfer) {
-            e.dataTransfer.dropEffect = 'copy';
+            e.dataTransfer.dropEffect = "copy";
         }
         setIsDragging(true);
     };
 
-    /**
-     * Handle drag leave
-     */
     const handleDragLeave = (e: DragEvent): void => {
         e.preventDefault();
         e.stopPropagation();
-        // Only set dragging to false if we're leaving the window
         if (!e.relatedTarget || (e.relatedTarget as Node).nodeType === Node.DOCUMENT_NODE) {
             setIsDragging(false);
         }
     };
 
-    // Set up event listeners and Electron handlers
     useEffect(() => {
-        // Chrome PWA file handling: Handle files opened directly via PWA file association
-        // This allows users to open .bktgz files directly from the OS when the app
-        // is installed as a PWA (Progressive Web App)
         if ("launchQueue" in window && window.launchQueue) {
-            window.launchQueue.setConsumer(async (launchParams: { files: FileSystemFileHandle[] }) => {
-                try {
-                    for (const file of launchParams.files) {
-                        await loadFile(() => loadFileFromFileHandle(file));
+            window.launchQueue.setConsumer(
+                async (launchParams: { files: FileSystemFileHandle[] }) => {
+                    try {
+                        await loadWithSources(async () => {
+                            const payloads: SourceLoadPayload[] = [];
+                            for (const fileHandle of launchParams.files) {
+                                payloads.push({
+                                    readouts: await loadReadoutsFromFileHandle(fileHandle),
+                                    source: {
+                                        kind: "fileHandle",
+                                        label: fileHandle.name,
+                                        fileHandle,
+                                    },
+                                });
+                            }
+                            return payloads;
+                        });
+                    } catch (err) {
+                        notification.error({
+                            message: "Failed to Load File",
+                            description: err instanceof Error ? err.message : String(err),
+                            duration: 5,
+                        });
                     }
-                } catch (error) {
-                    console.error("Failed to load file from PWA launchQueue:", error);
-                    notification.error({
-                        message: 'Failed to Load File',
-                        description: error instanceof Error ? error.message : String(error),
-                        duration: 5,
-                    });
-                }
-            });
+                },
+            );
         }
 
-        // Handle drag and drop (works in both Electron and web browsers)
         const rootElement = document.documentElement;
-        rootElement.addEventListener('drop', handleDrop);
-        rootElement.addEventListener('dragover', handleDragOver);
-        rootElement.addEventListener('dragenter', handleDragEnter);
-        rootElement.addEventListener('dragleave', handleDragLeave);
+        rootElement.addEventListener("drop", handleDrop);
+        rootElement.addEventListener("dragover", handleDragOver);
+        rootElement.addEventListener("dragenter", handleDragEnter);
+        rootElement.addEventListener("dragleave", handleDragLeave);
 
-        // Electron-specific: Handle files opened via app.open-file (macOS) or menu
-        // The onFilesOpened API receives an array of file paths to support multi-file
-        // selection in the future. Currently, we process each file sequentially.
         if (isElectron() && window.electronAPI) {
             const electronAPI = window.electronAPI;
             electronAPI.onFilesOpened(async (filePaths: string[]) => {
                 try {
-                    for (const filePath of filePaths) {
-                        const bytes = await electronAPI.readFile(filePath);
-                        await loadFile(() => loadFileFromBytes(bytes));
-                    }
-                } catch (error) {
-                    console.error("Failed to open file:", error);
+                    await loadWithSources(async () => {
+                        const payloads: SourceLoadPayload[] = [];
+                        for (const filePath of filePaths) {
+                            payloads.push({
+                                readouts: await loadReadoutsFromElectronPath(filePath),
+                                source: {
+                                    kind: "electronPath",
+                                    label: filePath.split(/[\\/]/).pop() ?? filePath,
+                                    path: filePath,
+                                },
+                            });
+                        }
+                        return payloads;
+                    });
+                } catch (err) {
                     notification.error({
-                        message: 'Failed to Open File',
-                        description: error instanceof Error ? error.message : String(error),
+                        message: "Failed to Open File",
+                        description: err instanceof Error ? err.message : String(err),
                         duration: 5,
                     });
                 }
             });
 
-            // Handle clear coverage event from Electron
             electronAPI.onClearCoverage(() => {
                 clearCoverage();
             });
         }
 
         return () => {
-            rootElement.removeEventListener('drop', handleDrop);
-            rootElement.removeEventListener('dragover', handleDragOver);
-            rootElement.removeEventListener('dragenter', handleDragEnter);
-            rootElement.removeEventListener('dragleave', handleDragLeave);
+            rootElement.removeEventListener("drop", handleDrop);
+            rootElement.removeEventListener("dragover", handleDragOver);
+            rootElement.removeEventListener("dragenter", handleDragEnter);
+            rootElement.removeEventListener("dragleave", handleDragLeave);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        // Intentionally empty deps: This effect should run only once on mount to set up
-        // event listeners and IPC handlers. The handlers (loadFile, handleDrop, etc.)
-        // are stable functions that don't need to be in the dependency array.
     }, []);
 
     return {
         tree,
-        setTree,
+        session,
         isLoading,
         isDragging,
         error,
@@ -266,5 +681,9 @@ export function useFileLoader() {
         handleFileInput,
         openFileDialog,
         clearCoverage,
+        setLoadedRecords,
+        mergeRecords,
+        refreshLoadedRecords,
+        exportRecords,
     };
 }
