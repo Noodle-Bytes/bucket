@@ -152,17 +152,6 @@ function getColumnMixedCompare(columnKey: string) {
         );
 }
 
-function getAxisColumnCompareByPosition(
-    columnKey: string,
-    orderByValue: Map<string, number>,
-) {
-    return (a: CoverageRecord | SummaryRecord, b: CoverageRecord | SummaryRecord) => {
-        const aIdx = orderByValue.get(String(a[columnKey])) ?? -1;
-        const bIdx = orderByValue.get(String(b[columnKey])) ?? -1;
-        return aIdx - bIdx;
-    };
-}
-
 function getColumnNumCompare(columnKey: string) {
     return (a: ComparableRecord, b: ComparableRecord) =>
         numCompare(
@@ -315,10 +304,6 @@ function getFullColumns(
                     axis.value_start - axisValueStart,
                     axis.value_end - axisValueStart,
                 );
-                // Order is fixed when axes are created; sort by position (start)
-                const orderByValue = new Map(
-                    axisValueSlice.map((av, i) => [av.value, i]),
-                );
                 return {
                     title: axis.name,
                     dataIndex: axis.name,
@@ -330,7 +315,8 @@ function getFullColumns(
                     filterMode: "tree",
                     filterSearch: true,
                     onFilter: (value, record) => record[axis.name] == value,
-                    sorter: getAxisColumnCompareByPosition(axis.name, orderByValue),
+                    sorter: getColumnMixedCompare(axis.name),
+                    sortDirections: ["ascend", "descend", null],
                 };
             }),
         },

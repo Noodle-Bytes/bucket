@@ -3,7 +3,7 @@
 
 import pytest
 
-from bucket.axis import Axis, AxisOverlappingRanges
+from bucket.axis import Axis, AxisAmbiguousValues, AxisOverlappingRanges
 
 
 class TestAxisLookupSemantics:
@@ -16,16 +16,13 @@ class TestAxisLookupSemantics:
 
         assert axis.get_named_value(1) == "1"
 
-    def test_mixed_exact_and_range_keeps_ordered_matching(self):
-        axis = Axis(
-            name="mixed",
-            values={"A_RANGE": [0, 10], "B_EXACT": 5},
-            description="Numeric exact values sort before ranges in the canonical order",
-        )
-
-        # With semantic ordering, numerics (kind 0) sort before ranges (kind 1),
-        # so B_EXACT (value=5) is checked before A_RANGE ([0, 10]).
-        assert axis.get_named_value(5) == "B_EXACT"
+    def test_mixed_exact_and_range_with_overlap_is_rejected(self):
+        with pytest.raises(AxisAmbiguousValues):
+            Axis(
+                name="mixed",
+                values={"A_RANGE": [0, 10], "B_EXACT": 5},
+                description="A scalar inside a range is ambiguous and must be rejected",
+            )
 
     def test_overlapping_ranges_raise_error(self):
         with pytest.raises(AxisOverlappingRanges):
@@ -35,14 +32,13 @@ class TestAxisLookupSemantics:
                 description="Overlapping ranges are not allowed",
             )
 
-    def test_duplicate_exact_values_keep_first_match(self):
-        axis = Axis(
-            name="duplicates",
-            values={"A": 7, "B": 7},
-            description="Duplicate values should resolve to first key",
-        )
-
-        assert axis.get_named_value(7) == "A"
+    def test_duplicate_exact_values_are_rejected(self):
+        with pytest.raises(AxisAmbiguousValues):
+            Axis(
+                name="duplicates",
+                values={"A": 7, "B": 7},
+                description="Duplicate exact scalar values are ambiguous",
+            )
 
     def test_enable_other_unchanged(self):
         axis = Axis(
@@ -53,3 +49,13 @@ class TestAxisLookupSemantics:
         )
 
         assert axis.get_named_value(99) == "Other"
+
+    def test_mixed_exact_and_range_without_overlap_is_allowed(self):
+        axis = Axis(
+            name="mixed_disjoint",
+            values={"A_RANGE": [0, 10], "B_EXACT": 11},
+            description="Disjoint exact and range values should be accepted",
+        )
+
+        assert axis.get_named_value(5) == "A_RANGE"
+        assert axis.get_named_value(11) == "B_EXACT"

@@ -255,7 +255,7 @@ class TestApplyGoalsWithValues:
         assert cp._cvg_goals[("10",)] == cp._goal_dict["SINGLE"]
 
     def test_point_reader_axis_values_ordered_by_start(self):
-        """Axis values are ordered when creating axes (number, range, text); sort by start."""
+        """Axis values preserve user insertion order in the readout."""
 
         class TestCoverpoint(Coverpoint):
             def setup(self, ctx):
@@ -279,12 +279,11 @@ class TestApplyGoalsWithValues:
         readout = PointReader("").read(cvg)
         axis_values = list(readout.iter_axis_values())
 
-        # Order: number (high=10), then range (small=0-3), then text (label)
-        assert [av.value for av in axis_values] == ["high", "small", "label"]
+        assert [av.value for av in axis_values] == ["small", "high", "label"]
         assert [av.start for av in axis_values] == [0, 1, 2]
 
-    def test_point_reader_dict_axis_tuple_range_sorts_with_numeric_ranges(self):
-        """Dict axis values preserve range container type; tuple ranges must not sort as text."""
+    def test_point_reader_dict_axis_tuple_range_preserves_order(self):
+        """Dict axis values preserve insertion order and range container normalization."""
 
         class TestCoverpoint(Coverpoint):
             def setup(self, ctx):
@@ -308,8 +307,7 @@ class TestApplyGoalsWithValues:
         readout = PointReader("").read(cvg)
         axis_values = list(readout.iter_axis_values())
 
-        # " " sorts before "(10, 20)" as strings; range must still follow numeric kind ordering.
-        assert [av.value for av in axis_values] == ["n", "r", "sp"]
+        assert [av.value for av in axis_values] == ["r", "n", "sp"]
 
     def test_mixed_comparison_patterns(self):
         """Test mixing .name and .value comparisons"""

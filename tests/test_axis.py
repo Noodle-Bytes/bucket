@@ -1,10 +1,14 @@
 # SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+
+# SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2025 Vypercore. All Rights Reserved
 
 import pytest
 
 from bucket.axis import (
     Axis,
+    AxisAmbiguousValues,
     AxisIncorrectNameFormat,
     AxisIncorrectValueFormat,
     AxisOtherNameAlreadyInUse,
@@ -16,7 +20,7 @@ from bucket.axis import (
 
 class TestSanitiseValues:
     def test_dict_values(self):
-        """Check that a unordered dict is returned as a sorted dict"""
+        """Check that dict insertion order is preserved."""
         axis = Axis(name="test", values=[0], description="test")
 
         test_stimulus = {
@@ -25,11 +29,11 @@ class TestSanitiseValues:
             "Apple": 1,
         }
         result = axis.sanitise_values(test_stimulus)
-        assert list(result.keys()) == ["Apple", "Banana", "Cherry"]
-        assert list(result.values()) == [1, 2, 3]
+        assert list(result.keys()) == ["Cherry", "Banana", "Apple"]
+        assert list(result.values()) == [3, 2, 1]
 
     def test_list_values(self):
-        """Check that a unordered list is returned as a sorted dict"""
+        """Check that list insertion order is preserved."""
         axis = Axis(name="test", values=[0], description="test")
 
         test_stimulus = [
@@ -38,11 +42,11 @@ class TestSanitiseValues:
             "Apple",
         ]
         result = axis.sanitise_values(test_stimulus)
-        assert list(result.keys()) == ["Apple", "Banana", "Cherry"]
-        assert list(result.values()) == ["Apple", "Banana", "Cherry"]
+        assert list(result.keys()) == ["Cherry", "Banana", "Apple"]
+        assert list(result.values()) == ["Cherry", "Banana", "Apple"]
 
     def test_set_values(self):
-        """Check that a unordered tuple is returned as a sorted dict"""
+        """Check that set values are represented correctly."""
         axis = Axis(name="test", values=[0], description="test")
 
         test_stimulus = {
@@ -52,11 +56,11 @@ class TestSanitiseValues:
             "Banana",
         }
         result = axis.sanitise_values(test_stimulus)
-        assert list(result.keys()) == ["Apple", "Banana", "Cherry"]
-        assert list(result.values()) == ["Apple", "Banana", "Cherry"]
+        assert set(result.keys()) == {"Apple", "Banana", "Cherry"}
+        assert set(result.values()) == {"Apple", "Banana", "Cherry"}
 
     def test_tuple_values(self):
-        """Check that a unordered tuple is returned as a sorted dict"""
+        """Check that tuple insertion order is preserved."""
         axis = Axis(name="test", values=[0], description="test")
 
         test_stimulus = (
@@ -65,8 +69,22 @@ class TestSanitiseValues:
             "Apple",
         )
         result = axis.sanitise_values(test_stimulus)
-        assert list(result.keys()) == ["Apple", "Banana", "Cherry"]
-        assert list(result.values()) == ["Apple", "Banana", "Cherry"]
+        assert list(result.keys()) == ["Cherry", "Banana", "Apple"]
+        assert list(result.values()) == ["Cherry", "Banana", "Apple"]
+
+    def test_duplicate_list_values_raise(self):
+        """Duplicate exact values in a sequence are ambiguous and rejected."""
+        axis = Axis(name="test", values=[0], description="test")
+
+        with pytest.raises(AxisAmbiguousValues):
+            axis.sanitise_values(["Apple", "Banana", "Apple"])
+
+    def test_duplicate_list_ranges_raise(self):
+        """Duplicate ranges in a sequence are ambiguous and rejected."""
+        axis = Axis(name="test", values=[0], description="test")
+
+        with pytest.raises(AxisAmbiguousValues):
+            axis.sanitise_values([[1, 3], [1, 3]])
 
     def test_default_other(self):
         """
@@ -80,8 +98,8 @@ class TestSanitiseValues:
             "Apple": 1,
         }
         result = axis.sanitise_values(test_stimulus)
-        assert list(result.keys()) == ["Apple", "Banana", "Cherry", "Other"]
-        assert list(result.values()) == [1, 2, 3, None]
+        assert list(result.keys()) == ["Cherry", "Banana", "Apple", "Other"]
+        assert list(result.values()) == [3, 2, 1, None]
 
     def test_named_other(self):
         """
@@ -98,8 +116,8 @@ class TestSanitiseValues:
             "Apple": 1,
         }
         result = axis.sanitise_values(test_stimulus)
-        assert list(result.keys()) == ["Alternate Fruit", "Apple", "Banana", "Cherry"]
-        assert list(result.values()) == [None, 1, 2, 3]
+        assert list(result.keys()) == ["Cherry", "Banana", "Apple", "Alternate Fruit"]
+        assert list(result.values()) == [3, 2, 1, None]
 
     def test_named_other_clash(self):
         """
@@ -129,8 +147,8 @@ class TestSanitiseValues:
             "Apple": 1,
         }
         result = axis.sanitise_values(test_stimulus)
-        assert list(result.keys()) == ["Apple", "Banana", "Cherry", "Other"]
-        assert list(result.values()) == [1, 2, 3, None]
+        assert list(result.keys()) == ["Cherry", "Banana", "Apple", "Other"]
+        assert list(result.values()) == [3, 2, 1, None]
 
     def test_undersized_set_range(self):
         """
@@ -204,8 +222,8 @@ class TestSanitiseValues:
 
         test_stimulus = ["Cherry", "Banana", "Apple", {9, 3}]
         result = axis.sanitise_values(test_stimulus)
-        assert list(result.keys()) == ["3 -> 9", "Apple", "Banana", "Cherry"]
-        assert list(result.values()) == [[3, 9], "Apple", "Banana", "Cherry"]
+        assert list(result.keys()) == ["Cherry", "Banana", "Apple", "3 -> 9"]
+        assert list(result.values()) == ["Cherry", "Banana", "Apple", [3, 9]]
 
     def test_list_range_values(self):
         """Check that a list range is correctly processed"""
@@ -213,8 +231,8 @@ class TestSanitiseValues:
 
         test_stimulus = ["Cherry", "Banana", "Apple", [19, 5]]
         result = axis.sanitise_values(test_stimulus)
-        assert list(result.keys()) == ["5 -> 19", "Apple", "Banana", "Cherry"]
-        assert list(result.values()) == [[5, 19], "Apple", "Banana", "Cherry"]
+        assert list(result.keys()) == ["Cherry", "Banana", "Apple", "5 -> 19"]
+        assert list(result.values()) == ["Cherry", "Banana", "Apple", [5, 19]]
 
     def test_tuple_range_values(self):
         """Check that a tuple range is correctly processed"""
@@ -222,8 +240,8 @@ class TestSanitiseValues:
 
         test_stimulus = ["Cherry", "Banana", "Apple", (6, 1)]
         result = axis.sanitise_values(test_stimulus)
-        assert list(result.keys()) == ["1 -> 6", "Apple", "Banana", "Cherry"]
-        assert list(result.values()) == [[1, 6], "Apple", "Banana", "Cherry"]
+        assert list(result.keys()) == ["Cherry", "Banana", "Apple", "1 -> 6"]
+        assert list(result.values()) == ["Cherry", "Banana", "Apple", [1, 6]]
 
     def test_dict_with_non_string_keys(self):
         """Check that a dict with non-string keys is not allowed"""
@@ -249,6 +267,11 @@ class TestSanitiseValues:
 
 
 class TestGetNamedValue:
+    def test_exact_value_inside_range_rejected(self):
+        """An exact scalar inside a range is ambiguous and must be rejected."""
+        with pytest.raises(AxisAmbiguousValues):
+            Axis(name="test", values={"range": [1, 3], "exact": 2}, description="test")
+
     def test_unrecognised_value(self):
         """Check unrecognised value raises an exception"""
         axis = Axis(name="test", values=[1, 2, 4, 5], description="test")
