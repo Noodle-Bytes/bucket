@@ -100,6 +100,11 @@ type LargeSortOption =
     | "hits_asc"
     | "ratio_desc"
     | "ratio_asc";
+type AxisSortMode = "none" | "user_desc" | "alpha_asc" | "alpha_desc";
+type AxisSortState = {
+    axisName: string | null;
+    mode: AxisSortMode;
+};
 
 export type PointGridProps = {
     node: PointNode;
@@ -158,6 +163,35 @@ function getColumnNumCompare(columnKey: string) {
             Number((a[columnKey] as number | string | undefined) ?? Number.NaN),
             Number((b[columnKey] as number | string | undefined) ?? Number.NaN),
         );
+}
+
+function getNextAxisSortMode(current: AxisSortMode): AxisSortMode {
+    switch (current) {
+        case "none":
+            return "user_desc";
+        case "user_desc":
+            return "alpha_asc";
+        case "alpha_asc":
+            return "alpha_desc";
+        case "alpha_desc":
+            return "none";
+        default:
+            return "none";
+    }
+}
+
+function getAxisSortIndicator(mode: AxisSortMode): string {
+    switch (mode) {
+        case "user_desc":
+            return " [user↓]";
+        case "alpha_asc":
+            return " [A→Z]";
+        case "alpha_desc":
+            return " [Z→A]";
+        case "none":
+        default:
+            return "";
+    }
 }
 
 function buildPointTableModel(node: PointNode): PointTableModel {
@@ -290,6 +324,8 @@ function getFullColumns(
     theme: ThemeType,
     model: PointTableModel,
     axisValueStart: number,
+    axisSortState: AxisSortState,
+    onAxisSortClick: (axisName: string) => void,
 ): TableProps<CoverageRecord>["columns"] {
     return [
         {
@@ -304,8 +340,31 @@ function getFullColumns(
                     axis.value_start - axisValueStart,
                     axis.value_end - axisValueStart,
                 );
+                const axisSortMode =
+                    axisSortState.axisName === axis.name ? axisSortState.mode : "none";
                 return {
-                    title: axis.name,
+                    title: (
+                        <span
+                            role="button"
+                            tabIndex={0}
+                            title={
+                                "Cycle sort: user order, reverse user order, alphabetical, reverse alphabetical"
+                            }
+                            style={{ cursor: "pointer", userSelect: "none" }}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onAxisSortClick(axis.name);
+                            }}
+                            onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    onAxisSortClick(axis.name);
+                                }
+                            }}>
+                            {`${axis.name}${getAxisSortIndicator(axisSortMode)}`}
+                        </span>
+                    ),
                     dataIndex: axis.name,
                     key: axis.name,
                     filters: axisValueSlice.map((axisValue) => ({
@@ -315,8 +374,6 @@ function getFullColumns(
                     filterMode: "tree",
                     filterSearch: true,
                     onFilter: (value, record) => record[axis.name] == value,
-                    sorter: getColumnMixedCompare(axis.name),
-                    sortDirections: ["ascend", "descend", null],
                 };
             }),
         },
@@ -451,6 +508,10 @@ export function PointGrid({ node }: PointGridProps) {
     const [largeHitFilter, setLargeHitFilter] = useState<HitClassFilter>("all");
     const [largeSort, setLargeSort] = useState<LargeSortOption>("bucket_asc");
     const [largeScrollY, setLargeScrollY] = useState<number>(LARGE_TABLE_SCROLL_Y);
+    const [axisSortState, setAxisSortState] = useState<AxisSortState>({
+        axisName: null,
+        mode: "none",
+    });
 
     const model = useMemo(() => buildPointTableModel(node), [node]);
 
@@ -461,6 +522,7 @@ export function PointGrid({ node }: PointGridProps) {
         setLargeGoalFilter("all");
         setLargeHitFilter("all");
         setLargeSort("bucket_asc");
+        setAxisSortState({ axisName: null, mode: "none" });
     }, [node.key]);
 
     useEffect(() => {
@@ -573,6 +635,72 @@ export function PointGrid({ node }: PointGridProps) {
         }
         return rows;
     }, [isLargeMode, model]);
+
+    const sortedFullDataSource = useMemo<CoverageRecord[]>(() => {
+        const { axisName, mode } = axisSortState;
+        if (!axisName || mode === "none" || fullDataSource.length <= 1) {
+            return fullDataSource;
+        }
+
+        const axis = model.axes.find((it) => it.name === axisName);
+        if (!axis) {
+            return fullDataSource;
+        }
+
+        const axisValues = model.axisValues.slice(
+            axis.value_start - node.data.point.axis_value_start,
+            axis.value_end - node.data.point.axis_value_start,
+        );
+        const orderByValue = new Map(axisValues.map((axisValue, idx) => [axisValue.value, idx]));
+
+        const sorted = fullDataSource
+            .map((row, idx) => ({ row, idx }))
+            .sort((a, b) => {
+                const aValue = String(a.row[axisName] ?? "");
+                const bValue = String(b.row[axisName] ?? "");
+
+                if (mode === "user_desc") {
+                    const aIdx = orderByValue.get(aValue) ?? Number.NEGATIVE_INFINITY;
+                    const bIdx = orderByValue.get(bValue) ?? Number.NEGATIVE_INFINITY;
+                    const cmp = bIdx - aIdx;
+                    if (cmp !== 0) {
+                        return cmp;
+                    }
+                    return a.idx - b.idx;
+                }
+
+                const alphaCmp = natCompare(aValue, bValue);
+                if (alphaCmp === 0) {
+                    return a.idx - b.idx;
+                }
+                return mode === "alpha_desc" ? -alphaCmp : alphaCmp;
+            })
+            .map((entry) => entry.row);
+
+        return sorted;
+    }, [axisSortState, fullDataSource, model.axes, model.axisValues, node.data.point.axis_value_start]);
+
+    const onAxisSortClick = (axisName: string) => {
+        setAxisSortState((current) => {
+            if (current.axisName !== axisName) {
+                return {
+                    axisName,
+                    mode: "user_desc",
+                };
+            }
+            const nextMode = getNextAxisSortMode(current.mode);
+            if (nextMode === "none") {
+                return {
+                    axisName: null,
+                    mode: "none",
+                };
+            }
+            return {
+                axisName,
+                mode: nextMode,
+            };
+        });
+    };
 
     useEffect(() => {
         if (!import.meta.env.DEV) {
@@ -734,8 +862,10 @@ export function PointGrid({ node }: PointGridProps) {
                                 theme,
                                 model,
                                 node.data.point.axis_value_start,
+                                axisSortState,
+                                onAxisSortClick,
                             )}
-                            dataSource={fullDataSource}
+                            dataSource={sortedFullDataSource}
                         />
                     </>
                 );
