@@ -14,6 +14,11 @@ interface ElectronAPI {
   openFileDialog: () => Promise<string[] | null>;
   readFile: (filePath: string) => Promise<number[]>;
   getDroppedFile: (filePath: string) => Promise<number[] | null>;
+  saveExportFile: (payload: {
+    bytes: number[];
+    format: "bktgz" | "json";
+    defaultFileName: string;
+  }) => Promise<{ canceled: boolean; path?: string }>;
   onFilesOpened: (callback: (filePaths: string[]) => void) => void;
   onClearCoverage: (callback: () => void) => void;
 }

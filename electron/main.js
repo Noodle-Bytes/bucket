@@ -632,7 +632,39 @@ ipcMain.handle('read-file', async (event, filePath) => {
     const buffer = await fsp.readFile(filePath);
     return Array.from(new Uint8Array(buffer));
   } catch (error) {
-    throw new Error(`Failed to read file: ${error.message}`);
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read file: ${detail}`);
+  }
+});
+
+// Handle exporting files
+ipcMain.handle('save-export-file', async (event, payload) => {
+  try {
+    if (!mainWindow) {
+      return { canceled: true };
+    }
+
+    const format = payload?.format === 'json' ? 'json' : 'bktgz';
+    const defaultFileName = payload?.defaultFileName || `bucket_export.${format}`;
+    const filters = format === 'json'
+      ? [{ name: 'JSON Coverage', extensions: ['json'] }, { name: 'All Files', extensions: ['*'] }]
+      : [{ name: 'Bucket Archive', extensions: ['bktgz'] }, { name: 'All Files', extensions: ['*'] }];
+
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: defaultFileName,
+      filters,
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+
+    const bytes = Array.isArray(payload?.bytes) ? payload.bytes : [];
+    await fsp.writeFile(result.filePath, Buffer.from(bytes));
+    return { canceled: false, path: result.filePath };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to save export file: ${detail}`);
   }
 });
 
