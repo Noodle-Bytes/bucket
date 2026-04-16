@@ -20,7 +20,10 @@ export default tseslint.config(
       'react-refresh': reactRefresh,
     },
     languageOptions: {
-      globals: globals.browser,
+      globals: {
+        ...globals.browser,
+        ...globals.es2020,
+      },
       ecmaVersion: 2020,
     },
     rules: {
