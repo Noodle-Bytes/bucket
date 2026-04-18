@@ -1,0 +1,91 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+
+name: Electron Builds
+
+on:
+  pull_request:
+    paths:
+      - "electron/**"
+      - "viewer/**"
+      - ".github/workflows/electron-builds.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "electron/**"
+      - "viewer/**"
+      - ".github/workflows/electron-builds.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            build_script: build:linux
+            artifact_glob: |
+              electron/dist/*.AppImage
+              electron/dist/*.deb
+          - os: windows-latest
+            build_script: build:win
+            artifact_glob: |
+              electron/dist/*.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: |
+            viewer/package-lock.json
+            electron/package-lock.json
+
+      - name: Install Linux display dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
+      - name: Install viewer dependencies
+        run: npm ci
+        working-directory: viewer
+
+      - name: Build viewer
+        run: npm run build
+        working-directory: viewer
+
+      - name: Install Electron dependencies
+        run: npm ci
+        working-directory: electron
+
+      - name: Smoke test (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum npm run smoke
+        working-directory: electron
+
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        run: npm run smoke
+        working-directory: electron
+
+      - name: Build Electron app
+        run: npm run ${{ matrix.build_script }}
+        working-directory: electron
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload Electron artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bucket-electron-${{ runner.os }}
+          path: ${{ matrix.artifact_glob }}
+          if-no-files-found: error

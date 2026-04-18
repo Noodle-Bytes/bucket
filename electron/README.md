@@ -3,9 +3,9 @@
   ~ Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
   -->
 
-# Bucket Mac App
+# Bucket Desktop App
 
-This is the Electron-based Mac application for viewing Bucket coverage archive files (`.bktgz`).
+This is the Electron desktop application for viewing Bucket coverage archive files (`.bktgz`) on macOS, Linux, and Windows.
 
 ## Development Only
 
@@ -41,41 +41,68 @@ If you are just wanting to build the app for local use, please skip this section
 
    **Note**: The web server is only required for development mode. The built/production app loads from the built files and doesn't need a server.
 
-## Building the Mac App
+## Building Desktop Packages
 
-To build a local Mac app, you can use the build script which automatically handles all dependencies:
-
-First make sure you have installed uv and npm
-```bash
-brew install uv
-brew install npm
-```
-Then start a bucket shell
-```bash
-./bin/shell
-```
-Then run the build script
-```bash
-./electron/build.sh
-```
-
-Or manually:
+To build locally, first build the viewer and install Electron dependencies:
 
 ```bash
 # Build the viewer first
 cd viewer
-npm install
+npm ci
 npm run build
 
 # Then build the Electron app
 cd ../electron
-npm install
-npm run build:mac
+npm ci
 ```
 
-This will create a `.app` bundle in the `electron/dist/mac-arm64` directory that can be used directly (no code signing required).
+Build commands per platform:
 
-**Note**: The built app is completely standalone and does not require a web server to run. It loads the viewer from the bundled files.
+```bash
+# macOS
+npm run build:mac
+
+# Linux (AppImage + .deb)
+npm run build:linux
+
+# Windows (.exe NSIS installer)
+npm run build:win
+```
+
+Convenience wrapper scripts:
+
+```bash
+# From repo root (recommended)
+./bin/build_electron_app            # host target
+./bin/build_electron_app linux
+./bin/build_electron_app win
+
+# Direct script (same behavior)
+./electron/build.sh host
+./electron/build.sh all
+```
+
+## Smoke Test
+
+Run a CI-style launch smoke test from the `electron` directory:
+
+```bash
+npm run smoke
+```
+
+This forces production mode (loads `viewer/dist`) and exits automatically with:
+
+- `0` when the app starts and main content loads
+- non-zero when startup/load fails
+
+## CI Artifacts
+
+GitHub Actions workflow `.github/workflows/electron-builds.yml` builds and uploads:
+
+- Linux: `.AppImage` and `.deb`
+- Windows: `.exe`
+
+All artifacts are published per run using the Actions `upload-artifact` step.
 
 ## Features
 
@@ -83,5 +110,5 @@ This will create a `.app` bundle in the `electron/dist/mac-arm64` directory that
   - File > Open menu
   - Drag and drop
   - Double-clicking `.bktgz` files (when associated with the app)
-- Native macOS menu bar
+- Native app menus per platform
 - Full coverage viewer functionality from the web app

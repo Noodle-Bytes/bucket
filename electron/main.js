@@ -28,13 +28,21 @@ protocol.registerSchemesAsPrivileged([
 
 // Determine if we're in development mode
 // Also check if we're running from source (not from built app)
-const isDevelopment = process.env.NODE_ENV === 'development' || !app.isPackaged;
+const forceProduction = process.env.BUCKET_ELECTRON_FORCE_PRODUCTION === '1';
+const isSmokeTest = process.env.BUCKET_ELECTRON_SMOKE_TEST === '1';
+const isDevelopment = !forceProduction && (process.env.NODE_ENV === 'development' || !app.isPackaged);
+
+if (isSmokeTest) {
+  // Keep smoke tests deterministic in headless CI runners.
+  app.commandLine.appendSwitch('disable-gpu');
+}
 
 // Set app name for macOS
 app.setName('Bucket');
 
 let mainWindow = null;
 let pendingFilePath = null;
+let smokeTestFailed = false;
 
 // Recent files management
 const MAX_RECENT_FILES = 10;
@@ -269,24 +277,28 @@ function showAboutDialog() {
  * - After the window finishes loading (see createWindow)
  */
 function createMenu() {
+  const isMac = process.platform === 'darwin';
+
   const template = [
-    {
-      label: app.getName(),
-      submenu: [
-        {
-          label: 'About Bucket',
-          click: showAboutDialog,
-        },
-        { type: 'separator' },
-        { role: 'services', label: 'Services' },
-        { type: 'separator' },
-        { role: 'hide', label: 'Hide Bucket' },
-        { role: 'hideOthers', label: 'Hide Others' },
-        { role: 'unhide', label: 'Show All' },
-        { type: 'separator' },
-        { role: 'quit', label: 'Quit Bucket' },
-      ],
-    },
+    ...(isMac
+      ? [{
+          label: app.getName(),
+          submenu: [
+            {
+              label: 'About Bucket',
+              click: showAboutDialog,
+            },
+            { type: 'separator' },
+            { role: 'services', label: 'Services' },
+            { type: 'separator' },
+            { role: 'hide', label: 'Hide Bucket' },
+            { role: 'hideOthers', label: 'Hide Others' },
+            { role: 'unhide', label: 'Show All' },
+            { type: 'separator' },
+            { role: 'quit', label: 'Quit Bucket' },
+          ],
+        }]
+      : []),
     {
       label: 'File',
       submenu: [
@@ -314,6 +326,12 @@ function createMenu() {
         },
         { type: 'separator' },
         { role: 'close', label: 'Close Window' },
+        ...(!isMac
+          ? [
+              { type: 'separator' },
+              { role: 'quit', label: 'Exit Bucket' },
+            ]
+          : []),
       ],
     },
     {
@@ -349,6 +367,17 @@ function createMenu() {
         { role: 'close', label: 'Close' },
       ],
     },
+    ...(!isMac
+      ? [{
+          label: 'Help',
+          submenu: [
+            {
+              label: 'About Bucket',
+              click: showAboutDialog,
+            },
+          ],
+        }]
+      : []),
   ];
 
   const menu = Menu.buildFromTemplate(template);
@@ -388,7 +417,7 @@ function createBrowserWindow() {
     backgroundColor: '#ffffff',
     frame: true, // Use standard frame to ensure window is movable
     titleBarStyle: 'default', // Use default title bar style
-    show: true, // Show immediately for debugging (was: false)
+    show: !isSmokeTest,
   });
 
   // Let windowStateKeeper manage the window state
@@ -402,6 +431,10 @@ function createBrowserWindow() {
  * @param {BrowserWindow} window - The window to set up handlers for
  */
 function setupWindowVisibilityHandlers(window) {
+  if (isSmokeTest) {
+    return;
+  }
+
   // Show window when ready
   window.once('ready-to-show', () => {
     window.show();
@@ -432,7 +465,6 @@ function setupWindowVisibilityHandlers(window) {
 function loadDevelopmentViewer(window) {
   // In development, load from dev server
   window.loadURL('http://localhost:4000');
-  window.webContents.openDevTools();
 }
 
 /**
@@ -472,6 +504,9 @@ async function loadProductionViewer(window) {
     console.error('Stack:', err.stack);
     console.error('distPath:', distPath);
     console.error('htmlPath:', htmlPath);
+    if (isSmokeTest) {
+      throw err;
+    }
     // Load a simple error page
     const errorHtml = createErrorHtml(err.message);
     window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
@@ -486,6 +521,11 @@ function setupWindowEventHandlers(window) {
   // Log failed resource loads and show error
   window.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     console.error('Failed to load:', errorCode, errorDescription, validatedURL, 'isMainFrame:', isMainFrame);
+    if (isMainFrame && isSmokeTest) {
+      smokeTestFailed = true;
+      app.exit(1);
+      return;
+    }
     // Only show error for main page (top-level) load failures, not subresources
     if (isMainFrame) {
       const errorHtml = createErrorHtml('Failed to load viewer', {
@@ -540,6 +580,10 @@ function handleWindowReady(window) {
   // We do this here instead of during initial menu creation to avoid menu insertion errors
   window.webContents.once('did-finish-load', () => {
     updateRecentFilesMenu();
+    if (isSmokeTest && !smokeTestFailed) {
+      // Give the renderer a short moment to emit startup errors.
+      setTimeout(() => app.exit(0), 500);
+    }
   });
 }
 
@@ -559,7 +603,7 @@ async function createWindow() {
     }
 
     // Open dev tools in development for debugging
-    if (isDevelopment) {
+    if (isDevelopment && !isSmokeTest) {
       mainWindow.webContents.openDevTools();
     }
 
@@ -569,6 +613,10 @@ async function createWindow() {
     console.log('Window created successfully');
   } catch (error) {
     console.error('Error creating window:', error);
+    if (isSmokeTest) {
+      app.exit(1);
+      return;
+    }
     throw error;
   }
 }

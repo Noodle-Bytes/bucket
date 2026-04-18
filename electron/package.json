@@ -1,12 +1,15 @@
 {
   "name": "bucket-electron",
   "version": "2.2.0",
-  "description": "Bucket Coverage Viewer - Mac App",
+  "description": "Bucket Coverage Viewer - Desktop App",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux AppImage deb",
+    "build:win": "electron-builder --win nsis",
+    "smoke": "node smoke.js",
     "dev": "NODE_ENV=development electron ."
   },
   "author": "Noodle-Bytes",
@@ -60,6 +63,43 @@
         ]
       }
     },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "../viewer/public/favicon.ico"
+    },
+    "linux": {
+      "category": "Development",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "fileAssociations": [
+      {
+        "ext": "bktgz",
+        "name": "Bucket Coverage Archive",
+        "description": "Bucket coverage archive file",
+        "role": "Viewer",
+        "mimeType": "application/gzip"
+      }
+    ],
     "files": [
       "main.js",
       "preload.js"
