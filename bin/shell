@@ -1,17 +1,20 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
+set -euo pipefail
+
 # Check for BUCKET_ROOT already being set in the shell
-if [[ -n "$BUCKET_ROOT" ]]; then
+if [[ -n "${BUCKET_ROOT:-}" ]]; then
     echo "[\033[0;31mERROR\033[0m] Bucket shell is already activated!"
     exit 1
 fi
 
-# Work out where the repository is located (portable: no readlink -f)
-BUCKET_ROOT=$(unset CDPATH; cd "${0:a:h}/.." && pwd -P)
+# Work out where the repository is located (portable: no readlink -f).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+BUCKET_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 
-if [[ -z "$BUCKET_ROOT" ]]; then
+if [[ -z "${BUCKET_ROOT:-}" ]]; then
     echo "[\033[0;31mERROR\033[0m] Could not determine BUCKET_ROOT."
     exit 1
 fi
@@ -22,9 +25,16 @@ if [[ ! -d "$ZDOTDIR" ]]; then
     exit 1
 fi
 
+ZSH_BIN="$(command -v zsh || true)"
+if [[ -z "$ZSH_BIN" ]]; then
+    echo "[\033[0;31mERROR\033[0m] zsh is required for ./bin/shell but was not found."
+    echo "Install zsh and rerun (Ubuntu: sudo apt install zsh)."
+    exit 1
+fi
+
 USER_HISTFILE=${HISTFILE:-$HOME/.zsh_history}
 
 BUCKET_ROOT=$BUCKET_ROOT \
     USER_HISTFILE=$USER_HISTFILE \
     ZDOTDIR=$ZDOTDIR \
-    /bin/zsh -i "$@"
+    "$ZSH_BIN" -i "$@"
