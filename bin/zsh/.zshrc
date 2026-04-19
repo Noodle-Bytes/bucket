@@ -15,6 +15,12 @@ setopt INC_APPEND_HISTORY
 
 # Ensure uv environment is installed
 echo "# Checking Python environment is up-to-date"
+if ! command -v uv > /dev/null 2>&1; then
+    echo "uv is required to prepare the Bucket Python environment."
+    echo "Install uv and rerun ./bin/shell: https://docs.astral.sh/uv/getting-started/installation/"
+    return 1
+fi
+
 if [ ! -d ".venv" ] || [ ! -f "uv.lock" ]; then
     uv lock
     uv sync --extra dev

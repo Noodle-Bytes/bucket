@@ -16,6 +16,18 @@ if ($env:BUCKET_ROOT) {
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BucketRoot = (Resolve-Path (Join-Path $ScriptDir "..")).Path
+$UserLocalBin = Join-Path $HOME ".local\bin"
+
+function Update-PathFromEnvironment {
+    $pathParts = @(
+        [Environment]::GetEnvironmentVariable("Path", "Machine"),
+        [Environment]::GetEnvironmentVariable("Path", "User"),
+        $UserLocalBin,
+        $env:Path
+    ) -join ";"
+
+    $env:Path = ($pathParts -split ";" | Where-Object { $_ } | Select-Object -Unique) -join ";"
+}
 
 function Test-Command($Name) {
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
@@ -39,14 +51,16 @@ function Invoke-LoggedCommand([string] $Command, [string[]] $Arguments, [string]
     }
 }
 
+Update-PathFromEnvironment
 Set-Location $BucketRoot
 
 Write-Host "# Checking Python environment is up-to-date"
+if (-not (Test-Command "uv")) {
+    Write-Error "uv is required to prepare the Bucket Python environment. Install uv from https://docs.astral.sh/uv/getting-started/installation/ and rerun .\bin\shell.cmd."
+    exit 1
+}
+
 if (-not (Test-Path ".venv") -or -not (Test-Path "uv.lock")) {
-    if (-not (Test-Command "uv")) {
-        Write-Error "uv is required to prepare the Bucket Python environment. Install uv and rerun .\bin\shell.ps1."
-        exit 1
-    }
     Invoke-LoggedCommand -Command "uv" -Arguments @("lock") -WorkingDirectory $BucketRoot
     Invoke-LoggedCommand -Command "uv" -Arguments @("sync", "--extra", "dev") -WorkingDirectory $BucketRoot
 }
@@ -78,11 +92,15 @@ if (-not (Test-Command "pre-commit") -or $LASTEXITCODE -ne 0) {
 }
 
 $env:BUCKET_ROOT = $BucketRoot
-$PromptPrefix = 'function global:prompt { "[BKT]:" + (Microsoft.PowerShell.Core\Get-Location) + "> " }'
-$LaunchArgs = @("-NoExit", "-Command", $PromptPrefix)
+$PromptPrefix = "function global:prompt { '[BKT]:' + (Microsoft.PowerShell.Core\Get-Location) + '> ' }"
+$LaunchCommand = $PromptPrefix
+$NoExitArgs = @("-NoExit")
 if ($ShellArgs) {
-    $LaunchArgs += $ShellArgs
+    $LaunchCommand = "$PromptPrefix; $($ShellArgs -join ' ')"
+    $NoExitArgs = @()
 }
+$EncodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($LaunchCommand))
+$LaunchArgs = $NoExitArgs + @("-EncodedCommand", $EncodedCommand)
 
 if (Test-Command "pwsh") {
     & pwsh @LaunchArgs

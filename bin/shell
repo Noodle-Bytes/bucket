@@ -19,6 +19,19 @@ if [[ -z "${BUCKET_ROOT:-}" ]]; then
     exit 1
 fi
 
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        USER_HOME_WIN="${USERPROFILE:-$HOME}"
+        USER_HOME_POSIX="$(cygpath -u "$USER_HOME_WIN" 2>/dev/null || echo "$HOME")"
+        if [[ -d "$USER_HOME_POSIX/.local/bin" ]]; then
+            export PATH="$USER_HOME_POSIX/.local/bin:$PATH"
+        fi
+        if [[ -d "/c/Program Files/nodejs" ]]; then
+            export PATH="/c/Program Files/nodejs:$PATH"
+        fi
+        ;;
+esac
+
 ZDOTDIR=$BUCKET_ROOT/bin/zsh
 if [[ ! -d "$ZDOTDIR" ]]; then
     echo "[\033[0;31mERROR\033[0m] ZDOTDIR not found: $ZDOTDIR"
@@ -51,7 +64,13 @@ else
         echo "[\033[0;31mERROR\033[0m] Bash environment file not found: $BASH_ENV_FILE"
         exit 1
     fi
-    BUCKET_ROOT=$BUCKET_ROOT \
-        USER_HISTFILE=${HISTFILE:-$HOME/.bash_history} \
-        bash --rcfile "$BASH_ENV_FILE" -i "$@"
+    if [[ "$#" -gt 0 ]]; then
+        BUCKET_ROOT=$BUCKET_ROOT \
+            USER_HISTFILE=${HISTFILE:-$HOME/.bash_history} \
+            bash --rcfile "$BASH_ENV_FILE" -i -c "$*"
+    else
+        BUCKET_ROOT=$BUCKET_ROOT \
+            USER_HISTFILE=${HISTFILE:-$HOME/.bash_history} \
+            bash --rcfile "$BASH_ENV_FILE" -i
+    fi
 fi

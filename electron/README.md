@@ -21,7 +21,7 @@ Bucket's Electron app needs:
 
 - Git, to download the repository.
 - Node.js LTS, which includes `node` and `npm`.
-- uv, only if you want to use `bin\shell.cmd` for Python/docs development.
+- uv, to create and maintain Bucket's Python environment.
 
 If `winget` is available, run:
 
