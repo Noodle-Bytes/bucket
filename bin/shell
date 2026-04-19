@@ -25,16 +25,33 @@ if [[ ! -d "$ZDOTDIR" ]]; then
     exit 1
 fi
 
-ZSH_BIN="$(command -v zsh || true)"
-if [[ -z "$ZSH_BIN" ]]; then
-    echo "[\033[0;31mERROR\033[0m] zsh is required for ./bin/shell but was not found."
-    echo "Install zsh and rerun (Ubuntu: sudo apt install zsh)."
+SHELL_BIN="$(command -v zsh || true)"
+SHELL_NAME="zsh"
+if [[ -z "$SHELL_BIN" ]]; then
+    SHELL_BIN="$(command -v bash || true)"
+    SHELL_NAME="bash"
+fi
+
+if [[ -z "$SHELL_BIN" ]]; then
+    echo "[\033[0;31mERROR\033[0m] zsh or bash is required for ./bin/shell but neither was found."
+    echo "On Windows PowerShell, run: .\\bin\\shell.ps1"
     exit 1
 fi
 
 USER_HISTFILE=${HISTFILE:-$HOME/.zsh_history}
 
-BUCKET_ROOT=$BUCKET_ROOT \
-    USER_HISTFILE=$USER_HISTFILE \
-    ZDOTDIR=$ZDOTDIR \
-    "$ZSH_BIN" -i "$@"
+if [[ "$SHELL_NAME" == "zsh" ]]; then
+    BUCKET_ROOT=$BUCKET_ROOT \
+        USER_HISTFILE=$USER_HISTFILE \
+        ZDOTDIR=$ZDOTDIR \
+        "$SHELL_BIN" -i "$@"
+else
+    BASH_ENV_FILE="$BUCKET_ROOT/bin/bash/.bashrc"
+    if [[ ! -f "$BASH_ENV_FILE" ]]; then
+        echo "[\033[0;31mERROR\033[0m] Bash environment file not found: $BASH_ENV_FILE"
+        exit 1
+    fi
+    BUCKET_ROOT=$BUCKET_ROOT \
+        USER_HISTFILE=${HISTFILE:-$HOME/.bash_history} \
+        bash --rcfile "$BASH_ENV_FILE" -i "$@"
+fi

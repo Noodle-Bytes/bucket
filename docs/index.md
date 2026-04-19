@@ -9,6 +9,7 @@ To run the example, which includes a coverage tree along with some randomised da
 
 ```
 $ ./bin/shell
+# Windows PowerShell: .\bin\shell.cmd
 $ python -m example.example
 ```
 

@@ -1,17 +1,14 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2024 Vypercore. All Rights Reserved
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 # Jump to BUCKET_ROOT
-cd $BUCKET_ROOT
+cd "$BUCKET_ROOT" || return
 
-# Custom prompt to make it clear this is the hardware environment
-PROMPT="[BKT]:$PROMPT"
+# Custom prompt to make it clear this is the Bucket environment
+PS1="[BKT]:$PS1"
 
 # Inherit the user history location
-export HISTFILE=$USER_HISTFILE
-
-# Incrementally append to history file
-setopt INC_APPEND_HISTORY
+export HISTFILE="$USER_HISTFILE"
 
 # Ensure uv environment is installed
 echo "# Checking Python environment is up-to-date"
@@ -21,10 +18,10 @@ if [ ! -d ".venv" ] || [ ! -f "uv.lock" ]; then
 fi
 
 # Ensure web environment is installed
-if npm -v >& /dev/null; then
-    cd $BUCKET_ROOT/viewer;
-    npm install --no-fund --no-audit;
-    cd $BUCKET_ROOT
+if npm -v > /dev/null 2>&1; then
+    cd "$BUCKET_ROOT/viewer" || return
+    npm install --no-fund --no-audit
+    cd "$BUCKET_ROOT" || return
 else
     echo "NPM not installed - HTML writer will be disabled. See 'https://docs.npmjs.com/downloading-and-installing-node-js-and-npm'"
 fi

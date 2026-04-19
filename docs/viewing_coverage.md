@@ -94,24 +94,40 @@ Each of the axis columns and goal names can be filtered to only display the buck
 
 Bucket also ships an Electron desktop app that can open `.bktgz` files directly (File > Open, drag and drop, and file association where supported).
 
+Windows users should start with the step-by-step setup guide in [`electron/README.md`](../electron/README.md). It covers installing Git, Node.js/npm, uv, cloning the repository, building the app, running the unpacked app, and common PowerShell fixes.
+
 Build the desktop app from repo root:
 
 ```bash
+# macOS/Linux/Git Bash
 ./bin/build_electron_app
+
+# Windows PowerShell
+.\bin\build_electron_app.cmd
 ```
 
 Target a specific platform:
 
 ```bash
+# macOS/Linux/Git Bash
 ./bin/build_electron_app mac
 ./bin/build_electron_app linux
 ./bin/build_electron_app win
+
+# Windows PowerShell
+.\bin\build_electron_app.cmd win
 ```
 
 The direct build script supports:
 
 ```bash
 ./electron/build.sh [host|mac|linux|win|all]
+```
+
+On Windows PowerShell, use:
+
+```powershell
+.\bin\build_electron_app.cmd [host|mac|linux|win|all]
 ```
 
 Build outputs are written to `electron/dist/`.

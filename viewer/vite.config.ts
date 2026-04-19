@@ -22,6 +22,10 @@ const resolveAsset = (name: string) => `${githubRepoBase}${name}`;
 
 
 const getPluginPWA = ((env) => {
+    if (process.env.BUCKET_ELECTRON_BUILD === "1") {
+        return null;
+    }
+
     const manifest = {
         name: 'Bucket',
         short_name: 'Bucket',
@@ -96,9 +100,10 @@ const getPluginPWA = ((env) => {
 export default defineConfig((env) => {
     return {
         base: githubRepoBase,
-        plugins: [react(),
-        tsconfigPaths(),
-        getPluginPWA(env)
-        ],
+        plugins: [
+            react(),
+            tsconfigPaths(),
+            getPluginPWA(env)
+        ].filter(Boolean),
     }
 });

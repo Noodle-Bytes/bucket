@@ -26,7 +26,11 @@ The user documentation lives in the `docs/` directory and can be read directly o
 For a richer browsing experience, you can also run the MkDocs site locally:
 
 ```bash
+# macOS/Linux/Git Bash
 ./bin/shell
+
+# Windows PowerShell
+.\bin\shell.cmd
 mkdocs serve
 ```
 
