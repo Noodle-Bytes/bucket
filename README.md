@@ -7,8 +7,9 @@
   ~ SPDX-License-Identifier: MIT
   ~ Copyright (c) 2023-2024 Vypercore. All Rights Reserved
   -->
-
+<div align="center">
 <img alt="Bucket logo" src="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Logo-192x192.png">
+</div>
 
 # Bucket
 
@@ -32,7 +33,12 @@ mkdocs serve
 
 Then open `http://127.0.0.1:8000/` in your browser.
 
+## Viewer
+
+A copy of the viewer is hosted at: https://noodle-bytes.github.io/bucket/
+
 ## Support
+
 This library is being actively built, and is expected to change while it matures and key features are added.
 We are not providing external support for use of this library, however we are aiming to make it as easy to use as possible.
 
@@ -44,19 +50,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-## Roadmap
-There are several features planned, these include:
-
-- <s>Coverage filtering</s>
-- <s>Tiered/tagged coverage</s>
-- <s>Browser-based coverage viewer</s>
-- <s>Use logging instead of print</s>
-- <s>Improved documentation</s>
-- Additional coverage viewer features
-- CI / testing
-- Track which testcases contribute to coverage
-- Speed optimisations
 
 ## Contributions
 
