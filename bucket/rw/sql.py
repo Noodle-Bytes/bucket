@@ -21,6 +21,7 @@ from .common import (
     Reader,
     Readout,
     Writer,
+    point_tuple_from_row,
 )
 
 ###############################################################################
@@ -73,7 +74,31 @@ class PointRow(BaseRow):
 
     @classmethod
     def from_tuple(cls, definition: int, tup: PointTuple):
-        return cls(definition=definition, **tup._asdict())
+        # Core point fields are stored in point table; optional metadata fields
+        # are stored in point_meta to preserve compatibility with older DBs.
+        data = {field: tup._asdict()[field] for field in PointTuple._fields[:15]}
+        return cls(definition=definition, **data)
+
+
+class PointMetaRow(BaseRow):
+    __tablename__ = "point_meta"
+    definition: Mapped[int] = mapped_column(Integer, primary_key=True)
+    start: Mapped[int] = mapped_column(Integer, primary_key=True)
+    depth: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tags: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    motivation: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+
+    @classmethod
+    def from_tuple(cls, definition: int, tup: PointTuple):
+        return cls(
+            definition=definition,
+            start=tup.start,
+            depth=tup.depth,
+            tier=tup.tier,
+            tags=tup.tags,
+            motivation=tup.motivation,
+        )
 
 
 class AxisRow(BaseRow):
@@ -174,6 +199,7 @@ class SQLWriter(Writer):
 
             for point in readout.iter_points():
                 self.session.add(PointRow.from_tuple(def_ref, point))
+                self.session.add(PointMetaRow.from_tuple(def_ref, point))
 
             for axis in readout.iter_axes():
                 self.session.add(AxisRow.from_tuple(def_ref, axis))
@@ -236,6 +262,9 @@ class SQLReader(Reader):
                 .where(PointRow.definition == def_ref)
                 .order_by(PointRow.start, PointRow.depth)
             )
+            point_meta_st = select(PointMetaRow).where(
+                PointMetaRow.definition == def_ref
+            )
             axis_st = (
                 select_tup(AxisRow)
                 .where(AxisRow.definition == def_ref)
@@ -257,8 +286,21 @@ class SQLReader(Reader):
                 .order_by(BucketGoalRow.start)
             )
 
+            point_metadata = {}
+            for point_meta in session.scalars(point_meta_st):
+                point_metadata[(point_meta.start, point_meta.depth)] = (
+                    point_meta.tier,
+                    point_meta.tags,
+                    point_meta.motivation,
+                )
+
             for point_row in session.execute(point_st).all():
-                readout.points.append(PointTuple(*point_row[1:]))
+                core_row = list(point_row[1:])
+                start = core_row[0]
+                depth = core_row[1]
+                if metadata := point_metadata.get((start, depth)):
+                    core_row.extend(metadata)
+                readout.points.append(point_tuple_from_row(core_row))
 
             for axis_row in session.execute(axis_st).all():
                 readout.axes.append(AxisTuple(*axis_row[1:]))

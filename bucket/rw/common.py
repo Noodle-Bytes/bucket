@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
+import json
 from datetime import datetime
 from typing import Any, Iterable, NamedTuple, Protocol
 
@@ -29,6 +30,9 @@ class PointTuple(NamedTuple):
     target_buckets: int
     name: str
     description: str
+    tier: int | None = None
+    tags: str = ""
+    motivation: str = ""
 
     @classmethod
     def from_link(cls, link: Link[CovDef]):
@@ -48,7 +52,73 @@ class PointTuple(NamedTuple):
             target_buckets=link.end.target_buckets - link.start.target_buckets,
             name=link.item._name,
             description=link.item._description,
+            tier=getattr(link.item, "_tier", None),
+            tags=encode_point_tags(getattr(link.item, "_tags", [])),
+            motivation=str(getattr(link.item, "_motivation", "")),
         )
+
+
+def encode_point_tags(tags: Iterable[Any] | None) -> str:
+    """
+    Encode tag values into a stable string form for storage backends that only
+    support scalar columns.
+    """
+    if not tags:
+        return ""
+    return json.dumps([str(tag) for tag in tags], separators=(",", ":"))
+
+
+def decode_point_tags(tags: str | None) -> list[str]:
+    """
+    Decode stored point tags.
+    Falls back to comma-separated values for backwards compatibility.
+    """
+    if not tags:
+        return []
+    try:
+        decoded = json.loads(tags)
+    except json.JSONDecodeError:
+        return [tag.strip() for tag in str(tags).split(",") if tag.strip()]
+    if isinstance(decoded, list):
+        return [str(tag) for tag in decoded]
+    return [str(decoded)]
+
+
+def point_tuple_from_row(values: Iterable[Any]) -> PointTuple:
+    """
+    Build a PointTuple from stored row values.
+    Older files may not include tier/tags fields.
+    """
+    row = list(values)
+    if len(row) < 15:
+        raise ValueError(f"Point row is missing required fields: {row!r}")
+
+    if len(row) == 15:
+        return PointTuple(*row)
+
+    tier = row[15] if len(row) > 15 else None
+    if tier == "":
+        tier = None
+    elif isinstance(tier, str):
+        tier = int(tier) if tier.strip() else None
+    elif isinstance(tier, float) and tier.is_integer():
+        tier = int(tier)
+
+    tags = row[16] if len(row) > 16 else ""
+    if isinstance(tags, (list, tuple)):
+        tags = encode_point_tags(tags)
+    elif tags is None:
+        tags = ""
+    else:
+        tags = str(tags)
+
+    motivation = row[17] if len(row) > 17 else ""
+    if motivation is None:
+        motivation = ""
+    else:
+        motivation = str(motivation)
+
+    return PointTuple(*row[:15], tier, tags, motivation)
 
 
 class BucketGoalTuple(NamedTuple):
@@ -263,6 +333,18 @@ class PointAccess:
     @property
     def description(self) -> str:
         return self._point.description
+
+    @property
+    def tier(self) -> int | None:
+        return self._point.tier
+
+    @property
+    def tags(self) -> list[str]:
+        return decode_point_tags(self._point.tags)
+
+    @property
+    def motivation(self) -> str:
+        return self._point.motivation
 
     @property
     def is_group(self) -> bool:

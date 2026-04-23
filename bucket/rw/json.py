@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 import json
 from pathlib import Path
@@ -19,6 +19,7 @@ from .common import (
     Reader,
     Readout,
     Writer,
+    point_tuple_from_row,
 )
 
 ###############################################################################
@@ -41,16 +42,15 @@ class JSONWriter(Writer):
         else:
             data = {}
 
-        if "tables" not in data:
-            data["tables"] = {
-                "point": PointTuple._fields,
-                "axis": AxisTuple._fields,
-                "axis_value": AxisValueTuple._fields,
-                "goal": GoalTuple._fields,
-                "bucket_goal": BucketGoalTuple._fields,
-                "point_hit": PointHitTuple._fields,
-                "bucket_hit": BucketHitTuple._fields,
-            }
+        data["tables"] = {
+            "point": PointTuple._fields,
+            "axis": AxisTuple._fields,
+            "axis_value": AxisValueTuple._fields,
+            "goal": GoalTuple._fields,
+            "bucket_goal": BucketGoalTuple._fields,
+            "point_hit": PointHitTuple._fields,
+            "bucket_hit": BucketHitTuple._fields,
+        }
         if "definitions" not in data:
             data["definitions"] = []
         if "records" not in data:
@@ -115,7 +115,7 @@ class JSONReader(Reader):
         readout.source_key = record.get("source_key", "")
         readout.def_sha = definition["sha"]
 
-        readout.points = [PointTuple(*p) for p in definition["point"]]
+        readout.points = [point_tuple_from_row(p) for p in definition["point"]]
         readout.axes = [AxisTuple(*a) for a in definition["axis"]]
         readout.axis_values = [AxisValueTuple(*av) for av in definition["axis_value"]]
         readout.goals = [GoalTuple(*g) for g in definition["goal"]]
