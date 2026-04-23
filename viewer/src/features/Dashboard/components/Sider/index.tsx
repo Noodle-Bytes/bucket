@@ -16,8 +16,8 @@ import { view } from "../../theme";
 import Tree, { TreeKey, TreeNode } from "../../lib/tree";
 import Theme from "@/providers/Theme";
 
-const MIN_SIDEBAR_WIDTH = 180;
-const MAX_SIDEBAR_WIDTH = 520;
+export const MIN_SIDEBAR_WIDTH = 180;
+export const MAX_SIDEBAR_WIDTH = 520;
 
 /**
  * Processes a tree of nodes and applies a formatter to the tile of each.

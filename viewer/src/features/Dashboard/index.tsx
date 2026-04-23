@@ -35,10 +35,18 @@ import {
     TableOutlined,
 } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
-import Sider from "./components/Sider";
+import Sider, { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "./components/Sider";
 import EmptyState from "./components/EmptyState";
 import { antTheme, view } from "./theme";
-import { isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    isValidElement,
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
 import { PointPivotView } from "./lib/pivottable";
@@ -63,6 +71,42 @@ type RecordTableRow = {
 
 const DEFAULT_SIDEBAR_WIDTH = 220;
 const AUTO_THEME_VALUE = "__auto__";
+const STORAGE_SIDEBAR_VISIBLE = "bucket.dashboard.sidebarVisible";
+const STORAGE_SIDEBAR_WIDTH = "bucket.dashboard.sidebarWidth";
+
+function readSidebarVisibleFromStorage(): boolean {
+    if (typeof localStorage === "undefined") {
+        return true;
+    }
+    try {
+        const raw = localStorage.getItem(STORAGE_SIDEBAR_VISIBLE);
+        if (raw === "false") {
+            return false;
+        }
+        if (raw === "true") {
+            return true;
+        }
+    } catch {
+        // ignore
+    }
+    return true;
+}
+
+function readSidebarWidthFromStorage(): number {
+    if (typeof localStorage === "undefined") {
+        return DEFAULT_SIDEBAR_WIDTH;
+    }
+    try {
+        const raw = localStorage.getItem(STORAGE_SIDEBAR_WIDTH);
+        const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+        if (Number.isFinite(parsed)) {
+            return Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, parsed));
+        }
+    } catch {
+        // ignore
+    }
+    return DEFAULT_SIDEBAR_WIDTH;
+}
 
 type BreadCrumbMenuProps = {
     pathNode: TreeDataNode;
@@ -264,8 +308,8 @@ export default function Dashboard({
     const [selectedTreeKeys, setSelectedTreeKeys] = useState<TreeKey[]>([]);
     const [expandedTreeKeys, setExpandedTreeKeys] = useState<TreeKey[]>([]);
     const [autoExpandTreeParent, setAutoExpandTreeParent] = useState(true);
-    const [sidebarVisible, setSidebarVisible] = useState(true);
-    const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+    const [sidebarVisible, setSidebarVisible] = useState(readSidebarVisibleFromStorage);
+    const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidthFromStorage);
     const breadcrumbContainerRef = useRef<HTMLDivElement | null>(null);
     const [breadcrumbAvailableWidth, setBreadcrumbAvailableWidth] = useState(480);
     const [treeKeyContentKey, setTreeKeyContentKey] = useState(
@@ -349,6 +393,31 @@ export default function Dashboard({
     }, []);
 
     useEffect(() => {
+        if (typeof localStorage === "undefined") {
+            return;
+        }
+        try {
+            localStorage.setItem(STORAGE_SIDEBAR_VISIBLE, String(sidebarVisible));
+        } catch {
+            // ignore
+        }
+    }, [sidebarVisible]);
+
+    useEffect(() => {
+        if (typeof localStorage === "undefined") {
+            return;
+        }
+        try {
+            localStorage.setItem(STORAGE_SIDEBAR_WIDTH, String(sidebarWidth));
+        } catch {
+            // ignore
+        }
+    }, [sidebarWidth]);
+
+    useLayoutEffect(() => {
+        if (isEmpty) {
+            return;
+        }
         const element = breadcrumbContainerRef.current;
         if (!element || typeof ResizeObserver === "undefined") {
             return;
@@ -362,7 +431,7 @@ export default function Dashboard({
         });
         observer.observe(element);
         return () => observer.disconnect();
-    }, []);
+    }, [isEmpty]);
 
     useEffect(() => {
         if (isEmpty) {
