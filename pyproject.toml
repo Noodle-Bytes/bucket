@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bucket"
-version = "2.2.0"
+version = "2.2.1"
 description = "Functional coverage written in Python"
 authors = [
     {name = "Stuart Alldred", email = "stuartalldred@gmail.com"},
