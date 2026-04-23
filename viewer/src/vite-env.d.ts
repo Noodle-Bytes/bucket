@@ -21,6 +21,7 @@ interface ElectronAPI {
   }) => Promise<{ canceled: boolean; path?: string }>;
   onFilesOpened: (callback: (filePaths: string[]) => void) => void;
   onClearCoverage: (callback: () => void) => void;
+  onOpenPreferences: (callback: () => void) => void;
 }
 
 interface Window {

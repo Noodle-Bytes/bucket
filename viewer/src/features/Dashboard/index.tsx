@@ -5,14 +5,13 @@
 
 import { Theme as ThemeType, themes } from "@/theme";
 import Theme from "@/providers/Theme";
-import type { FloatButtonProps, TreeDataNode } from "antd";
+import type { TreeDataNode } from "antd";
 import {
     Breadcrumb,
     Button,
     Checkbox,
     ConfigProvider,
     Flex,
-    FloatButton,
     Input,
     Layout,
     Modal,
@@ -23,20 +22,23 @@ import {
     Typography,
 } from "antd";
 import {
-    BgColorsOutlined,
     ClearOutlined,
+    DownOutlined,
     EditOutlined,
     ExportOutlined,
     FileAddOutlined,
+    MenuFoldOutlined,
+    MenuUnfoldOutlined,
     PieChartOutlined,
     ReloadOutlined,
+    SettingOutlined,
     TableOutlined,
 } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 import Sider from "./components/Sider";
 import EmptyState from "./components/EmptyState";
 import { antTheme, view } from "./theme";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
 import { PointPivotView } from "./lib/pivottable";
@@ -44,6 +46,8 @@ import { CoverageDonut } from "./lib/coveragedonut";
 import { hexToRgba } from "@/utils/colors";
 import type { CoverageRecord, CoverageSourceRef, ExportFormat } from "@/types/coverageSession";
 import { getDefaultExportFileName } from "@/services/exportSaver";
+
+declare const __APP_VERSION__: string;
 
 const { Header, Content } = Layout;
 
@@ -57,28 +61,8 @@ type RecordTableRow = {
     isLoaded: boolean;
 };
 
-const ColorModeToggleButton = (props: FloatButtonProps) => {
-    return (
-        <Theme.Consumer>
-            {(context) => {
-                const onClick = () => {
-                    const currentIdx =
-                        themes.findIndex((v) => v.name === context.theme.name) ?? 0;
-                    const nextIdx = (currentIdx + 1) % (themes.length + 1);
-                    context.setTheme(themes[nextIdx] ?? null);
-                };
-                return (
-                    <FloatButton
-                        {...props}
-                        onClick={onClick}
-                        icon={<BgColorsOutlined />}
-                        tooltip="Toggle theme (light/dark/auto)"
-                    />
-                );
-            }}
-        </Theme.Consumer>
-    );
-};
+const DEFAULT_SIDEBAR_WIDTH = 220;
+const AUTO_THEME_VALUE = "__auto__";
 
 type BreadCrumbMenuProps = {
     pathNode: TreeDataNode;
@@ -158,6 +142,69 @@ function getBreadCrumbItems({
     return breadCrumbItems;
 }
 
+function breadcrumbTitleToText(title: BreadcrumbItemType["title"]): string {
+    if (typeof title === "string" || typeof title === "number") {
+        return String(title);
+    }
+    if (!isValidElement(title)) {
+        return "";
+    }
+    const children = title.props?.children;
+    if (typeof children === "string" || typeof children === "number") {
+        return String(children);
+    }
+    if (Array.isArray(children)) {
+        return children
+            .filter((child) => typeof child === "string" || typeof child === "number")
+            .map((child) => String(child))
+            .join("");
+    }
+    return "";
+}
+
+function estimateBreadcrumbItemWidth(item: BreadcrumbItemType): number {
+    const titleText = breadcrumbTitleToText(item.title);
+    return Math.max(56, titleText.length * 8 + 28);
+}
+
+function trimBreadcrumbItems(
+    items: BreadcrumbItemType[],
+    availableWidth: number,
+    onSelectRoot: () => void,
+): BreadcrumbItemType[] {
+    if (items.length <= 1 || availableWidth <= 0) {
+        return items;
+    }
+
+    let usedWidth = 0;
+    let firstVisibleIndex = items.length - 1;
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+        const separatorWidth = index < items.length - 1 ? 14 : 0;
+        const itemWidth = estimateBreadcrumbItemWidth(items[index]) + separatorWidth;
+        if (usedWidth + itemWidth > availableWidth) {
+            firstVisibleIndex = index + 1;
+            break;
+        }
+        usedWidth += itemWidth;
+        firstVisibleIndex = index;
+    }
+
+    if (firstVisibleIndex <= 0) {
+        return items;
+    }
+
+    const clampedIndex = Math.min(firstVisibleIndex, items.length - 1);
+    const visibleItems = items.slice(clampedIndex);
+    return [
+        {
+            key: "_BREADCRUMB_COLLAPSED",
+            title: "...",
+            onClick: onSelectRoot,
+        },
+        ...visibleItems,
+    ];
+}
+
 function getReadoutLabel(record: CoverageRecord, source: CoverageSourceRef | undefined): string {
     const sourceLabel = source?.label ?? "Unknown Source";
     let readoutSource = "";
@@ -217,6 +264,10 @@ export default function Dashboard({
     const [selectedTreeKeys, setSelectedTreeKeys] = useState<TreeKey[]>([]);
     const [expandedTreeKeys, setExpandedTreeKeys] = useState<TreeKey[]>([]);
     const [autoExpandTreeParent, setAutoExpandTreeParent] = useState(true);
+    const [sidebarVisible, setSidebarVisible] = useState(true);
+    const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+    const breadcrumbContainerRef = useRef<HTMLDivElement | null>(null);
+    const [breadcrumbAvailableWidth, setBreadcrumbAvailableWidth] = useState(480);
     const [treeKeyContentKey, setTreeKeyContentKey] = useState(
         {} as { [key: TreeKey]: string | number },
     );
@@ -225,6 +276,8 @@ export default function Dashboard({
     const [editLoadedById, setEditLoadedById] = useState<Record<string, boolean>>({});
     const [mergeSelectedIds, setMergeSelectedIds] = useState<string[]>([]);
     const [editActionBusy, setEditActionBusy] = useState(false);
+    const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+    const [clearModalOpen, setClearModalOpen] = useState(false);
     const [exportModalOpen, setExportModalOpen] = useState(false);
     const [exportSelectedIds, setExportSelectedIds] = useState<string[]>([]);
     const [exportFormat, setExportFormat] = useState<ExportFormat>("bktgz");
@@ -278,6 +331,40 @@ export default function Dashboard({
     }, [exportModalOpen, loadedRecordRows]);
 
     useEffect(() => {
+        if (typeof window === "undefined" || !window.electronAPI?.onOpenPreferences) {
+            return;
+        }
+        window.electronAPI.onOpenPreferences(() => {
+            setSettingsModalOpen(true);
+        });
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined" || !window.electronAPI?.onClearCoverage) {
+            return;
+        }
+        window.electronAPI.onClearCoverage(() => {
+            setClearModalOpen(true);
+        });
+    }, []);
+
+    useEffect(() => {
+        const element = breadcrumbContainerRef.current;
+        if (!element || typeof ResizeObserver === "undefined") {
+            return;
+        }
+
+        const observer = new ResizeObserver((entries) => {
+            const nextWidth = Math.max(80, Math.floor(entries[0]?.contentRect.width ?? 0));
+            setBreadcrumbAvailableWidth((previousWidth) =>
+                previousWidth === nextWidth ? previousWidth : nextWidth,
+            );
+        });
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, []);
+
+    useEffect(() => {
         if (isEmpty) {
             if (selectedTreeKeys.length > 0) {
                 setSelectedTreeKeys([]);
@@ -329,26 +416,6 @@ export default function Dashboard({
         : isFileProtocol
           ? "./logo.svg"
           : `${import.meta.env.BASE_URL}logo.svg`;
-
-    const sourceInfo = useMemo(() => {
-        if (viewKey === Tree.ROOT) {
-            return { source: null, source_key: null };
-        }
-
-        const currentNode = tree.getNodeByKey(viewKey);
-        if (currentNode?.data?.readout) {
-            const readout = currentNode.data.readout;
-            try {
-                return {
-                    source: readout.get_source?.() ?? null,
-                    source_key: readout.get_source_key?.() ?? null,
-                };
-            } catch {
-                return { source: null, source_key: null };
-            }
-        }
-        return { source: null, source_key: null };
-    }, [tree, viewKey]);
 
     const selectedViewContent = useMemo(() => {
         if (isEmpty) {
@@ -432,7 +499,9 @@ export default function Dashboard({
     };
 
     return (
-        <ConfigProvider theme={antTheme}>
+        <Theme.Consumer>
+            {({ theme: configTheme }) => (
+                <ConfigProvider theme={antTheme(configTheme)}>
             <Theme.Consumer>
                 {({ theme: themeContext }) => {
                     const dragStyle = isDragging
@@ -456,79 +525,134 @@ export default function Dashboard({
                             {!isEmpty && (
                                 <Sider
                                     tree={tree}
+                                    sidebarVisible={sidebarVisible}
+                                    sidebarWidth={sidebarWidth}
                                     selectedTreeKeys={selectedTreeKeys}
                                     setSelectedTreeKeys={onSelect}
                                     expandedTreeKeys={expandedTreeKeys}
                                     setExpandedTreeKeys={setExpandedTreeKeys}
+                                    setSidebarWidth={setSidebarWidth}
                                     autoExpandTreeParent={autoExpandTreeParent}
-                                    setAutoExpandTreeParent={setAutoExpandTreeParent}></Sider>
+                                    setAutoExpandTreeParent={setAutoExpandTreeParent}
+                                />
                             )}
                             <Layout {...view.body.props}>
                                 {!isEmpty && (
                                     <Header {...view.body.header.props}>
                                         <Flex {...view.body.header.flex.props}>
                                             <Theme.Consumer>
-                                                {({ theme }) => (
-                                                    <>
-                                                        <Breadcrumb
-                                                            {...view.body.header.flex.breadcrumb.props}
-                                                            items={getBreadCrumbItems({
-                                                                tree,
-                                                                selectedTreeKeys,
-                                                                onSelect,
-                                                                theme,
-                                                            })}></Breadcrumb>
-                                                        {(sourceInfo.source || sourceInfo.source_key) && (
+                                                {({ theme }) => {
+                                                    const breadcrumbItems = getBreadCrumbItems({
+                                                        tree,
+                                                        selectedTreeKeys,
+                                                        onSelect,
+                                                        theme,
+                                                    });
+                                                    const visibleBreadcrumbItems = trimBreadcrumbItems(
+                                                        breadcrumbItems,
+                                                        breadcrumbAvailableWidth,
+                                                        () => onSelect([]),
+                                                    );
+                                                    return (
+                                                        <Flex
+                                                            align="center"
+                                                            gap="small"
+                                                            style={{ minWidth: 0, flex: 1 }}>
                                                             <Flex
+                                                                align="center"
                                                                 gap="small"
-                                                                style={{ marginLeft: "16px" }}>
-                                                                <span
-                                                                    style={{
-                                                                        color: theme.theme.colors
-                                                                            .primarytxt.value,
-                                                                    }}>
-                                                                    {sourceInfo.source &&
-                                                                    sourceInfo.source_key
-                                                                        ? `${sourceInfo.source}[${sourceInfo.source_key}]`
-                                                                        : sourceInfo.source
-                                                                          ? sourceInfo.source
-                                                                          : `[${sourceInfo.source_key}]`}
-                                                                </span>
+                                                                style={{ minWidth: 0, flex: 1 }}>
+                                                            <Button
+                                                                size="small"
+                                                                type="text"
+                                                                icon={
+                                                                    sidebarVisible ? (
+                                                                        <MenuFoldOutlined />
+                                                                    ) : (
+                                                                        <MenuUnfoldOutlined />
+                                                                    )
+                                                                }
+                                                                onClick={() =>
+                                                                    setSidebarVisible(
+                                                                        !sidebarVisible,
+                                                                    )
+                                                                }
+                                                                title={
+                                                                    sidebarVisible
+                                                                        ? "Hide sidebar"
+                                                                        : "Show sidebar"
+                                                                }
+                                                                style={{
+                                                                    width: 24,
+                                                                    minWidth: 24,
+                                                                    paddingInline: 0,
+                                                                    display: "inline-flex",
+                                                                    justifyContent: "center",
+                                                                }}
+                                                            />
+                                                            <div
+                                                                ref={breadcrumbContainerRef}
+                                                                style={{
+                                                                    minWidth: 0,
+                                                                    flex: 1,
+                                                                    overflow: "hidden",
+                                                                }}>
+                                                                <Breadcrumb
+                                                                    {...view.body.header.flex.breadcrumb.props}
+                                                                    items={visibleBreadcrumbItems}
+                                                                />
+                                                            </div>
                                                             </Flex>
-                                                        )}
-                                                    </>
-                                                )}
+                                                        </Flex>
+                                                    );
+                                                }}
                                             </Theme.Consumer>
                                             <Flex gap="small" align="center">
-                                                {showContentViewSelector && (
-                                                    <Segmented
-                                                        {...view.body.header.flex.segmented.props}
-                                                        options={contentViews}
-                                                        value={currentContentKey}
-                                                        onChange={onViewChange}
+                                                {(showContentViewSelector
+                                                    || currentContentKey === "Summary")
+                                                && (
+                                                    <div
+                                                        style={{
+                                                            width: 1,
+                                                            height: 24,
+                                                            backgroundColor:
+                                                                themeContext.theme.colors.lowlightbg
+                                                                    .value,
+                                                            margin: "0 2px",
+                                                        }}
                                                     />
                                                 )}
-                                                {currentContentKey === "Summary" && (
+                                                {showContentViewSelector && (
                                                     <Flex
                                                         align="center"
-                                                        gap="small"
                                                         style={{
                                                             border: `1px solid ${themeContext.theme.colors.lowlightbg.value}`,
                                                             borderRadius: 8,
-                                                            padding: "2px 6px",
+                                                            padding: "2px",
                                                             backgroundColor:
                                                                 themeContext.theme.colors.secondarybg
                                                                     .value,
                                                         }}>
-                                                        <Typography.Text
-                                                            style={{
-                                                                color: themeContext.theme.colors
-                                                                    .desaturatedtxt.value,
-                                                                fontSize: 12,
-                                                                letterSpacing: 0.3,
-                                                            }}>
-                                                            View
-                                                        </Typography.Text>
+                                                        <Segmented
+                                                            {...view.body.header.flex.segmented.props}
+                                                            style={{ margin: 0 }}
+                                                            options={contentViews}
+                                                            value={currentContentKey}
+                                                            onChange={onViewChange}
+                                                        />
+                                                    </Flex>
+                                                )}
+                                                {currentContentKey === "Summary" && (
+                                                    <Flex
+                                                        align="center"
+                                                        style={{
+                                                            border: `1px solid ${themeContext.theme.colors.lowlightbg.value}`,
+                                                            borderRadius: 8,
+                                                            padding: "2px",
+                                                            backgroundColor:
+                                                                themeContext.theme.colors.secondarybg
+                                                                    .value,
+                                                        }}>
                                                         <Segmented
                                                             size="small"
                                                             options={[
@@ -555,7 +679,6 @@ export default function Dashboard({
                                                         />
                                                     </Flex>
                                                 )}
-
                                                 {(showContentViewSelector
                                                     || currentContentKey === "Summary")
                                                 && (
@@ -571,7 +694,7 @@ export default function Dashboard({
                                                     />
                                                 )}
 
-                                                <Flex gap="small" align="center">
+                                                <Flex gap="small" align="center" style={{ paddingRight: 12 }}>
                                                     {onOpenFile && (
                                                         <Button
                                                             icon={<FileAddOutlined />}
@@ -611,12 +734,18 @@ export default function Dashboard({
                                                     {onClearCoverage && (
                                                         <Button
                                                             icon={<ClearOutlined />}
-                                                            onClick={onClearCoverage}
+                                                            onClick={() => setClearModalOpen(true)}
                                                             size="small"
                                                             danger>
                                                             Clear
                                                         </Button>
                                                     )}
+                                                    <Button
+                                                        icon={<SettingOutlined />}
+                                                        onClick={() => setSettingsModalOpen(true)}
+                                                        size="small"
+                                                        title="Settings"
+                                                    />
                                                 </Flex>
                                             </Flex>
                                         </Flex>
@@ -628,6 +757,101 @@ export default function Dashboard({
                     );
                 }}
             </Theme.Consumer>
+
+            <Modal
+                title="Clear Coverage"
+                open={clearModalOpen}
+                onCancel={() => setClearModalOpen(false)}
+                okText="Clear"
+                okButtonProps={{ danger: true }}
+                onOk={() => {
+                    onClearCoverage?.();
+                    setClearModalOpen(false);
+                }}>
+                <Typography.Text>
+                    Are you sure you want to clear all coverage data?
+                </Typography.Text>
+            </Modal>
+
+            <Modal
+                title="Settings"
+                open={settingsModalOpen}
+                onCancel={() => setSettingsModalOpen(false)}
+                footer={null}>
+                <Flex vertical gap={16}>
+                    <Theme.Consumer>
+                        {(context) => {
+                            const selectedThemeValue = themes.some(
+                                (candidate) => candidate.name === context.theme.name,
+                            )
+                                ? context.theme.name
+                                : AUTO_THEME_VALUE;
+
+                            return (
+                                <Flex align="center" gap={12}>
+                                    <Typography.Text strong style={{ fontSize: 14, minWidth: 52 }}>
+                                        Theme
+                                    </Typography.Text>
+                                    <Select
+                                        style={{ width: 280 }}
+                                        suffixIcon={
+                                            <DownOutlined
+                                                style={{
+                                                    color: context.theme.theme.colors.saturatedtxt.value,
+                                                    fontSize: 11,
+                                                }}
+                                            />
+                                        }
+                                        value={selectedThemeValue}
+                                        onChange={(value) => {
+                                            if (value === AUTO_THEME_VALUE) {
+                                                context.setTheme(null);
+                                                return;
+                                            }
+
+                                            const nextTheme = themes.find(
+                                                (candidate) => candidate.name === value,
+                                            );
+                                            context.setTheme(nextTheme ?? null);
+                                        }}
+                                        options={[
+                                            {
+                                                value: AUTO_THEME_VALUE,
+                                                label: "Auto (system)",
+                                            },
+                                            ...themes.map((themeOption) => ({
+                                                value: themeOption.name,
+                                                label:
+                                                    themeOption.name.charAt(0).toUpperCase()
+                                                    + themeOption.name.slice(1),
+                                            })),
+                                        ]}
+                                    />
+                                </Flex>
+                            );
+                        }}
+                    </Theme.Consumer>
+                    <Theme.Consumer>
+                        {({ theme }) => (
+                            <Typography.Text
+                                style={{
+                                    marginTop: 4,
+                                    paddingTop: 10,
+                                    display: "block",
+                                    borderTop: `1px solid ${theme.theme.colors.lowlightbg.value}`,
+                                    color: theme.theme.colors.saturatedtxt.value,
+                                    fontSize: 12,
+                                    fontWeight: 500,
+                                    textAlign: "center",
+                                }}
+                            >
+                                Version v{__APP_VERSION__}
+                            </Typography.Text>
+                        )}
+                    </Theme.Consumer>
+
+                </Flex>
+            </Modal>
 
             <Modal
                 title="Edit Records"
@@ -696,9 +920,19 @@ export default function Dashboard({
                         },
                     ]}
                 />
-                <Typography.Text type="secondary" style={{ marginTop: 12, display: "block" }}>
-                    Selected for merge: {mergeSelectedIds.length}
-                </Typography.Text>
+                <Theme.Consumer>
+                    {({ theme }) => (
+                        <Typography.Text
+                            style={{
+                                marginTop: 12,
+                                display: "block",
+                                color: theme.theme.colors.primarytxt.value,
+                            }}
+                        >
+                            Selected for merge: {mergeSelectedIds.length}
+                        </Typography.Text>
+                    )}
+                </Theme.Consumer>
             </Modal>
 
             <Modal
@@ -767,7 +1001,8 @@ export default function Dashboard({
                 </Flex>
             </Modal>
 
-            <ColorModeToggleButton {...view.float.theme.props} />
-        </ConfigProvider>
+                </ConfigProvider>
+            )}
+        </Theme.Consumer>
     );
 }

@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Modal, notification } from "antd";
+import { notification } from "antd";
 import CoverageTree from "../features/Dashboard/lib/coveragetree";
 import {
     isElectron,
@@ -274,17 +274,8 @@ export function useFileLoader() {
     };
 
     const clearCoverage = (): void => {
-        Modal.confirm({
-            title: "Clear Coverage",
-            content: "Are you sure you want to clear all coverage data?",
-            okText: "Clear",
-            okType: "danger",
-            cancelText: "Cancel",
-            onOk: () => {
-                setSession(getDefaultSession());
-                setError(null);
-            },
-        });
+        setSession(getDefaultSession());
+        setError(null);
     };
 
     const setLoadedRecords = (loadedRecordIds: string[]): void => {
@@ -657,9 +648,6 @@ export function useFileLoader() {
                 }
             });
 
-            electronAPI.onClearCoverage(() => {
-                clearCoverage();
-            });
         }
 
         return () => {

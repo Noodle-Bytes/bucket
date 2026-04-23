@@ -380,10 +380,26 @@ export function CoverageDonut({
                         </div>
                     );
                 }
+                if (isRoot && roots.length === 0) {
+                    return (
+                        <div
+                            style={{
+                                padding: '24px',
+                                display: 'flex',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                color: themeContextRaw.theme.theme.colors.desaturatedtxt.value,
+                            }}
+                        >
+                            No coverage data available
+                        </div>
+                    );
+                }
                 // Default: single donut view
+                const donutNode = isRoot && roots.length === 1 ? roots[0] : node;
                 return (
                     <CoverageDonutInner
-                        node={node}
+                        node={donutNode}
                         themeContext={themeContextRaw}
                         setSelectedTreeKeys={setSelectedTreeKeys}
                     />

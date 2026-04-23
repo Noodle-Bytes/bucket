@@ -95,8 +95,7 @@ export default function EmptyState({ logoSrc, onOpenFile }: EmptyStateProps) {
                                 right: 0,
                                 textAlign: 'center',
                                 fontSize: 11,
-                                color: secondaryTextColor,
-                                opacity: 0.5,
+                                color: primaryTextColor,
                             }}
                         >
                             v{__APP_VERSION__}

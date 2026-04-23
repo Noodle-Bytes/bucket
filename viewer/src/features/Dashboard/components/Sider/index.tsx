@@ -9,11 +9,15 @@
  */
 
 import { Layout, Tree as AntTree, Input, Typography } from "antd";
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 declare const __APP_VERSION__: string;
 import { view } from "../../theme";
 import Tree, { TreeKey, TreeNode } from "../../lib/tree";
+import Theme from "@/providers/Theme";
+
+const MIN_SIDEBAR_WIDTH = 180;
+const MAX_SIDEBAR_WIDTH = 520;
 
 /**
  * Processes a tree of nodes and applies a formatter to the tile of each.
@@ -66,9 +70,12 @@ function searchNodeTitleFormatterFactory(searchValue: string) {
 
 export type SiderProps = {
     tree: Tree;
+    sidebarVisible: boolean;
+    sidebarWidth: number;
     selectedTreeKeys: TreeKey[];
     expandedTreeKeys: TreeKey[];
     autoExpandTreeParent: boolean;
+    setSidebarWidth: (width: number) => void;
     setAutoExpandTreeParent: (newValue: boolean) => void;
     setSelectedTreeKeys: (newSelectedKeys: TreeKey[]) => void;
     setExpandedTreeKeys: (newExpandedKeys: TreeKey[]) => void;
@@ -76,14 +83,21 @@ export type SiderProps = {
 
 export default function Sider({
     tree,
+    sidebarVisible,
+    sidebarWidth,
     selectedTreeKeys,
     expandedTreeKeys,
     autoExpandTreeParent,
+    setSidebarWidth,
     setAutoExpandTreeParent,
     setSelectedTreeKeys,
     setExpandedTreeKeys,
 }: SiderProps) {
     const [searchValue, setSearchValue] = useState("");
+    const [isResizing, setIsResizing] = useState(false);
+    const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+    const effectiveWidth = sidebarVisible ? sidebarWidth : 0;
 
     const onExpand = (newExpandedKeys: React.Key[]) => {
         setExpandedTreeKeys(newExpandedKeys as TreeKey[]);
@@ -135,10 +149,85 @@ export default function Sider({
         );
     }, [searchValue, tree]);
 
+    const onResizeMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+        if (!sidebarVisible) {
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        resizeStateRef.current = {
+            startX: event.clientX,
+            startWidth: sidebarWidth,
+        };
+        setIsResizing(true);
+    };
+
+    useEffect(() => {
+        if (!isResizing) {
+            return;
+        }
+
+        const onMouseMove = (event: MouseEvent) => {
+            const resizeState = resizeStateRef.current;
+            if (!resizeState) {
+                return;
+            }
+            const delta = event.clientX - resizeState.startX;
+            const nextWidth = Math.max(
+                MIN_SIDEBAR_WIDTH,
+                Math.min(MAX_SIDEBAR_WIDTH, resizeState.startWidth + delta),
+            );
+            setSidebarWidth(nextWidth);
+        };
+
+        const onMouseUp = () => {
+            setIsResizing(false);
+            resizeStateRef.current = null;
+        };
+
+        window.addEventListener("mousemove", onMouseMove);
+        window.addEventListener("mouseup", onMouseUp);
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+
+        return () => {
+            window.removeEventListener("mousemove", onMouseMove);
+            window.removeEventListener("mouseup", onMouseUp);
+            document.body.style.cursor = "";
+            document.body.style.userSelect = "";
+        };
+    }, [isResizing, setSidebarWidth]);
+
     return (
-        <Layout.Sider {...view.sider.props}>
-            <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                <Input {...view.sider.search.props} onChange={onSearchChange} />
+        <Layout.Sider
+            {...view.sider.props}
+            width={effectiveWidth}
+            style={{
+                ...view.sider.props.style,
+                width: effectiveWidth,
+                minWidth: effectiveWidth,
+                maxWidth: effectiveWidth,
+                flex: `0 0 ${effectiveWidth}px`,
+                padding: sidebarVisible ? 5 : 0,
+                borderRightWidth: sidebarVisible ? 1 : 0,
+                overflow: "hidden",
+                position: "relative",
+                transition:
+                    "width 0.2s ease, min-width 0.2s ease, max-width 0.2s ease, flex-basis 0.2s ease, padding 0.2s ease, border-right-width 0.2s ease",
+            }}>
+            <div
+                style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    height: "100%",
+                }}>
+                <div style={{ display: "flex", alignItems: "center" }}>
+                    <Input
+                        {...view.sider.search.props}
+                        onChange={onSearchChange}
+                        style={{ ...view.sider.search.props.style, flex: 1, minWidth: 0 }}
+                    />
+                </div>
                 <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
                     <AntTree
                         {...view.sider.tree.props}
@@ -150,13 +239,41 @@ export default function Sider({
                         treeData={formattedTreeData}
                     />
                 </div>
-                <Typography.Text
-                    type="secondary"
-                    style={{ display: "block", textAlign: "center", fontSize: 11, padding: "8px 0 4px", opacity: 0.5, flexShrink: 0 }}
-                >
-                    v{__APP_VERSION__}
-                </Typography.Text>
+                <Theme.Consumer>
+                    {({ theme }) => (
+                        <Typography.Text
+                            style={{
+                                display: "block",
+                                textAlign: "center",
+                                fontSize: 11,
+                                padding: "8px 0 4px",
+                                color: theme.theme.colors.primarytxt.value,
+                                flexShrink: 0,
+                            }}
+                        >
+                            v{__APP_VERSION__}
+                        </Typography.Text>
+                    )}
+                </Theme.Consumer>
             </div>
+            {sidebarVisible && (
+                <div
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize sidebar"
+                    onMouseDown={onResizeMouseDown}
+                    style={{
+                        position: "absolute",
+                        top: 0,
+                        right: 0,
+                        width: 6,
+                        height: "100%",
+                        cursor: "col-resize",
+                        zIndex: 2,
+                        backgroundColor: isResizing ? "rgba(24, 144, 255, 0.18)" : "transparent",
+                    }}
+                />
+            )}
         </Layout.Sider>
     );
 }
