@@ -48,4 +48,14 @@ fi
 
 # Install pre-commit
 echo "# Setting up pre-commit hooks"
-pre-commit install > /dev/null
+if command -v pre-commit >/dev/null 2>&1; then
+    pre-commit install > /dev/null
+else
+    echo "# pre-commit not found, syncing dev dependencies..."
+    uv sync --extra dev >/dev/null
+    if command -v pre-commit >/dev/null 2>&1; then
+        pre-commit install > /dev/null
+    else
+        echo "pre-commit still unavailable; skipping hook setup."
+    fi
+fi
