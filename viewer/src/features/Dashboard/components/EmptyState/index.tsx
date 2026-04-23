@@ -7,6 +7,8 @@ import { Button, Typography } from "antd";
 import { FolderOpenOutlined } from "@ant-design/icons";
 import Theme from "@/providers/Theme";
 
+declare const __APP_VERSION__: string;
+
 export type EmptyStateProps = {
     logoSrc: string;
     onOpenFile?: () => void | Promise<void>;
@@ -29,7 +31,8 @@ export default function EmptyState({ logoSrc, onOpenFile }: EmptyStateProps) {
                         alignItems: 'center',
                         justifyContent: 'center',
                         minHeight: '100%',
-                        padding: '48px 24px'
+                        padding: '48px 24px',
+                        position: 'relative',
                     }}>
                         <img
                             src={logoSrc}
@@ -57,11 +60,11 @@ export default function EmptyState({ logoSrc, onOpenFile }: EmptyStateProps) {
                                 marginBottom: '32px',
                                 color: secondaryTextColor,
                                 fontSize: '16px',
-                                maxWidth: '500px',
-                                textAlign: 'center'
+                                textAlign: 'center',
+                                whiteSpace: 'nowrap',
                             }}
                         >
-                            Load a Bucket coverage archive file (`.bktgz`) to view coverage data.
+                            Load a coverage archive (.bktgz) to view coverage data.
                         </Typography.Paragraph>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
                             {onOpenFile ? (
@@ -84,6 +87,20 @@ export default function EmptyState({ logoSrc, onOpenFile }: EmptyStateProps) {
                                 </Typography.Text>
                             )}
                         </div>
+                        <Typography.Text
+                            style={{
+                                position: 'absolute',
+                                bottom: 16,
+                                left: 0,
+                                right: 0,
+                                textAlign: 'center',
+                                fontSize: 11,
+                                color: secondaryTextColor,
+                                opacity: 0.5,
+                            }}
+                        >
+                            v{__APP_VERSION__}
+                        </Typography.Text>
                     </div>
                 );
             }}

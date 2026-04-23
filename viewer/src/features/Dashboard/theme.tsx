@@ -37,8 +37,7 @@ const sider = {
             borderRightWidth: 1,
             borderRightStyle: "solid",
             maxWidth: "auto",
-            overflowY: "auto",
-            overflowX: "hidden",
+            overflow: "hidden",
         },
         zeroWidthTriggerStyle: {
             background: cl.accentbg.toString(),

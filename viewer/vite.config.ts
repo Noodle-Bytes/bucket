@@ -3,6 +3,8 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 // Plugin that synchronises vite's path searching with tsconfig settings.
@@ -94,8 +96,12 @@ const getPluginPWA = ((env) => {
 
 // https://vitejs.dev/config/
 export default defineConfig((env) => {
+    const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
     return {
         base: githubRepoBase,
+        define: {
+            __APP_VERSION__: JSON.stringify(pkg.version),
+        },
         plugins: [react(),
         tsconfigPaths(),
         getPluginPWA(env)

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+
+# SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2025 Noodle-Bytes
 
 from __future__ import annotations
@@ -13,7 +16,7 @@ from pathlib import Path
 SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 PROJECT_SECTION_RE = re.compile(r"(?ms)^\[project\]\r?\n(?P<body>.*?)(?=^\[|\Z)")
 PROJECT_VERSION_RE = re.compile(r'(?m)^version\s*=\s*"([^"]+)"\s*$')
-PACKAGE_JSON_CANDIDATES = ("electron/package.json",)
+PACKAGE_JSON_CANDIDATES = ("electron/package.json", "viewer/package.json")
 
 
 def parse_semver(version: str) -> tuple[int, int, int]:

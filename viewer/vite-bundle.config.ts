@@ -1,5 +1,10 @@
 /*
  * SPDX-License-Identifier: MIT
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+ */
+
+/*
+ * SPDX-License-Identifier: MIT
  * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
  */
 
@@ -23,10 +28,12 @@ export default defineConfig(async () => {
     // Note modern but experimental syntax is:
     //  `await import(cvgPathJSON, { with: { type: 'json' }});`
 
+    const pkg = createRequire(import.meta.url)(resolve('package.json'));
     return {
         plugins: [react(), tsconfigPaths(), viteSingleFile()],
         define: {
-            __BUCKET_CVG_JSON: coverage
+            __BUCKET_CVG_JSON: coverage,
+            __APP_VERSION__: JSON.stringify(pkg.version),
         }
     }
 });
