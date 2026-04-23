@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
 /*
@@ -8,8 +8,10 @@
  * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
  */
 
-import { Layout, Tree as AntTree, Input } from "antd";
+import { Layout, Tree as AntTree, Input, Typography } from "antd";
 import { ReactNode, useMemo, useState } from "react";
+
+declare const __APP_VERSION__: string;
 import { view } from "../../theme";
 import Tree, { TreeKey, TreeNode } from "../../lib/tree";
 
@@ -135,16 +137,26 @@ export default function Sider({
 
     return (
         <Layout.Sider {...view.sider.props}>
-            <Input {...view.sider.search.props} onChange={onSearchChange} />
-            <AntTree
-                {...view.sider.tree.props}
-                onExpand={onExpand}
-                onSelect={onSelect}
-                selectedKeys={selectedTreeKeys}
-                expandedKeys={expandedTreeKeys}
-                autoExpandParent={autoExpandTreeParent}
-                treeData={formattedTreeData}
-            />
+            <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                <Input {...view.sider.search.props} onChange={onSearchChange} />
+                <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+                    <AntTree
+                        {...view.sider.tree.props}
+                        onExpand={onExpand}
+                        onSelect={onSelect}
+                        selectedKeys={selectedTreeKeys}
+                        expandedKeys={expandedTreeKeys}
+                        autoExpandParent={autoExpandTreeParent}
+                        treeData={formattedTreeData}
+                    />
+                </div>
+                <Typography.Text
+                    type="secondary"
+                    style={{ display: "block", textAlign: "center", fontSize: 11, padding: "8px 0 4px", opacity: 0.5, flexShrink: 0 }}
+                >
+                    v{__APP_VERSION__}
+                </Typography.Text>
+            </div>
         </Layout.Sider>
     );
 }

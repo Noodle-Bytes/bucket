@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 from ..axis import Axis
 from ..covergroup import CoverBase
@@ -79,9 +79,12 @@ class PointReader(Reader):
             readout.axes.append(AxisTuple.from_link(axis_link))
 
             start = axis_link.start.axis_value
-            for offset, axis_value in enumerate(axis_link.item.values.keys()):
-                av_tuple = AxisValueTuple(start=(start + offset), value=axis_value)
-                readout.axis_values.append(av_tuple)
+            for offset, (axis_value, _raw_value) in enumerate(
+                axis_link.item.values.items()
+            ):
+                readout.axis_values.append(
+                    AxisValueTuple(start=(start + offset), value=axis_value)
+                )
 
         for goal_link in chain.index.iter(GoalItem):
             readout.goals.append(GoalTuple.from_link(goal_link))

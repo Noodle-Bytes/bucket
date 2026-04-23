@@ -9,6 +9,7 @@ import pytest
 
 from bucket import Coverpoint, Covertop
 from bucket.common.types import BucketValCompError
+from bucket.rw import PointReader
 
 
 class TestBucketAxisStructure:
@@ -252,6 +253,61 @@ class TestApplyGoalsWithValues:
         assert cp._cvg_goals[("0",)] == cp._goal_dict["SINGLE"]
         assert cp._cvg_goals[("1",)] == cp._goal_dict["SINGLE"]
         assert cp._cvg_goals[("10",)] == cp._goal_dict["SINGLE"]
+
+    def test_point_reader_axis_values_ordered_by_start(self):
+        """Axis values preserve user insertion order in the readout."""
+
+        class TestCoverpoint(Coverpoint):
+            def setup(self, ctx):
+                self.add_axis(
+                    name="mixed",
+                    values={"small": [0, 3], "high": 10, "label": "zebra"},
+                    description="Mixed axis values",
+                )
+
+            def apply_goals(self, bucket, goals):
+                return None
+
+            def sample(self, trace):
+                pass
+
+        class TopCoverage(Covertop):
+            def setup(self, ctx):
+                self.add_coverpoint(TestCoverpoint())
+
+        cvg = TopCoverage()
+        readout = PointReader("").read(cvg)
+        axis_values = list(readout.iter_axis_values())
+
+        assert [av.value for av in axis_values] == ["small", "high", "label"]
+        assert [av.start for av in axis_values] == [0, 1, 2]
+
+    def test_point_reader_dict_axis_tuple_range_preserves_order(self):
+        """Dict axis values preserve insertion order and range container normalization."""
+
+        class TestCoverpoint(Coverpoint):
+            def setup(self, ctx):
+                self.add_axis(
+                    name="mixed",
+                    values={"r": (10, 20), "n": 50, "sp": " "},
+                    description="Tuple range vs scalar vs short text label",
+                )
+
+            def apply_goals(self, bucket, goals):
+                return None
+
+            def sample(self, trace):
+                pass
+
+        class TopCoverage(Covertop):
+            def setup(self, ctx):
+                self.add_coverpoint(TestCoverpoint())
+
+        cvg = TopCoverage()
+        readout = PointReader("").read(cvg)
+        axis_values = list(readout.iter_axis_values())
+
+        assert [av.value for av in axis_values] == ["r", "n", "sp"]
 
     def test_mixed_comparison_patterns(self):
         """Test mixing .name and .value comparisons"""

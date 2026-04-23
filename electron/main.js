@@ -251,13 +251,80 @@ function createErrorHtml(errorMessage, details = null) {
 }
 
 function showAboutDialog() {
-  dialog.showMessageBox(mainWindow, {
-    type: 'info',
-    title: 'About Bucket',
-    message: 'Bucket',
-    detail: `Version ${packageJson.version}\n\n${packageJson.description}\n\nCopyright © 2023-2025 Noodle-Bytes. All Rights Reserved.\n\nLicensed under the MIT License.`,
-    buttons: ['OK'],
+  const aboutWindow = new BrowserWindow({
+    width: 360,
+    height: 300,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    parent: mainWindow,
+    modal: true,
+    show: false,
+    titleBarStyle: 'hidden',
+    trafficLightPosition: { x: -20, y: -20 },
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
   });
+
+  const logoPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'viewer', 'dist', 'pwa-192x192.png')
+    : path.join(__dirname, '..', 'viewer', 'public', 'pwa-192x192.png');
+  let logoSrc = '';
+  try {
+    const logoData = fs.readFileSync(logoPath).toString('base64');
+    logoSrc = `data:image/png;base64,${logoData}`;
+  } catch {
+    // Fallback if logo file is not found
+  }
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 30px 24px 20px;
+      text-align: center;
+      background: #f5f5f5;
+      color: #333;
+      user-select: none;
+      -webkit-app-region: drag;
+    }
+    img { width: 80px; height: 80px; margin-bottom: 12px; }
+    h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+    .version { font-size: 13px; color: #666; margin: 0 0 12px; }
+    .desc { font-size: 12px; color: #555; margin: 0 0 8px; }
+    .copy { font-size: 11px; color: #999; margin: 0 0 16px; }
+    button {
+      -webkit-app-region: no-drag;
+      background: #007AFF;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 32px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:hover { background: #005ECB; }
+  </style>
+</head>
+<body>
+  <img src="${logoSrc}" alt="Bucket">
+  <h1>Bucket</h1>
+  <p class="version">Version ${packageJson.version}</p>
+  <p class="desc">${packageJson.description}</p>
+  <p class="copy">Copyright \u00A9 2023-2026 Noodle-Bytes. MIT License.</p>
+  <button onclick="window.close()">OK</button>
+</body>
+</html>`;
+
+  aboutWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  aboutWindow.once('ready-to-show', () => aboutWindow.show());
 }
 
 /**

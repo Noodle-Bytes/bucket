@@ -43,6 +43,10 @@ class AxisOverlappingRanges(AxisException):
     pass
 
 
+class AxisAmbiguousValues(AxisException):
+    pass
+
+
 class AxisLookupMode(Enum):
     GENERIC = auto()
     SCALAR_ONLY = auto()
@@ -62,6 +66,7 @@ class Axis:
         self.enable_other = True if enable_other is not None else False
         self.other_name = enable_other if isinstance(enable_other, str) else "Other"
 
+        # Preserve user-provided insertion order to avoid discarding intent.
         self.values = self.sanitise_values(values)
         self._ordered_values = tuple(self.values.items())
         self._init_lookup_index()
@@ -85,6 +90,30 @@ class Axis:
                 range_entries.append((order, key, resolved_value))
             else:
                 scalar_entries.append((order, key, resolved_value))
+
+        # Enforce unambiguous mapping for scalar values. A sampled value must
+        # not be able to resolve to multiple scalar buckets.
+        hashable_exact_values = {}
+        unhashable_exact_values = []
+        for _order, key, resolved_value in scalar_entries:
+            try:
+                hash(resolved_value)
+            except TypeError:
+                for prev_key, prev_value in unhashable_exact_values:
+                    if resolved_value == prev_value:
+                        raise AxisAmbiguousValues(
+                            f'Axis "{self.name}" has duplicate exact values '
+                            + f'for "{prev_key}" and "{key}"'
+                        )
+                unhashable_exact_values.append((key, resolved_value))
+            else:
+                if resolved_value in hashable_exact_values:
+                    prev_key = hashable_exact_values[resolved_value]
+                    raise AxisAmbiguousValues(
+                        f'Axis "{self.name}" has duplicate exact values '
+                        + f'for "{prev_key}" and "{key}"'
+                    )
+                hashable_exact_values[resolved_value] = key
 
         # Fast path: only scalar values.
         if range_entries == []:
@@ -116,6 +145,26 @@ class Axis:
                         f'Axis "{self.name}" has overlapping ranges defined'
                     )
                 _prev_start, prev_end = start, end
+
+        # Enforce unambiguous mapping between exact scalars and ranges.
+        for _order, key, resolved_value in scalar_entries:
+            if resolved_value is None:
+                # "Other" placeholder does not map to an exact sample value.
+                continue
+            int_like_value = None
+            if isinstance(resolved_value, int):
+                int_like_value = int(resolved_value)
+            elif isinstance(resolved_value, float) and resolved_value.is_integer():
+                int_like_value = int(resolved_value)
+
+            if int_like_value is None:
+                continue
+            for range_start, range_end, range_key in sorted_ranges:
+                if range_start <= int_like_value <= range_end:
+                    raise AxisAmbiguousValues(
+                        f'Axis "{self.name}" has exact value "{key}"={resolved_value} '
+                        + f'which overlaps range "{range_key}"=[{range_start}, {range_end}]'
+                    )
 
         # Fast path: ranges (plus optional "Other"/None scalar), non-overlapping.
         has_only_ranges_and_other = True
@@ -165,20 +214,37 @@ class Axis:
                 )
 
         if isinstance(values, dict):
-            values_dict = values
+            # Copy to avoid mutating the caller's input dictionary.
+            values_dict = dict(values)
             for v in values_dict.values():
                 if isinstance(v, list | tuple | set):
                     check_ranges(v)
         elif isinstance(values, list | tuple | set):
+            values_iter = values
+            if isinstance(values, set):
+                # Sets are unordered by definition, so canonicalize iteration
+                # order to keep def hashes stable across runs.
+                values_iter = sorted(
+                    values, key=lambda item: (type(item).__name__, repr(item))
+                )
             values_dict = {}
-            for v in values:
+            for v in values_iter:
                 if isinstance(v, list | tuple | set):
                     check_ranges(v)
                     sorted_v = sorted(v)
                     key = f"{sorted_v[0]} -> {sorted_v[1]}"
+                    if key in values_dict:
+                        raise AxisAmbiguousValues(
+                            f'Axis "{self.name}" has duplicate value entry "{key}"'
+                        )
                     values_dict[key] = sorted_v
                 else:
-                    values_dict[str(v)] = v
+                    key = str(v)
+                    if key in values_dict:
+                        raise AxisAmbiguousValues(
+                            f'Axis "{self.name}" has duplicate value entry "{key}"'
+                        )
+                    values_dict[key] = v
         else:
             raise AxisIncorrectValueFormat(
                 f"Unexpected type for values. Got {type(values)}. Expected dict/list/tuple/set"
@@ -200,7 +266,7 @@ class Axis:
                     + f"{key} is {type(key).__name__}. All names must be string",
                 )
 
-        return dict(sorted(values_dict.items()))
+        return values_dict
 
     @lru_cache(maxsize=4096)  # noqa: B019
     def get_named_value(self, value: str | int):
