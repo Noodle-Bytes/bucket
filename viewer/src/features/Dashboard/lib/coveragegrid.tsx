@@ -116,7 +116,7 @@ type LargeSortOption =
     | "hits_asc"
     | "ratio_desc"
     | "ratio_asc";
-type AxisSortMode = "none" | "user_desc" | "alpha_asc" | "alpha_desc";
+type AxisSortMode = "none" | "user_asc" | "user_desc" | "alpha_asc" | "alpha_desc";
 type AxisSortState = {
     axisName: string | null;
     mode: AxisSortMode;
@@ -214,32 +214,34 @@ function getColumnNumCompare<T extends object>(columnKey: string) {
         );
 }
 
+function getAxisSortOrder(mode: AxisSortMode): "ascend" | "descend" | null {
+    switch (mode) {
+        case "user_asc":
+        case "alpha_asc":
+            return "ascend";
+        case "user_desc":
+        case "alpha_desc":
+            return "descend";
+        case "none":
+        default:
+            return null;
+    }
+}
+
 function getNextAxisSortMode(current: AxisSortMode): AxisSortMode {
     switch (current) {
         case "none":
+            return "user_asc";
+        case "user_asc":
             return "user_desc";
         case "user_desc":
             return "alpha_asc";
         case "alpha_asc":
             return "alpha_desc";
         case "alpha_desc":
-            return "none";
+            return "user_asc";
         default:
-            return "none";
-    }
-}
-
-function getAxisSortIndicator(mode: AxisSortMode): string {
-    switch (mode) {
-        case "user_desc":
-            return " [user↓]";
-        case "alpha_asc":
-            return " [A→Z]";
-        case "alpha_desc":
-            return " [Z→A]";
-        case "none":
-        default:
-            return "";
+            return "user_asc";
     }
 }
 
@@ -374,7 +376,6 @@ function getFullColumns(
     model: PointTableModel,
     axisValueStart: number,
     axisSortState: AxisSortState,
-    onAxisSortClick: (axisName: string) => void,
 ): TableProps<CoverageRecord>["columns"] {
     return [
         {
@@ -392,30 +393,20 @@ function getFullColumns(
                 const axisSortMode =
                     axisSortState.axisName === axis.name ? axisSortState.mode : "none";
                 return {
-                    title: (
-                        <span
-                            role="button"
-                            tabIndex={0}
-                            title={
-                                "Cycle sort: user order, reverse user order, alphabetical, reverse alphabetical"
-                            }
-                            style={{ cursor: "pointer", userSelect: "none" }}
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                onAxisSortClick(axis.name);
-                            }}
-                            onKeyDown={(event) => {
-                                if (event.key === "Enter" || event.key === " ") {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    onAxisSortClick(axis.name);
-                                }
-                            }}>
-                            {`${axis.name}${getAxisSortIndicator(axisSortMode)}`}
-                        </span>
-                    ),
+                    title: axis.name,
                     dataIndex: axis.name,
                     key: axis.name,
+                    sorter: true,
+                    sortDirections: ["ascend", "descend", "ascend"],
+                    showSorterTooltip: {
+                        title:
+                            "User order, reverse user order, alphabetical, reverse alphabetical",
+                        target: "full-header",
+                    },
+                    sortOrder:
+                        axisSortState.axisName === axis.name
+                            ? getAxisSortOrder(axisSortMode)
+                            : null,
                     filters: axisValueSlice.map((axisValue) => ({
                         text: axisValue.value,
                         value: axisValue.value,
@@ -564,14 +555,8 @@ export function PointGrid({ node }: PointGridProps) {
     });
     const pointTags = useMemo(() => parsePointTags(node.data.point.tags), [node.data.point.tags]);
     const pointTier = normalizePointTier(node.data.point.tier);
-    const pointDescription =
-        (node.data.point.description ?? "").trim() === ""
-            ? "-"
-            : String(node.data.point.description);
-    const pointMotivation =
-        (node.data.point.motivation ?? "").trim() === ""
-            ? "-"
-            : String(node.data.point.motivation);
+    const pointDescription = String(node.data.point.description ?? "").trim();
+    const pointMotivation = String(node.data.point.motivation ?? "").trim();
 
     const model = useMemo(() => buildPointTableModel(node), [node]);
 
@@ -720,10 +705,13 @@ export function PointGrid({ node }: PointGridProps) {
                 const aValue = String(a.row[axisName] ?? "");
                 const bValue = String(b.row[axisName] ?? "");
 
-                if (mode === "user_desc") {
-                    const aIdx = orderByValue.get(aValue) ?? Number.NEGATIVE_INFINITY;
-                    const bIdx = orderByValue.get(bValue) ?? Number.NEGATIVE_INFINITY;
-                    const cmp = bIdx - aIdx;
+                if (mode === "user_asc" || mode === "user_desc") {
+                    const aIdx = orderByValue.get(aValue);
+                    const bIdx = orderByValue.get(bValue);
+                    if (aIdx === undefined || bIdx === undefined) {
+                        return a.idx - b.idx;
+                    }
+                    const cmp = mode === "user_desc" ? bIdx - aIdx : aIdx - bIdx;
                     if (cmp !== 0) {
                         return cmp;
                     }
@@ -741,24 +729,45 @@ export function PointGrid({ node }: PointGridProps) {
         return sorted;
     }, [axisSortState, fullDataSource, model.axes, model.axisValues, node.data.point.axis_value_start]);
 
-    const onAxisSortClick = (axisName: string) => {
+    const onFullTableChange: TableProps<CoverageRecord>["onChange"] = (
+        _pagination,
+        _filters,
+        sorter,
+        extra,
+    ) => {
+        if (extra.action !== "sort") {
+            return;
+        }
+        const sorterResult = Array.isArray(sorter) ? sorter[0] : sorter;
+        if (!sorterResult.order) {
+            return;
+        }
+        const columnKey = sorterResult.columnKey;
+        if (typeof columnKey !== "string") {
+            return;
+        }
+        if (!model.axes.some((axis) => axis.name === columnKey)) {
+            return;
+        }
         setAxisSortState((current) => {
-            if (current.axisName !== axisName) {
+            // Ignore duplicate sorter events that can be emitted without a user-mode transition.
+            if (
+                current.axisName === columnKey
+                && sorterResult.order === getAxisSortOrder(current.mode)
+            ) {
+                return current;
+            }
+
+            if (current.axisName !== columnKey || current.mode === "none") {
                 return {
-                    axisName,
-                    mode: "user_desc",
+                    axisName: columnKey,
+                    mode: "user_asc",
                 };
             }
-            const nextMode = getNextAxisSortMode(current.mode);
-            if (nextMode === "none") {
-                return {
-                    axisName: null,
-                    mode: "none",
-                };
-            }
+
             return {
-                axisName,
-                mode: nextMode,
+                axisName: columnKey,
+                mode: getNextAxisSortMode(current.mode),
             };
         });
     };
@@ -836,7 +845,7 @@ export function PointGrid({ node }: PointGridProps) {
                         <Collapse
                             size="small"
                             ghost
-                            defaultActiveKey={[]}
+                            defaultActiveKey={["metadata"]}
                             className="point-metadata-collapse"
                             items={[
                                 {
@@ -849,36 +858,41 @@ export function PointGrid({ node }: PointGridProps) {
                                                     fontWeight: 700,
                                                     color: theme.theme.colors.saturatedtxt.value,
                                                 }}>
-                                                Metadata
+                                                {`Details: ${node.data.point.name}`}
                                             </Typography.Text>
-                                            <Typography.Text
-                                                style={{
-                                                    fontSize: 12,
-                                                    fontWeight: 600,
-                                                    color: theme.theme.colors.saturatedtxt.value,
-                                                }}>
-                                                Tier {pointTier === null ? "-" : pointTier}
-                                            </Typography.Text>
-                                            <Typography.Text
-                                                style={{
-                                                    fontSize: 12,
-                                                    fontWeight: 600,
-                                                    color: theme.theme.colors.saturatedtxt.value,
-                                                }}>
-                                                {pointTags.length} tag{pointTags.length === 1 ? "" : "s"}
-                                            </Typography.Text>
+                                            {pointTier !== null && (
+                                                <Typography.Text
+                                                    style={{
+                                                        fontSize: 12,
+                                                        fontWeight: 600,
+                                                        color: theme.theme.colors.saturatedtxt.value,
+                                                    }}>
+                                                    Tier {pointTier}
+                                                </Typography.Text>
+                                            )}
+                                            {pointTags.length > 0 && (
+                                                <Typography.Text
+                                                    style={{
+                                                        fontSize: 12,
+                                                        fontWeight: 600,
+                                                        color: theme.theme.colors.saturatedtxt.value,
+                                                    }}>
+                                                    {pointTags.length} tag{pointTags.length === 1 ? "" : "s"}
+                                                </Typography.Text>
+                                            )}
                                         </Space>
                                     ),
                                     children: (
                                         <Descriptions
                                             size="small"
-                                            column={2}
+                                            column={1}
                                             colon={false}
+                                            className="point-metadata-descriptions"
                                             styles={{
                                                 label: {
                                                     color: theme.theme.colors.primarytxt.value,
                                                     fontWeight: 600,
-                                                    width: 90,
+                                                    width: 84,
                                                 },
                                                 content: {
                                                     color: theme.theme.colors.saturatedtxt.value,
@@ -886,56 +900,62 @@ export function PointGrid({ node }: PointGridProps) {
                                                 },
                                             }}
                                             items={[
-                                                {
-                                                    key: "name",
-                                                    label: "Name",
-                                                    children: node.data.point.name,
-                                                },
-                                                {
-                                                    key: "tier",
-                                                    label: "Tier",
-                                                    children: pointTier === null ? "-" : pointTier,
-                                                },
-                                                {
-                                                    key: "description",
-                                                    label: "Description",
-                                                    span: 2,
-                                                    children: pointDescription,
-                                                },
-                                                {
-                                                    key: "motivation",
-                                                    label: "Motivation",
-                                                    span: 2,
-                                                    children: pointMotivation,
-                                                },
-                                                {
-                                                    key: "tags",
-                                                    label: "Tags",
-                                                    span: 2,
-                                                    children:
-                                                        pointTags.length > 0 ? (
-                                                            <Space wrap size={[4, 4]}>
-                                                                {pointTags.map((tag) => (
-                                                                    <Tag
-                                                                        key={tag}
-                                                                        style={{
-                                                                            marginInlineEnd: 0,
-                                                                            backgroundColor: hexToRgba(
-                                                                                theme.theme.colors.accentbg.value,
-                                                                                0.2,
-                                                                            ),
-                                                                            borderColor:
-                                                                                theme.theme.colors.accentbg.value,
-                                                                            color: theme.theme.colors.primarytxt.value,
-                                                                        }}>
-                                                                        {tag}
-                                                                    </Tag>
-                                                                ))}
-                                                            </Space>
-                                                        ) : (
-                                                            "-"
-                                                        ),
-                                                },
+                                                ...(pointDescription
+                                                    ? [
+                                                          {
+                                                              key: "description",
+                                                              label: "Description",
+                                                              children: pointDescription,
+                                                          },
+                                                      ]
+                                                    : []),
+                                                ...(pointMotivation
+                                                    ? [
+                                                          {
+                                                              key: "motivation",
+                                                              label: "Motivation",
+                                                              children: pointMotivation,
+                                                          },
+                                                      ]
+                                                    : []),
+                                                ...(pointTags.length > 0
+                                                    ? [
+                                                          {
+                                                              key: "tags",
+                                                              label: "Tags",
+                                                              children: (
+                                                                  <Space wrap size={[4, 4]}>
+                                                                      {pointTags.map((tag) => (
+                                                                          <Tag
+                                                                              key={tag}
+                                                                              style={{
+                                                                                  marginInlineEnd: 0,
+                                                                                  backgroundColor: hexToRgba(
+                                                                                      theme.theme.colors.accentbg.value,
+                                                                                      0.2,
+                                                                                  ),
+                                                                                  borderColor:
+                                                                                      theme.theme.colors.accentbg.value,
+                                                                                  color:
+                                                                                      theme.theme.colors.primarytxt.value,
+                                                                              }}>
+                                                                              {tag}
+                                                                          </Tag>
+                                                                      ))}
+                                                                  </Space>
+                                                              ),
+                                                          },
+                                                      ]
+                                                    : []),
+                                                ...(pointTier !== null
+                                                    ? [
+                                                          {
+                                                              key: "tier",
+                                                              label: "Tier",
+                                                              children: pointTier,
+                                                          },
+                                                      ]
+                                                    : []),
                                             ]}
                                         />
                                     ),
@@ -1105,9 +1125,9 @@ export function PointGrid({ node }: PointGridProps) {
                                 model,
                                 node.data.point.axis_value_start,
                                 axisSortState,
-                                onAxisSortClick,
                             )}
                             dataSource={sortedFullDataSource}
+                            onChange={onFullTableChange}
                         />
                     </>
                 );

@@ -79,3 +79,14 @@
 .point-metadata-collapse .ant-collapse-arrow {
   color: var(--point-metadata-header-text) !important;
 }
+
+/* Keep metadata rows compact and left-aligned */
+.point-metadata-descriptions .ant-descriptions-row > th,
+.point-metadata-descriptions .ant-descriptions-row > td {
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+}
+
+.point-metadata-descriptions .ant-descriptions-item-label {
+  vertical-align: top;
+}
