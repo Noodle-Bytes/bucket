@@ -1,0 +1,267 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+
+name: PR Title Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  enforce-title-prefix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title prefix
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+
+          case "$PR_TITLE" in
+            Patch:*|Minor:*|Major:*|None:*|Force:*)
+              echo "PR title prefix is valid."
+              ;;
+            *)
+              echo "::error title=Invalid PR title prefix::PR title must start with one of: Patch:, Minor:, Major:, None:, Force:"
+              echo "Invalid PR title: '$PR_TITLE'"
+              echo ""
+              echo "How to fix:"
+              echo "1. Edit the PR title in GitHub."
+              echo "2. Add one of the required prefixes followed by a short description."
+              echo ""
+              echo "Prefix meanings:"
+              echo "Patch: Backward-compatible bug fix or small correction (bump patch; create tag/release)."
+              echo "Minor: Backward-compatible feature/improvement (bump minor; create tag/release)."
+              echo "Major: Breaking change (bump major; create tag/release)."
+              echo "None: No release-impacting change (no version bump, no tag, no release)."
+              echo "Force: Manual release mode (no auto bump; requires version change; allow version-file edits; create tag/release)."
+              echo ""
+              echo "Examples:"
+              echo "Patch: fix crash when loading archive"
+              echo "Minor: add CSV import filters"
+              echo "Major: remove legacy JSON schema"
+              echo "None: docs cleanup for coverage guide"
+              echo "Force: release v2.3.0 with manual version update"
+              exit 1
+              ;;
+          esac
+
+      - name: Block manual version changes in PRs
+        if: ${{ !startsWith(github.event.pull_request.title, 'Force:') }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const baseRef = pr.base.sha;
+            const headRef = pr.head.sha;
+            const baseOwner = pr.base.repo.owner.login;
+            const baseRepo = pr.base.repo.name;
+            const headOwner = pr.head.repo.owner.login;
+            const headRepo = pr.head.repo.name;
+
+            async function readTextFile(owner, repo, path, ref) {
+              try {
+                const response = await github.rest.repos.getContent({
+                  owner,
+                  repo,
+                  path,
+                  ref,
+                });
+                if (Array.isArray(response.data)) {
+                  throw new Error(`${path} is a directory, expected a file`);
+                }
+                return Buffer.from(response.data.content, response.data.encoding).toString("utf8");
+              } catch (error) {
+                if (error.status === 404) {
+                  return null;
+                }
+                throw error;
+              }
+            }
+
+            function getPyprojectVersion(text) {
+              const lines = text.split(/\r?\n/);
+              let inProjectSection = false;
+              for (const line of lines) {
+                const section = line.match(/^\s*\[([^\]]+)\]\s*$/);
+                if (section) {
+                  inProjectSection = section[1] === "project";
+                  continue;
+                }
+                if (!inProjectSection) {
+                  continue;
+                }
+                const version = line.match(/^\s*version\s*=\s*"([^"]+)"\s*$/);
+                if (version) {
+                  return version[1];
+                }
+              }
+              throw new Error("Could not find [project].version in pyproject.toml");
+            }
+
+            function getPackageVersion(text, path) {
+              const parsed = JSON.parse(text);
+              if (typeof parsed.version !== "string") {
+                throw new Error(`Missing string \"version\" in ${path}`);
+              }
+              return parsed.version;
+            }
+
+            const files = [
+              { path: "pyproject.toml", parser: getPyprojectVersion },
+              { path: "viewer/package.json", parser: getPackageVersion },
+              { path: "electron/package.json", parser: getPackageVersion },
+            ];
+
+            const changedVersions = [];
+
+            for (const file of files) {
+              const baseText = await readTextFile(baseOwner, baseRepo, file.path, baseRef);
+              const headText = await readTextFile(headOwner, headRepo, file.path, headRef);
+
+              if (baseText === null || headText === null) {
+                const missingSide = baseText === null ? "base" : "head";
+                changedVersions.push(`${file.path}: file missing in ${missingSide} ref`);
+                continue;
+              }
+
+              const baseVersion = file.parser(baseText, file.path);
+              const headVersion = file.parser(headText, file.path);
+
+              if (baseVersion !== headVersion) {
+                changedVersions.push(`${file.path}: ${baseVersion} -> ${headVersion}`);
+              }
+            }
+
+            if (changedVersions.length > 0) {
+              core.setFailed(
+                [
+                  "Do not edit version numbers in PRs.",
+                  "Versioning is handled automatically when PRs merge to main using the PR title prefix.",
+                  "",
+                  "What to do:",
+                  "1. Revert version field edits in pyproject.toml, viewer/package.json, and electron/package.json.",
+                  "2. Keep your PR title prefix as Patch:/Minor:/Major:/None: for automated versioning, or use Force: for manual versioning + release.",
+                  "",
+                  "Detected manual version changes:",
+                  ...changedVersions.map((line) => `- ${line}`),
+                ].join("\n"),
+              );
+            } else {
+              core.info("No manual version changes detected in tracked version files.");
+            }
+
+      - name: Force mode requires manual version change
+        if: ${{ startsWith(github.event.pull_request.title, 'Force:') }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const baseRef = pr.base.sha;
+            const headRef = pr.head.sha;
+            const baseOwner = pr.base.repo.owner.login;
+            const baseRepo = pr.base.repo.name;
+            const headOwner = pr.head.repo.owner.login;
+            const headRepo = pr.head.repo.name;
+
+            async function readTextFile(owner, repo, path, ref) {
+              const response = await github.rest.repos.getContent({
+                owner,
+                repo,
+                path,
+                ref,
+              });
+              if (Array.isArray(response.data)) {
+                throw new Error(`${path} is a directory, expected a file`);
+              }
+              return Buffer.from(response.data.content, response.data.encoding).toString("utf8");
+            }
+
+            function getPyprojectVersion(text) {
+              const lines = text.split(/\r?\n/);
+              let inProjectSection = false;
+              for (const line of lines) {
+                const section = line.match(/^\s*\[([^\]]+)\]\s*$/);
+                if (section) {
+                  inProjectSection = section[1] === "project";
+                  continue;
+                }
+                if (!inProjectSection) {
+                  continue;
+                }
+                const version = line.match(/^\s*version\s*=\s*"([^"]+)"\s*$/);
+                if (version) {
+                  return version[1];
+                }
+              }
+              throw new Error("Could not find [project].version in pyproject.toml");
+            }
+
+            function getPackageVersion(text, path) {
+              const parsed = JSON.parse(text);
+              if (typeof parsed.version !== "string") {
+                throw new Error(`Missing string \"version\" in ${path}`);
+              }
+              return parsed.version;
+            }
+
+            const files = [
+              { path: "pyproject.toml", parser: getPyprojectVersion },
+              { path: "viewer/package.json", parser: getPackageVersion },
+              { path: "electron/package.json", parser: getPackageVersion },
+            ];
+
+            const baseVersions = {};
+            const headVersions = {};
+            const changedVersions = [];
+
+            for (const file of files) {
+              const baseText = await readTextFile(baseOwner, baseRepo, file.path, baseRef);
+              const headText = await readTextFile(headOwner, headRepo, file.path, headRef);
+              const baseVersion = file.parser(baseText, file.path);
+              const headVersion = file.parser(headText, file.path);
+              baseVersions[file.path] = baseVersion;
+              headVersions[file.path] = headVersion;
+
+              if (baseVersion !== headVersion) {
+                changedVersions.push(`${file.path}: ${baseVersion} -> ${headVersion}`);
+              }
+            }
+
+            if (changedVersions.length === 0) {
+              core.setFailed(
+                [
+                  "Force: requires a manual version change compared to main.",
+                  "No tracked version values changed in this PR.",
+                  "",
+                  "What to do:",
+                  "1. Update version fields in pyproject.toml, viewer/package.json, and electron/package.json.",
+                  "2. Keep those version values aligned to the same X.Y.Z.",
+                  "3. Keep the PR title prefix as Force: for manual release mode.",
+                ].join("\n"),
+              );
+              return;
+            }
+
+            const uniqueHeadVersions = [...new Set(Object.values(headVersions))];
+            if (uniqueHeadVersions.length !== 1) {
+              core.setFailed(
+                [
+                  "Force: requires synchronized version values.",
+                  "Tracked version files do not all match after your changes.",
+                  "",
+                  "Current head versions:",
+                  ...Object.entries(headVersions).map(([path, version]) => `- ${path}: ${version}`),
+                  "",
+                  "What to do:",
+                  "1. Set pyproject.toml, viewer/package.json, and electron/package.json to the same version.",
+                ].join("\n"),
+              );
+              return;
+            }
+
+            core.info("Force: manual version change detected and version files are synchronized.");
