@@ -125,6 +125,19 @@ jobs:
 
             This PR intentionally uses `[Force]` so manual version-file changes are allowed by repository checks.
 
+      - name: Auto-approve bump PR
+        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump) && steps.bump_pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_APPROVER_TOKEN }}
+          PR_NUMBER: ${{ steps.bump_pr.outputs.pull-request-number }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "RELEASE_APPROVER_TOKEN is not set. Skipping auto-approval."
+            exit 0
+          fi
+          gh pr review "$PR_NUMBER" --approve || echo "Auto-approval could not be applied."
+
       - name: Enable auto-merge for bump PR
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump) && steps.bump_pr.outputs.pull-request-number != ''
         env:
