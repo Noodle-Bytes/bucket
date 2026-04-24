@@ -29,35 +29,35 @@ jobs:
           set -euo pipefail
 
           case "$PR_TITLE" in
-            Patch:*)
+            \[Patch\]*)
               echo "bump=patch" >> "$GITHUB_OUTPUT"
               ;;
-            Minor:*)
+            \[Minor\]*)
               echo "bump=minor" >> "$GITHUB_OUTPUT"
               ;;
-            Major:*)
+            \[Major\]*)
               echo "bump=major" >> "$GITHUB_OUTPUT"
               ;;
-            None:*)
+            \[None\]*)
               echo "bump=none" >> "$GITHUB_OUTPUT"
               ;;
-            Force:*)
+            \[Force\]*)
               echo "bump=force" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "Unsupported PR title prefix: '$PR_TITLE'"
-              echo "Expected one of: Patch:, Minor:, Major:, None:, Force:"
+              echo "Expected one of: [Patch], [Minor], [Major], [None], [Force]"
               exit 1
               ;;
           esac
 
       - name: No version bump needed
         if: steps.pr_meta.outputs.bump == 'none'
-        run: echo "PR title starts with None:. Skipping version bump, tag, and release."
+        run: echo "PR title starts with [None]. Skipping version bump, tag, and release."
 
       - name: Force mode notice
         if: steps.pr_meta.outputs.bump == 'force'
-        run: echo "PR title starts with Force:. Skipping auto-bump and using merged commit version for tag/release."
+        run: echo "PR title starts with [Force]. Skipping auto-bump and using merged commit version for tag/release."
 
       - name: Checkout main for automated bump
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
