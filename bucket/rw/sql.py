@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Iterable, overload
 
 from sqlalchemy import Integer, String, create_engine, select
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from .common import (
@@ -262,9 +264,6 @@ class SQLReader(Reader):
                 .where(PointRow.definition == def_ref)
                 .order_by(PointRow.start, PointRow.depth)
             )
-            point_meta_st = select(PointMetaRow).where(
-                PointMetaRow.definition == def_ref
-            )
             axis_st = (
                 select_tup(AxisRow)
                 .where(AxisRow.definition == def_ref)
@@ -287,12 +286,16 @@ class SQLReader(Reader):
             )
 
             point_metadata = {}
-            for point_meta in session.scalars(point_meta_st):
-                point_metadata[(point_meta.start, point_meta.depth)] = (
-                    point_meta.tier,
-                    point_meta.tags,
-                    point_meta.motivation,
+            if inspect(session.bind).has_table(PointMetaRow.__tablename__):
+                point_meta_st = select(PointMetaRow).where(
+                    PointMetaRow.definition == def_ref
                 )
+                for point_meta in session.scalars(point_meta_st):
+                    point_metadata[(point_meta.start, point_meta.depth)] = (
+                        point_meta.tier,
+                        point_meta.tags,
+                        point_meta.motivation,
+                    )
 
             for point_row in session.execute(point_st).all():
                 core_row = list(point_row[1:])
@@ -346,7 +349,12 @@ class SQLAccessor(Accessor):
 
     def __init__(self, url: str):
         self.engine = create_engine(url)
-        BaseRow.metadata.create_all(self.engine)
+        try:
+            BaseRow.metadata.create_all(self.engine)
+        except OperationalError:
+            # Allow read-only access to legacy DBs where schema migration
+            # cannot be applied (e.g. file permissions).
+            pass
 
     @classmethod
     def File(cls, path: str | Path) -> "SQLAccessor":

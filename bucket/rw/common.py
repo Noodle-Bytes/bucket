@@ -100,9 +100,23 @@ def point_tuple_from_row(values: Iterable[Any]) -> PointTuple:
     if tier == "":
         tier = None
     elif isinstance(tier, str):
-        tier = int(tier) if tier.strip() else None
-    elif isinstance(tier, float) and tier.is_integer():
-        tier = int(tier)
+        tier = tier.strip()
+        if not tier:
+            tier = None
+        else:
+            try:
+                tier = int(tier)
+            except (TypeError, ValueError):
+                try:
+                    float_tier = float(tier)
+                except (TypeError, ValueError):
+                    tier = None
+                else:
+                    tier = int(float_tier) if float_tier.is_integer() else None
+    elif isinstance(tier, float):
+        tier = int(tier) if tier.is_integer() else None
+    elif tier is not None and not isinstance(tier, int):
+        tier = None
 
     tags = row[16] if len(row) > 16 else ""
     if isinstance(tags, (list, tuple)):

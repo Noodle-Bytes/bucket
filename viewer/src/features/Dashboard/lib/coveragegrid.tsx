@@ -192,19 +192,25 @@ function getCoverageColumnConfig(theme: ThemeType, columnKey: string) {
     };
 }
 
-function getColumnMixedCompare(columnKey: string) {
-    return (a: ComparableRecord, b: ComparableRecord) =>
+function getColumnMixedCompare<T extends object>(columnKey: string) {
+    return (a: T, b: T) =>
         natCompare(
-            (a[columnKey] as string | number | undefined) ?? "",
-            (b[columnKey] as string | number | undefined) ?? "",
+            ((a as ComparableRecord)[columnKey] as string | number | undefined) ?? "",
+            ((b as ComparableRecord)[columnKey] as string | number | undefined) ?? "",
         );
 }
 
-function getColumnNumCompare(columnKey: string) {
-    return (a: ComparableRecord, b: ComparableRecord) =>
+function getColumnNumCompare<T extends object>(columnKey: string) {
+    return (a: T, b: T) =>
         numCompare(
-            Number((a[columnKey] as number | string | undefined) ?? Number.NaN),
-            Number((b[columnKey] as number | string | undefined) ?? Number.NaN),
+            Number(
+                ((a as ComparableRecord)[columnKey] as number | string | undefined)
+                ?? Number.NaN,
+            ),
+            Number(
+                ((b as ComparableRecord)[columnKey] as number | string | undefined)
+                ?? Number.NaN,
+            ),
         );
 }
 
@@ -434,19 +440,19 @@ function getFullColumns(
                     filterMode: "tree",
                     filterSearch: true,
                     onFilter: (value, record) => record.goal_name == value,
-                    sorter: getColumnMixedCompare("goal_name"),
+                    sorter: getColumnMixedCompare<CoverageRecord>("goal_name"),
                 },
                 {
                     title: "Target",
                     dataIndex: "target",
                     key: "target",
-                    sorter: getColumnNumCompare("target"),
+                    sorter: getColumnNumCompare<CoverageRecord>("target"),
                 },
                 {
                     title: "Hits",
                     dataIndex: "hits",
                     key: "hits",
-                    sorter: getColumnNumCompare("hits"),
+                    sorter: getColumnNumCompare<CoverageRecord>("hits"),
                 },
                 {
                     title: "Hit %",
@@ -482,7 +488,7 @@ function getFullColumns(
                     filterMode: "tree",
                     filterSearch: true,
                     ...getCoverageColumnConfig(theme, "hit_ratio"),
-                    sorter: getColumnNumCompare("hit_ratio"),
+                    sorter: getColumnNumCompare<CoverageRecord>("hit_ratio"),
                 },
             ],
         },
@@ -1365,7 +1371,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                 onClick: () => setSelectedTreeKeys([record.key]),
                 style: { cursor: "pointer" },
             }),
-            sorter: getColumnMixedCompare("name"),
+            sorter: getColumnMixedCompare<SummaryRecord>("name"),
         },
         {
             title: "Description",
@@ -1383,7 +1389,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     paddingLeft: record.isCovergroup ? "12px" : "8px",
                 },
             }),
-            sorter: getColumnMixedCompare("desc"),
+            sorter: getColumnMixedCompare<SummaryRecord>("desc"),
         },
         {
             title: "Tier",
@@ -1415,7 +1421,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
             dataIndex: "tags_text",
             key: "tags_text",
             render: (tags: string) => (tags === "" ? "-" : tags),
-            sorter: getColumnMixedCompare("tags_text"),
+            sorter: getColumnMixedCompare<SummaryRecord>("tags_text"),
             onCell: (record: SummaryRecord) => ({
                 style: {
                     backgroundColor: record.isCovergroup
@@ -1431,7 +1437,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     title: "Target",
                     dataIndex: "target",
                     key: "target",
-                    sorter: getColumnNumCompare("target"),
+                    sorter: getColumnNumCompare<SummaryRecord>("target"),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup
@@ -1444,7 +1450,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     title: "Hits",
                     dataIndex: "hits",
                     key: "hits",
-                    sorter: getColumnNumCompare("hits"),
+                    sorter: getColumnNumCompare<SummaryRecord>("hits"),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup
@@ -1458,7 +1464,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     dataIndex: "hit_ratio",
                     key: "hit_ratio",
                     ...getCoverageColumnConfig(theme, "hit_ratio"),
-                    sorter: getColumnNumCompare("hit_ratio"),
+                    sorter: getColumnNumCompare<SummaryRecord>("hit_ratio"),
                     onCell: (record: SummaryRecord) => {
                         const coverageConfig = getCoverageColumnConfig(theme, "hit_ratio");
                         const coverageStyle = coverageConfig.onCell
@@ -1488,7 +1494,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     title: "Target",
                     dataIndex: "target_buckets",
                     key: "target_buckets",
-                    sorter: getColumnNumCompare("target_buckets"),
+                    sorter: getColumnNumCompare<SummaryRecord>("target_buckets"),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup
@@ -1501,7 +1507,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     title: "Hit",
                     dataIndex: "hit_buckets",
                     key: "hit_buckets",
-                    sorter: getColumnNumCompare("hit_buckets"),
+                    sorter: getColumnNumCompare<SummaryRecord>("hit_buckets"),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup
@@ -1514,7 +1520,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     title: "Full",
                     dataIndex: "full_buckets",
                     key: "full_buckets",
-                    sorter: getColumnNumCompare("full_buckets"),
+                    sorter: getColumnNumCompare<SummaryRecord>("full_buckets"),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup
@@ -1528,7 +1534,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     dataIndex: "buckets_hit_ratio",
                     key: "buckets_hit_ratio",
                     ...getCoverageColumnConfig(theme, "buckets_hit_ratio"),
-                    sorter: getColumnNumCompare("buckets_hit_ratio"),
+                    sorter: getColumnNumCompare<SummaryRecord>("buckets_hit_ratio"),
                     onCell: (record: SummaryRecord) => {
                         const coverageConfig = getCoverageColumnConfig(
                             theme,
@@ -1557,7 +1563,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     dataIndex: "buckets_full_ratio",
                     key: "buckets_full_ratio",
                     ...getCoverageColumnConfig(theme, "buckets_full_ratio"),
-                    sorter: getColumnNumCompare("buckets_full_ratio"),
+                    sorter: getColumnNumCompare<SummaryRecord>("buckets_full_ratio"),
                     onCell: (record: SummaryRecord) => {
                         const coverageConfig = getCoverageColumnConfig(
                             theme,
