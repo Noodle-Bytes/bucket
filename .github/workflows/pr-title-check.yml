@@ -5,6 +5,7 @@ name: PR Title Check
 
 on:
   pull_request:
+    branches: [main]
     types: [opened, edited, synchronize, reopened, ready_for_review]
 
 permissions:
@@ -118,6 +119,7 @@ jobs:
             ];
 
             const changedVersions = [];
+            const missingRequiredFiles = [];
 
             for (const file of files) {
               const baseText = await readTextFile(baseOwner, baseRepo, file.path, baseRef);
@@ -125,7 +127,7 @@ jobs:
 
               if (baseText === null || headText === null) {
                 const missingSide = baseText === null ? "base" : "head";
-                changedVersions.push(`${file.path}: file missing in ${missingSide} ref`);
+                missingRequiredFiles.push(`${file.path}: missing in ${missingSide} ref`);
                 continue;
               }
 
@@ -135,6 +137,22 @@ jobs:
               if (baseVersion !== headVersion) {
                 changedVersions.push(`${file.path}: ${baseVersion} -> ${headVersion}`);
               }
+            }
+
+            if (missingRequiredFiles.length > 0) {
+              core.setFailed(
+                [
+                  "Required version files are missing in this PR comparison.",
+                  "",
+                  "What to do:",
+                  "1. Ensure pyproject.toml, viewer/package.json, and electron/package.json all exist.",
+                  "2. Restore any deleted/missing required file before merging.",
+                  "",
+                  "Missing required files:",
+                  ...missingRequiredFiles.map((line) => `- ${line}`),
+                ].join("\n"),
+              );
+              return;
             }
 
             if (changedVersions.length > 0) {
@@ -169,16 +187,23 @@ jobs:
             const headRepo = pr.head.repo.name;
 
             async function readTextFile(owner, repo, path, ref) {
-              const response = await github.rest.repos.getContent({
-                owner,
-                repo,
-                path,
-                ref,
-              });
-              if (Array.isArray(response.data)) {
-                throw new Error(`${path} is a directory, expected a file`);
+              try {
+                const response = await github.rest.repos.getContent({
+                  owner,
+                  repo,
+                  path,
+                  ref,
+                });
+                if (Array.isArray(response.data)) {
+                  throw new Error(`${path} is a directory, expected a file`);
+                }
+                return Buffer.from(response.data.content, response.data.encoding).toString("utf8");
+              } catch (error) {
+                if (error.status === 404) {
+                  return null;
+                }
+                throw error;
               }
-              return Buffer.from(response.data.content, response.data.encoding).toString("utf8");
             }
 
             function getPyprojectVersion(text) {
@@ -215,21 +240,43 @@ jobs:
               { path: "electron/package.json", parser: getPackageVersion },
             ];
 
-            const baseVersions = {};
             const headVersions = {};
             const changedVersions = [];
+            const missingRequiredFiles = [];
 
             for (const file of files) {
               const baseText = await readTextFile(baseOwner, baseRepo, file.path, baseRef);
               const headText = await readTextFile(headOwner, headRepo, file.path, headRef);
+
+              if (baseText === null || headText === null) {
+                const missingSide = baseText === null ? "base" : "head";
+                missingRequiredFiles.push(`${file.path}: missing in ${missingSide} ref`);
+                continue;
+              }
+
               const baseVersion = file.parser(baseText, file.path);
               const headVersion = file.parser(headText, file.path);
-              baseVersions[file.path] = baseVersion;
               headVersions[file.path] = headVersion;
 
               if (baseVersion !== headVersion) {
                 changedVersions.push(`${file.path}: ${baseVersion} -> ${headVersion}`);
               }
+            }
+
+            if (missingRequiredFiles.length > 0) {
+              core.setFailed(
+                [
+                  "[Force] requires all version files to exist in both base and head refs.",
+                  "",
+                  "What to do:",
+                  "1. Ensure pyproject.toml, viewer/package.json, and electron/package.json all exist.",
+                  "2. Restore any missing required file before merging.",
+                  "",
+                  "Missing required files:",
+                  ...missingRequiredFiles.map((line) => `- ${line}`),
+                ].join("\n"),
+              );
+              return;
             }
 
             if (changedVersions.length === 0) {

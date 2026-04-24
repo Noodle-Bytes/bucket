@@ -59,6 +59,11 @@ jobs:
         if: steps.pr_meta.outputs.bump == 'force'
         run: echo "PR title starts with [Force]. Skipping auto-bump and using merged commit version for tag/release."
 
+      # Intentional tradeoff:
+      # This checks out the current tip of main (not merge_commit_sha) for automatic
+      # patch/minor/major bumps. If other PRs merge before this job runs, the bump
+      # commit and generated release notes may include those adjacent merges too.
+      # We accept this for a simpler workflow in a low-throughput repository.
       - name: Checkout main for automated bump
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
         uses: actions/checkout@v4
