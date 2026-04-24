@@ -10,7 +10,7 @@ on:
 
 permissions:
   contents: write
-  pull-requests: read
+  pull-requests: write
 
 concurrency:
   group: version-bump-main
@@ -59,11 +59,9 @@ jobs:
         if: steps.pr_meta.outputs.bump == 'force'
         run: echo "PR title starts with [Force]. Skipping auto-bump and using merged commit version for tag/release."
 
-      # Intentional tradeoff:
-      # This checks out the current tip of main (not merge_commit_sha) for automatic
-      # patch/minor/major bumps. If other PRs merge before this job runs, the bump
-      # commit and generated release notes may include those adjacent merges too.
-      # We accept this for a simpler workflow in a low-throughput repository.
+      # For automatic patch/minor/major bumps, create or update a release PR
+      # instead of pushing directly to main. This preserves branch protection
+      # and required status checks.
       - name: Checkout main for automated bump
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
         uses: actions/checkout@v4
@@ -80,40 +78,70 @@ jobs:
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
         run: python scripts/bump_version.py --bump "${{ steps.pr_meta.outputs.bump }}"
 
-      - name: Commit and push bump commit
+      - name: Read bumped version from pyproject.toml
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
+        id: bumped_version
+        run: |
+          set -euo pipefail
+          VERSION="$(python - <<'PY'
+          from pathlib import Path
+          import re
+
+          text = Path("pyproject.toml").read_text(encoding="utf-8")
+          section = re.search(r"(?ms)^\[project\]\r?\n(?P<body>.*?)(?=^\[|\Z)", text)
+          if not section:
+              raise SystemExit("Missing [project] section in pyproject.toml")
+
+          match = re.search(r'(?m)^version\s*=\s*"([^"]+)"\s*$', section.group("body"))
+          if not match:
+              raise SystemExit("Missing [project].version in pyproject.toml")
+
+          print(match.group(1))
+          PY
+          )"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Bumped version: ${VERSION}"
+
+      - name: Create or update force release PR
+        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
+        id: bump_pr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ github.token }}
+          base: main
+          branch: ci/version-bump-main
+          delete-branch: true
+          add-paths: |
+            pyproject.toml
+            electron/package.json
+            viewer/package.json
+          commit-message: "chore: bump version (${{ steps.pr_meta.outputs.bump }})"
+          title: "[Force] release v${{ steps.bumped_version.outputs.version }}"
+          body: |
+            Auto-generated version bump for a merged `${{ steps.pr_meta.outputs.bump }}` PR.
+
+            Source PR:
+            - #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}
+
+            This PR intentionally uses `[Force]` so manual version-file changes are allowed by repository checks.
+
+      - name: Enable auto-merge for bump PR
+        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump) && steps.bump_pr.outputs.pull-request-number != ''
         env:
-          BUMP_KIND: ${{ steps.pr_meta.outputs.bump }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.bump_pr.outputs.pull-request-number }}
         run: |
           set -euo pipefail
+          gh pr merge "$PR_NUMBER" --auto --squash || echo "Auto-merge could not be enabled automatically."
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          if git diff --quiet; then
-            echo "No version file changes detected."
-            exit 0
-          fi
-
-          git add pyproject.toml
-          if [ -f electron/package.json ]; then
-            git add electron/package.json
-          fi
-          if [ -f viewer/package.json ]; then
-            git add viewer/package.json
-          fi
-
-          git commit -m "chore: bump version (${BUMP_KIND})"
-          git push origin HEAD:main
-
-      - name: Resolve release target SHA for automatic bump
+      - name: Report bump PR
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
-        id: release_target_auto
         run: |
-          set -euo pipefail
-          TARGET_SHA="$(git rev-parse HEAD)"
-          echo "sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
-          echo "Release target SHA: ${TARGET_SHA}"
+          if [ -n "${{ steps.bump_pr.outputs.pull-request-url }}" ]; then
+            echo "Created/updated bump PR: ${{ steps.bump_pr.outputs.pull-request-url }}"
+          else
+            echo "No version changes detected; no bump PR created."
+          fi
 
       - name: Resolve release target SHA for force mode
         if: steps.pr_meta.outputs.bump == 'force'
@@ -126,10 +154,10 @@ jobs:
           echo "Release target SHA: ${MERGE_SHA}"
 
       - name: Derive release tag from pyproject version
-        if: steps.pr_meta.outputs.bump != 'none'
+        if: steps.pr_meta.outputs.bump == 'force'
         id: version_meta
         env:
-          TARGET_SHA: ${{ steps.release_target_auto.outputs.sha || steps.release_target_force.outputs.sha }}
+          TARGET_SHA: ${{ steps.release_target_force.outputs.sha }}
         uses: actions/github-script@v7
         with:
           script: |
@@ -191,11 +219,11 @@ jobs:
             core.info(`Release tag will be ${tag}`);
 
       - name: Create GitHub release with generated notes
-        if: steps.pr_meta.outputs.bump != 'none'
+        if: steps.pr_meta.outputs.bump == 'force'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.version_meta.outputs.tag }}
-          TARGET_SHA: ${{ steps.release_target_auto.outputs.sha || steps.release_target_force.outputs.sha }}
+          TARGET_SHA: ${{ steps.release_target_force.outputs.sha }}
         run: |
           set -euo pipefail
 
