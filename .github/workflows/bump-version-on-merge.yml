@@ -66,7 +66,7 @@ jobs:
           ref: main
 
       - name: Set up Python
-        if: steps.pr_meta.outputs.bump != 'none'
+        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -74,12 +74,6 @@ jobs:
       - name: Bump version files
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
         run: python scripts/bump_version.py --bump "${{ steps.pr_meta.outputs.bump }}"
-
-      - name: Checkout merged commit for force mode
-        if: steps.pr_meta.outputs.bump == 'force'
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Commit and push bump commit
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
@@ -107,41 +101,96 @@ jobs:
           git commit -m "chore: bump version (${BUMP_KIND})"
           git push origin HEAD:main
 
-      - name: Resolve release target SHA
-        if: steps.pr_meta.outputs.bump != 'none'
-        id: release_target
+      - name: Resolve release target SHA for automatic bump
+        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
+        id: release_target_auto
         run: |
           set -euo pipefail
           TARGET_SHA="$(git rev-parse HEAD)"
           echo "sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
           echo "Release target SHA: ${TARGET_SHA}"
 
+      - name: Resolve release target SHA for force mode
+        if: steps.pr_meta.outputs.bump == 'force'
+        id: release_target_force
+        env:
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          echo "sha=${MERGE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Release target SHA: ${MERGE_SHA}"
+
       - name: Derive release tag from pyproject version
         if: steps.pr_meta.outputs.bump != 'none'
         id: version_meta
-        run: |
-          set -euo pipefail
+        env:
+          TARGET_SHA: ${{ steps.release_target_auto.outputs.sha || steps.release_target_force.outputs.sha }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const targetSha = process.env.TARGET_SHA;
+            const { owner, repo } = context.repo;
 
-          VERSION="$(python - <<'PY'
-          from pathlib import Path
-          import tomllib
+            if (!targetSha) {
+              core.setFailed("Missing release target SHA.");
+              return;
+            }
 
-          payload = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-          print(str(payload["project"]["version"]))
-          PY
-          )"
+            const response = await github.rest.repos.getContent({
+              owner,
+              repo,
+              path: "pyproject.toml",
+              ref: targetSha,
+            });
 
-          TAG="v${VERSION}"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "Release tag will be ${TAG}"
+            if (Array.isArray(response.data)) {
+              core.setFailed("pyproject.toml resolved to a directory.");
+              return;
+            }
+
+            const text = Buffer.from(
+              response.data.content,
+              response.data.encoding,
+            ).toString("utf8");
+
+            const lines = text.split(/\r?\n/);
+            let inProjectSection = false;
+            let version = null;
+
+            for (const line of lines) {
+              const section = line.match(/^\s*\[([^\]]+)\]\s*$/);
+              if (section) {
+                inProjectSection = section[1] === "project";
+                continue;
+              }
+              if (!inProjectSection) {
+                continue;
+              }
+              const match = line.match(/^\s*version\s*=\s*"([^"]+)"\s*$/);
+              if (match) {
+                version = match[1];
+                break;
+              }
+            }
+
+            if (!version) {
+              core.setFailed(
+                `Could not find [project].version in pyproject.toml at ${targetSha}.`,
+              );
+              return;
+            }
+
+            const tag = `v${version}`;
+            core.setOutput("version", version);
+            core.setOutput("tag", tag);
+            core.info(`Release tag will be ${tag}`);
 
       - name: Create GitHub release with generated notes
         if: steps.pr_meta.outputs.bump != 'none'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.version_meta.outputs.tag }}
-          TARGET_SHA: ${{ steps.release_target.outputs.sha }}
+          TARGET_SHA: ${{ steps.release_target_auto.outputs.sha || steps.release_target_force.outputs.sha }}
         run: |
           set -euo pipefail
 
