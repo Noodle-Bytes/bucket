@@ -69,9 +69,11 @@ const getPluginPWA = ((env) => {
     };
 
     const includeAssets = [
-        resolveAsset('favicon.ico'),
-        resolveAsset('apple-touch-icon-180x180.png'),
-        resolveAsset('maskable-icon-512x512.png')
+        'favicon.ico',
+        'logo.svg',
+        'pwa-64x64.png',
+        'apple-touch-icon-180x180.png',
+        'maskable-icon-512x512.png'
     ];
 
     const devConfig = {};
