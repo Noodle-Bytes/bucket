@@ -457,6 +457,9 @@ jobs:
         if: steps.pr_meta.outputs.bump == 'force'
         env:
           GH_TOKEN: ${{ github.token }}
+          # GH_REPO is required because the [Force] code path does not run
+          # actions/checkout, so `gh` has no local .git to detect the repo.
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ steps.version_meta.outputs.tag }}
           TARGET_SHA: ${{ steps.release_target_force.outputs.sha }}
         run: |
