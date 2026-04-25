@@ -60,7 +60,7 @@ jobs:
 
       - name: Block manual version changes in PRs
         if: ${{ !startsWith(github.event.pull_request.title, '[Release]') }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const pr = context.payload.pull_request;
@@ -182,7 +182,7 @@ jobs:
 
       - name: Release mode requires version-only changes in tracked files
         if: ${{ startsWith(github.event.pull_request.title, '[Release]') }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const pr = context.payload.pull_request;
@@ -452,7 +452,7 @@ jobs:
             core.info("[Release] version-only changes validated and version files are synchronized.");
 
       - name: Enforce automation policy for action-generated release PRs
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const pr = context.payload.pull_request;
