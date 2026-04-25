@@ -115,14 +115,6 @@ jobs:
               return parsed.version;
             }
 
-            function escapeRegex(text) {
-              return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            }
-
-            function escapeRegex(text) {
-              return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            }
-
             const files = [
               { path: "pyproject.toml", parser: getPyprojectVersion },
               { path: "viewer/package.json", parser: getPackageVersion },
@@ -243,6 +235,10 @@ jobs:
                 throw new Error(`Missing string \"version\" in ${path}`);
               }
               return parsed.version;
+            }
+
+            function escapeRegex(text) {
+              return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             }
 
             function normalizePyprojectVersion(text) {
