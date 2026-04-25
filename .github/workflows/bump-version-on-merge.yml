@@ -79,7 +79,7 @@ jobs:
       # gate while this workflow is still spinning up.
       - name: Set release pipeline gate to pending on open source PRs
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           MERGED_PR_NUMBER: ${{ github.event.pull_request.number }}
         with:
@@ -358,7 +358,7 @@ jobs:
       # human investigates (per the chosen "stay-blocked" recovery policy).
       - name: Set release pipeline gate to success on open source PRs
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           MERGED_PR_NUMBER: ${{ github.event.pull_request.number }}
         with:
@@ -417,7 +417,7 @@ jobs:
         id: version_meta
         env:
           TARGET_SHA: ${{ steps.release_target_force.outputs.sha }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const targetSha = process.env.TARGET_SHA;

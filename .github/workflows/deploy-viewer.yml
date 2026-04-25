@@ -4,8 +4,12 @@
 name: Deploy Viewer to GitHub Pages
 
 on:
-  push:
+  # Only deploy when a [Release] PR merges to main, not on every commit.
+  # Source PRs ([Patch]/[Minor]/[Major]) do not change the public-facing
+  # site; only the version-bump release PR should trigger a deploy.
+  pull_request_target:
     branches: ["main"]
+    types: [closed]
   workflow_dispatch:
 
 permissions:
@@ -19,6 +23,10 @@ concurrency:
 
 jobs:
   build:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       startsWith(github.event.pull_request.title, '[Release]'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
