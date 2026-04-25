@@ -11,9 +11,19 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  statuses: write
 
+# Source-PR runs (patch/minor/major/none) and the release-tag run triggered by
+# the bump PR's own merge are handled in separate concurrency groups so a
+# release-tag run can never cancel a queued source-PR run, which would silently
+# skip a release for that source PR.
 concurrency:
-  group: version-bump-main
+  group: >-
+    version-bump-main-${{
+      (github.event.pull_request.head.ref == 'ci/version-bump-main' && startsWith(github.event.pull_request.title, '[Force]'))
+      && 'release'
+      || 'source'
+    }}
   cancel-in-progress: false
 
 jobs:
@@ -58,6 +68,90 @@ jobs:
       - name: Force mode notice
         if: steps.pr_meta.outputs.bump == 'force'
         run: echo "PR title starts with [Force]. Skipping auto-bump and using merged commit version for tag/release."
+
+      # Lock the release pipeline by flipping the gate to 'pending' on every
+      # other open source PR before doing any other work. This narrows the race
+      # window where another source PR could be merged with a stale 'success'
+      # gate while this workflow is still spinning up.
+      - name: Set release pipeline gate to pending on open source PRs
+        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
+        uses: actions/github-script@v7
+        env:
+          MERGED_PR_NUMBER: ${{ github.event.pull_request.number }}
+        with:
+          script: |
+            const mergedPr = Number(process.env.MERGED_PR_NUMBER);
+            const validPrefixes = ["[Patch]", "[Minor]", "[Major]"];
+
+            const sourcePRs = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              base: "main",
+              per_page: 100,
+            });
+
+            let updated = 0;
+            for (const pr of sourcePRs) {
+              if (pr.number === mergedPr) continue;
+              if (pr.head.ref === "ci/version-bump-main") continue;
+              if (!validPrefixes.some((p) => pr.title.startsWith(p))) continue;
+
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: pr.head.sha,
+                state: "pending",
+                context: "release-pipeline-gate",
+                description: `Wait for release PR for source PR #${mergedPr} to land`,
+                target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              });
+              core.info(`Set release-pipeline-gate=pending on PR #${pr.number} (${pr.title})`);
+              updated += 1;
+            }
+            core.info(`Updated ${updated} open source PR(s) to pending.`);
+
+      # Strict release-per-PR: bail loudly if a release PR is already open.
+      # The release-pipeline-gate required check on source PRs is supposed to
+      # block this from happening; if we get here, the gate failed. Aborting
+      # without overwriting the in-flight bump prevents a silent version
+      # downgrade or a lost release for either the in-flight or current PR.
+      # Per the chosen "stay-blocked" recovery policy: gates remain 'pending'
+      # so no further releases land until a human investigates and either
+      # re-runs this workflow or manually clears the gate.
+      - name: Defensive check - fail if a release PR is already open
+        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          existing="$(gh pr list --state open --base main --head ci/version-bump-main --json number,title,url,author --jq '.[0] // empty')"
+          if [ -z "$existing" ]; then
+            echo "No open release PR on ci/version-bump-main; safe to proceed."
+            exit 0
+          fi
+
+          existing_number="$(echo "$existing" | jq -r .number)"
+          existing_title="$(echo "$existing" | jq -r .title)"
+          existing_url="$(echo "$existing" | jq -r .url)"
+          existing_author="$(echo "$existing" | jq -r .author.login)"
+
+          {
+            echo "::error title=Release pipeline race detected::An open release PR (#${existing_number}) is in flight and the release-pipeline-gate required status check should have prevented this source PR from merging."
+            echo ""
+            echo "Existing release PR:"
+            echo "  number: ${existing_number}"
+            echo "  title:  ${existing_title}"
+            echo "  author: ${existing_author}"
+            echo "  url:    ${existing_url}"
+            echo ""
+            echo "What to do:"
+            echo "1. Investigate why the release-pipeline-gate let this source PR (#${{ github.event.pull_request.number }}) merge while the release PR was still open."
+            echo "2. Once the in-flight release PR has merged, manually create a [Force] PR for this source PR's bump (see scripts/bump_version.py) so the release for this PR is not lost."
+            echo "3. Restore source PR gates by re-running this workflow on a successful source PR merge, or by posting a 'success' commit status with context 'release-pipeline-gate' on each open source PR's head SHA."
+          } >&2
+          exit 1
 
       # For automatic patch/minor/major bumps, create or update a release PR
       # instead of pushing directly to main. This preserves branch protection
@@ -113,38 +207,6 @@ jobs:
             exit 1
           fi
 
-      - name: Reset legacy force bump PR author
-        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-
-          existing_number="$(gh pr list --state open --base main --head ci/version-bump-main --json number --jq '.[0].number // ""')"
-          if [ -z "$existing_number" ]; then
-            echo "No existing open bump PR on ci/version-bump-main."
-            exit 0
-          fi
-
-          existing_author="$(gh pr view "$existing_number" --json author --jq .author.login)"
-          existing_title="$(gh pr view "$existing_number" --json title --jq .title)"
-
-          if [[ "$existing_title" != \[Force\]* ]]; then
-            echo "::error title=Unexpected PR on ci/version-bump-main::Open PR #${existing_number} does not use a [Force] title: '${existing_title}'."
-            echo "Resolve the conflicting PR on ci/version-bump-main and re-run this workflow."
-            exit 1
-          fi
-
-          if [ "$existing_author" = "noodle-bucket-bot" ]; then
-            echo "Existing bump PR #${existing_number} already authored by noodle-bucket-bot."
-            exit 0
-          fi
-
-          echo "Closing incompatible bump PR #${existing_number} authored by ${existing_author} so it can be recreated by noodle-bucket-bot."
-          gh pr close "$existing_number" \
-            --delete-branch \
-            --comment "Resetting this PR so it is recreated by noodle-bucket-bot for automated required-review approval flow."
-
       - name: Create or update force release PR
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
         id: bump_pr
@@ -171,22 +233,59 @@ jobs:
             Source PR:
             - #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}
 
-            This PR intentionally uses `[Force]` so manual version-file changes are allowed by repository checks.
+            This PR uses `[Force]` so manual version-file changes are allowed by repository checks.
 
-      - name: Merge bump PR with bypass actor when checks are ready
+      # Mint a short-lived (1 hour) installation token for the bucket-release-approver GitHub App.
+      # The App is the second identity required to satisfy branch protection's "1 approval"
+      # rule on the bot-authored bump PR (noodle-bucket-bot cannot approve its own PR).
+      - name: Mint approver app installation token
+        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump) && steps.bump_pr.outputs.pull-request-number != ''
+        id: approver_token
+        # actions/create-github-app-token v3.1.1 (2026-04-11)
+        # refs/tags/v3.1.1 -> 1b10c78c7865c340bc4f6099eb2f838309f1e8c3
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3
+        with:
+          app-id: ${{ secrets.APPROVER_APP_ID }}
+          private-key: ${{ secrets.APPROVER_APP_PRIVATE_KEY }}
+
+      - name: Approve bump PR via approver app
+        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump) && steps.bump_pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ steps.approver_token.outputs.token }}
+          PR_NUMBER: ${{ steps.bump_pr.outputs.pull-request-number }}
+          REPO: ${{ github.repository }}
+          APP_SLUG: ${{ steps.approver_token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          reviewer_login="${APP_SLUG}[bot]"
+          existing="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
+            --jq "[.[] | select(.user.login == \"$reviewer_login\" and .state == \"APPROVED\")] | length")"
+          if [ "$existing" -gt 0 ]; then
+            echo "PR #${PR_NUMBER} already approved by $reviewer_login; skipping."
+            exit 0
+          fi
+          echo "Approving PR #${PR_NUMBER} as $reviewer_login..."
+          gh api -X POST "repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
+            -f event=APPROVE \
+            -f body="Auto-approved by ${reviewer_login} for action-generated [Force] release PR."
+
+      # Merge as noodle-bucket-bot (NOT github.token), because GITHUB_TOKEN-driven merges
+      # do not trigger downstream pull_request_target events, which would skip the [Force]
+      # release/tag step in this same workflow.
+      - name: Merge bump PR once checks pass
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump) && steps.bump_pr.outputs.pull-request-number != ''
         env:
           GH_TOKEN: ${{ secrets.VERSION_BUMP_TOKEN }}
           PR_NUMBER: ${{ steps.bump_pr.outputs.pull-request-number }}
         run: |
           set -euo pipefail
-          max_attempts=80
+          max_attempts=40
           sleep_seconds=15
           attempt=0
 
           while [ "$attempt" -lt "$max_attempts" ]; do
             attempt=$((attempt + 1))
-            echo "Attempt ${attempt}/${max_attempts}: merging bump PR #${PR_NUMBER}"
+            echo "Attempt ${attempt}/${max_attempts}: trying to merge bump PR #${PR_NUMBER}"
 
             pr_state="$(gh pr view "$PR_NUMBER" --json state --jq .state)"
             if [ "$pr_state" != "OPEN" ]; then
@@ -199,12 +298,52 @@ jobs:
               exit 0
             fi
 
-            echo "PR #${PR_NUMBER} is not mergeable yet. Waiting ${sleep_seconds}s..."
+            echo "PR #${PR_NUMBER} not mergeable yet. Waiting ${sleep_seconds}s..."
             sleep "$sleep_seconds"
           done
 
           echo "::error title=Timed out merging bump PR::PR #${PR_NUMBER} did not become mergeable within $((max_attempts * sleep_seconds / 60)) minutes."
           exit 1
+
+      # Only on successful merge above. If this workflow fails earlier, gates
+      # stay 'pending' on open source PRs so no further releases land until a
+      # human investigates (per the chosen "stay-blocked" recovery policy).
+      - name: Set release pipeline gate to success on open source PRs
+        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
+        uses: actions/github-script@v7
+        env:
+          MERGED_PR_NUMBER: ${{ github.event.pull_request.number }}
+        with:
+          script: |
+            const mergedPr = Number(process.env.MERGED_PR_NUMBER);
+            const validPrefixes = ["[Patch]", "[Minor]", "[Major]"];
+
+            const sourcePRs = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              base: "main",
+              per_page: 100,
+            });
+
+            let updated = 0;
+            for (const pr of sourcePRs) {
+              if (pr.number === mergedPr) continue;
+              if (pr.head.ref === "ci/version-bump-main") continue;
+              if (!validPrefixes.some((p) => pr.title.startsWith(p))) continue;
+
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: pr.head.sha,
+                state: "success",
+                context: "release-pipeline-gate",
+                description: "No active release PR; clear to merge",
+              });
+              core.info(`Set release-pipeline-gate=success on PR #${pr.number} (${pr.title})`);
+              updated += 1;
+            }
+            core.info(`Cleared release-pipeline-gate on ${updated} open source PR(s).`);
 
       - name: Report bump PR
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)

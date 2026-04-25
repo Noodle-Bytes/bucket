@@ -453,7 +453,14 @@ jobs:
           script: |
             const pr = context.payload.pull_request;
             const expectedActionAuthor = "noodle-bucket-bot";
-            const restrictedApproverLogin = "noodle-bucket-bot";
+            // Identities that are scoped to the release-automation flow only and must
+            // never appear as approvers on human-authored or non-bump PRs. If a token
+            // for one of these identities ever leaks, this gate ensures the blast
+            // radius is bounded to the bot-authored bump PR on ci/version-bump-main.
+            const restrictedApprovers = new Set([
+              "noodle-bucket-bot",
+              "bucket-release-approver[bot]",
+            ]);
             const isForce = pr.title.startsWith("[Force]");
             const isSameRepoHead =
               pr.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`;
@@ -477,16 +484,18 @@ jobs:
             const approvedUsers = [...latestStateByUser.entries()]
               .filter(([, state]) => state === "APPROVED")
               .map(([login]) => login);
-            const restrictedBotApproved = approvedUsers.includes(restrictedApproverLogin);
+            const disallowedRestrictedApprovers = approvedUsers.filter((login) =>
+              restrictedApprovers.has(login),
+            );
 
-            if (restrictedBotApproved && !isActionGeneratedForce) {
+            if (disallowedRestrictedApprovers.length > 0 && !isActionGeneratedForce) {
               core.setFailed(
                 [
-                  `${restrictedApproverLogin} may only approve action-generated [Force] PRs.`,
+                  `Restricted release-automation identities may only approve action-generated [Force] PRs.`,
                   "",
-                  "Detected an approval from this bot on a disallowed PR.",
+                  `Detected disallowed approval(s): ${disallowedRestrictedApprovers.join(", ")}`,
                   "What to do:",
-                  "1. Dismiss the bot approval review.",
+                  "1. Dismiss the bot approval review(s) on this PR.",
                   "2. Use a human reviewer for this PR.",
                 ].join("\n"),
               );
@@ -508,6 +517,31 @@ jobs:
                 return;
               }
               core.info("Automation policy satisfied for action-generated [Force] PR.");
+              return;
+            }
+
+            // Inverse guard: if noodle-bucket-bot is the author, the PR MUST be
+            // an action-generated [Force] release. This blocks a leaked
+            // VERSION_BUMP_TOKEN from being used to open arbitrary PRs that
+            // would otherwise look benign (e.g. a [Patch] PR opened by the bot).
+            if (pr.user.login === expectedActionAuthor) {
+              core.setFailed(
+                [
+                  `${expectedActionAuthor} may only author action-generated [Force] release PRs.`,
+                  "",
+                  `Detected PR title:    ${pr.title}`,
+                  `Detected PR head ref: ${pr.head.ref}`,
+                  `Detected PR head repo: ${pr.head.repo.full_name}`,
+                  "",
+                  "Required for an action-generated [Force] PR:",
+                  "- Title must start with '[Force]'",
+                  "- Head ref must be 'ci/version-bump-main'",
+                  "- Head and base must be the same repository",
+                  "",
+                  "If this PR was not created by the Bump Version On Merge workflow,",
+                  "rotate the VERSION_BUMP_TOKEN secret immediately and close this PR.",
+                ].join("\n"),
+              );
               return;
             }
 

@@ -1,0 +1,123 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+
+# Required status check named 'release-pipeline-gate' on every PR with a
+# recognized release-prefix title.
+#
+# Posts a commit status on the PR's head SHA reflecting whether the release
+# pipeline is currently free:
+#
+#   - [None]  : always 'success' (does not bump or release).
+#   - [Force] : always 'success' (it IS the release, does not gate itself).
+#   - [Patch]/[Minor]/[Major]: 'success' when no release PR
+#     (head=ci/version-bump-main) is open; 'pending' otherwise.
+#
+# The bump workflow (`Bump Version On Merge`) keeps this status fresh
+# dynamically: it flips every other open source PR's gate to 'pending' the
+# moment a source PR merges, and back to 'success' once the release PR has
+# successfully merged. If the bump workflow fails before reaching the
+# success step, gates intentionally stay 'pending' (stay-blocked policy)
+# until a human investigates.
+
+name: Release Pipeline Gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+# Avoid stomping on a fresher run for the same PR; always keep the latest.
+concurrency:
+  group: release-pipeline-gate-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  set-gate:
+    if: |
+      startsWith(github.event.pull_request.title, '[Patch]') ||
+      startsWith(github.event.pull_request.title, '[Minor]') ||
+      startsWith(github.event.pull_request.title, '[Major]') ||
+      startsWith(github.event.pull_request.title, '[None]') ||
+      startsWith(github.event.pull_request.title, '[Force]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Set initial release pipeline gate status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const sha = pr.head.sha;
+            const isNone = pr.title.startsWith("[None]");
+            const isForce = pr.title.startsWith("[Force]");
+
+            // [None] PRs do not interact with the release pipeline.
+            if (isNone) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha,
+                state: "success",
+                context: "release-pipeline-gate",
+                description: "[None] PR; no release impact, clear to merge",
+              });
+              core.info(`PR #${pr.number} is [None]; gate set to success.`);
+              return;
+            }
+
+            // The auto-generated [Force] release PR IS the in-flight release;
+            // it does not block itself. It must still satisfy the required
+            // gate status, so post 'success' on it directly.
+            if (isForce) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha,
+                state: "success",
+                context: "release-pipeline-gate",
+                description: "Release PR; gate does not apply to itself",
+              });
+              core.info(`PR #${pr.number} is [Force]; gate set to success (does not gate itself).`);
+              return;
+            }
+
+            const existing = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              base: "main",
+              head: `${context.repo.owner}:ci/version-bump-main`,
+              per_page: 100,
+            });
+
+            const active = existing[0];
+            if (active) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha,
+                state: "pending",
+                context: "release-pipeline-gate",
+                description: `Wait for release PR #${active.number} to land`,
+                target_url: active.html_url,
+              });
+              core.info(
+                `PR #${pr.number} gated pending: release PR #${active.number} (${active.title}) is in flight.`,
+              );
+              return;
+            }
+
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha,
+              state: "success",
+              context: "release-pipeline-gate",
+              description: "No active release PR; clear to merge",
+            });
+            core.info(`PR #${pr.number} gated success: no active release PR.`);
