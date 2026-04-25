@@ -115,14 +115,6 @@ jobs:
               return parsed.version;
             }
 
-            function escapeRegex(text) {
-              return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            }
-
-            function escapeRegex(text) {
-              return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            }
-
             const files = [
               { path: "pyproject.toml", parser: getPyprojectVersion },
               { path: "viewer/package.json", parser: getPackageVersion },
@@ -243,6 +235,10 @@ jobs:
                 throw new Error(`Missing string \"version\" in ${path}`);
               }
               return parsed.version;
+            }
+
+            function escapeRegex(text) {
+              return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             }
 
             function normalizePyprojectVersion(text) {
@@ -451,21 +447,19 @@ jobs:
 
             core.info("[Force] version-only changes validated and version files are synchronized.");
 
-      - name: Restrict bot approvals to action-generated force PRs
+      - name: Enforce one-bot policy for action-generated force PRs
         uses: actions/github-script@v7
         with:
           script: |
             const pr = context.payload.pull_request;
-            const allowedApprover = "noodle-bucket-bot";
+            const forceBotLogin = "noodle-bucket-bot";
             const isForce = pr.title.startsWith("[Force]");
-            const allowedForceCreators = new Set(["github-actions[bot]", "noodle-byte-bot"]);
             const isSameRepoHead =
               pr.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`;
             const isActionGeneratedForce =
               isForce &&
               pr.head.ref === "ci/version-bump-main" &&
-              isSameRepoHead &&
-              allowedForceCreators.has(pr.user.login);
+              isSameRepoHead;
 
             const reviews = await github.paginate(github.rest.pulls.listReviews, {
               owner: context.repo.owner,
@@ -482,12 +476,12 @@ jobs:
             const approvedUsers = [...latestStateByUser.entries()]
               .filter(([, state]) => state === "APPROVED")
               .map(([login]) => login);
-            const botApproved = approvedUsers.includes(allowedApprover);
+            const botApproved = approvedUsers.includes(forceBotLogin);
 
             if (botApproved && !isActionGeneratedForce) {
               core.setFailed(
                 [
-                  `${allowedApprover} may only approve action-generated [Force] PRs.`,
+                  `${forceBotLogin} may only approve action-generated [Force] PRs.`,
                   "",
                   "Detected an approval from this bot on a disallowed PR.",
                   "What to do:",
@@ -499,37 +493,22 @@ jobs:
             }
 
             if (isActionGeneratedForce) {
-              const unauthorizedApprovers = approvedUsers.filter(
-                (login) => login !== allowedApprover,
-              );
-              if (unauthorizedApprovers.length > 0) {
+              if (pr.user.login !== forceBotLogin) {
                 core.setFailed(
                   [
-                    "Action-generated [Force] PRs may only be approved by noodle-bucket-bot.",
+                    "Action-generated [Force] PR must be created by noodle-bucket-bot.",
                     "",
-                    "Unauthorized approving reviewers:",
-                    ...unauthorizedApprovers.map((login) => `- ${login}`),
-                    "",
+                    `Detected PR author: ${pr.user.login}`,
                     "What to do:",
-                    "1. Dismiss non-bot approvals on this PR.",
-                    "2. Keep only noodle-bucket-bot approval.",
+                    "1. Set VERSION_BUMP_TOKEN to noodle-bucket-bot.",
+                    "2. Re-run the bump workflow to recreate the PR with the correct author.",
                   ].join("\n"),
                 );
                 return;
               }
 
-              if (!botApproved) {
-                core.setFailed(
-                  [
-                    "Action-generated [Force] PR is waiting for noodle-bucket-bot approval.",
-                    "This check will pass automatically once the bot review is submitted.",
-                  ].join("\n"),
-                );
-                return;
-              }
-
-              core.info("Action-generated [Force] PR approval policy satisfied.");
+              core.info("One-bot mode policy satisfied for action-generated [Force] PR. No approval is required.");
               return;
             }
 
-            core.info("Bot approval policy satisfied for this PR.");
+            core.info("One-bot policy satisfied for this PR.");
