@@ -109,7 +109,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${VERSION_BUMP_TOKEN:-}" ]; then
-            echo "::error title=Missing VERSION_BUMP_TOKEN::Set repository secret VERSION_BUMP_TOKEN to a fine-grained PAT from your PR-creator bot account (Contents: Read and write, Pull requests: Read and write)."
+            echo "::error title=Missing VERSION_BUMP_TOKEN::Set repository secret VERSION_BUMP_TOKEN to a PAT from noodle-bucket-bot (repo scope for classic PAT, or fine-grained Contents: Read and write + Pull requests: Read and write)."
             exit 1
           fi
 
@@ -140,27 +140,14 @@ jobs:
 
             This PR intentionally uses `[Force]` so manual version-file changes are allowed by repository checks.
 
-      - name: Auto-approve bump PR
-        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump) && steps.bump_pr.outputs.pull-request-number != ''
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_APPROVER_TOKEN }}
-          PR_NUMBER: ${{ steps.bump_pr.outputs.pull-request-number }}
-        run: |
-          set -euo pipefail
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "RELEASE_APPROVER_TOKEN is not set. Skipping auto-approval."
-            exit 0
-          fi
-          gh pr review "$PR_NUMBER" --approve || echo "Auto-approval could not be applied."
-
       - name: Enable auto-merge for bump PR
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump) && steps.bump_pr.outputs.pull-request-number != ''
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.VERSION_BUMP_TOKEN }}
           PR_NUMBER: ${{ steps.bump_pr.outputs.pull-request-number }}
         run: |
           set -euo pipefail
-          gh pr merge "$PR_NUMBER" --auto --squash || echo "Auto-merge could not be enabled automatically."
+          gh pr merge "$PR_NUMBER" --auto --squash || echo "Auto-merge could not be enabled automatically. Ensure noodle-bucket-bot can bypass required pull request approvals for main."
 
       - name: Report bump PR
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
