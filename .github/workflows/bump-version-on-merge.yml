@@ -120,7 +120,8 @@ jobs:
         # refs/tags/v8.1.1 -> 5f6978faf089d4d20b00c7766989d076bb2fc7f1
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
         with:
-          token: ${{ secrets.VERSION_BUMP_TOKEN }}
+          # Keep PR author as github-actions[bot] so noodle-bucket-bot can approve it.
+          token: ${{ github.token }}
           committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           base: main
@@ -139,6 +140,40 @@ jobs:
             - #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}
 
             This PR intentionally uses `[Force]` so manual version-file changes are allowed by repository checks.
+
+      - name: Approve bump PR as noodle-bucket-bot
+        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump) && steps.bump_pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.VERSION_BUMP_TOKEN }}
+          PR_NUMBER: ${{ steps.bump_pr.outputs.pull-request-number }}
+        run: |
+          set -euo pipefail
+
+          pr_state="$(gh pr view "$PR_NUMBER" --json state --jq .state)"
+          if [ "$pr_state" != "OPEN" ]; then
+            echo "PR #${PR_NUMBER} is ${pr_state}. Skipping automated approval."
+            exit 0
+          fi
+
+          reviewer_login="$(gh api user --jq .login)"
+          author_login="$(gh pr view "$PR_NUMBER" --json author --jq .author.login)"
+
+          if [ "$reviewer_login" = "$author_login" ]; then
+            echo "::error title=Invalid bot approval setup::VERSION_BUMP_TOKEN resolves to ${reviewer_login}, which is also the PR author. Required-review rules disallow self-approval."
+            echo "Set VERSION_BUMP_TOKEN to noodle-bucket-bot and keep PR creation on GITHUB_TOKEN."
+            exit 1
+          fi
+
+          existing_approvals="$(gh pr view "$PR_NUMBER" --json reviews --jq "[.reviews[] | select(.author.login == \"$reviewer_login\" and .state == \"APPROVED\")] | length")"
+          if [ "$existing_approvals" -gt 0 ]; then
+            echo "PR #${PR_NUMBER} already has an approval from ${reviewer_login}."
+            exit 0
+          fi
+
+          gh pr review "$PR_NUMBER" \
+            --approve \
+            --body "Automated approval for action-generated [Force] version bump PR."
+          echo "Approved bump PR #${PR_NUMBER} as ${reviewer_login}."
 
       - name: Merge bump PR when checks are ready
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump) && steps.bump_pr.outputs.pull-request-number != ''
