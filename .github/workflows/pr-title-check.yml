@@ -452,7 +452,8 @@ jobs:
         with:
           script: |
             const pr = context.payload.pull_request;
-            const forceBotLogin = "noodle-bucket-bot";
+            const forceApproverLogin = "noodle-bucket-bot";
+            const expectedActionAuthor = "github-actions[bot]";
             const isForce = pr.title.startsWith("[Force]");
             const isSameRepoHead =
               pr.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`;
@@ -476,12 +477,12 @@ jobs:
             const approvedUsers = [...latestStateByUser.entries()]
               .filter(([, state]) => state === "APPROVED")
               .map(([login]) => login);
-            const botApproved = approvedUsers.includes(forceBotLogin);
+            const botApproved = approvedUsers.includes(forceApproverLogin);
 
             if (botApproved && !isActionGeneratedForce) {
               core.setFailed(
                 [
-                  `${forceBotLogin} may only approve action-generated [Force] PRs.`,
+                  `${forceApproverLogin} may only approve action-generated [Force] PRs.`,
                   "",
                   "Detected an approval from this bot on a disallowed PR.",
                   "What to do:",
@@ -493,21 +494,34 @@ jobs:
             }
 
             if (isActionGeneratedForce) {
-              if (pr.user.login !== forceBotLogin) {
+              if (pr.user.login !== expectedActionAuthor) {
                 core.setFailed(
                   [
-                    "Action-generated [Force] PR must be created by noodle-bucket-bot.",
+                    `Action-generated [Force] PR must be created by ${expectedActionAuthor}.`,
                     "",
                     `Detected PR author: ${pr.user.login}`,
                     "What to do:",
-                    "1. Set VERSION_BUMP_TOKEN to noodle-bucket-bot.",
+                    "1. Ensure create-pull-request uses GITHUB_TOKEN.",
                     "2. Re-run the bump workflow to recreate the PR with the correct author.",
                   ].join("\n"),
                 );
                 return;
               }
 
-              core.info("One-bot mode policy satisfied for action-generated [Force] PR. No approval is required.");
+              if (!botApproved) {
+                core.setFailed(
+                  [
+                    `Action-generated [Force] PR requires an approval from ${forceApproverLogin}.`,
+                    "",
+                    "What to do:",
+                    "1. Ensure VERSION_BUMP_TOKEN is set to noodle-bucket-bot.",
+                    "2. Re-run the bump workflow so it submits approval automatically.",
+                  ].join("\n"),
+                );
+                return;
+              }
+
+              core.info("One-bot policy satisfied for action-generated [Force] PR.");
               return;
             }
 
