@@ -208,16 +208,33 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Bumped version: ${VERSION}"
 
-      - name: Require VERSION_BUMP_TOKEN
+      - name: Validate VERSION_BUMP_TOKEN
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
         env:
           VERSION_BUMP_TOKEN: ${{ secrets.VERSION_BUMP_TOKEN }}
         run: |
           set -euo pipefail
+          expected_login="noodle-bucket-bot"
+
           if [ -z "${VERSION_BUMP_TOKEN:-}" ]; then
-            echo "::error title=Missing VERSION_BUMP_TOKEN::Set repository secret VERSION_BUMP_TOKEN to a PAT from noodle-bucket-bot (repo scope for classic PAT, or fine-grained Contents: Read and write + Pull requests: Read and write)."
+            echo "::error title=Missing VERSION_BUMP_TOKEN::Set repository secret VERSION_BUMP_TOKEN to a PAT from ${expected_login} (repo scope for classic PAT, or fine-grained Contents: Read and write + Pull requests: Read and write)."
             exit 1
           fi
+
+          # Validate the token is not expired/revoked and belongs to the right account.
+          # An expired PAT is non-empty but would silently fail later steps.
+          if ! login="$(GH_TOKEN="${VERSION_BUMP_TOKEN}" gh api user --jq .login 2>&1)"; then
+            echo "::error title=Invalid VERSION_BUMP_TOKEN::Token authentication failed. It may be expired or revoked. Renew the PAT for ${expected_login} and update the VERSION_BUMP_TOKEN secret."
+            echo "gh api user output: ${login}"
+            exit 1
+          fi
+
+          if [ "$login" != "$expected_login" ]; then
+            echo "::error title=Wrong VERSION_BUMP_TOKEN owner::Token belongs to '${login}', expected '${expected_login}'. Update VERSION_BUMP_TOKEN to a PAT from ${expected_login}."
+            exit 1
+          fi
+
+          echo "VERSION_BUMP_TOKEN is valid (authenticated as ${login})."
 
       - name: Create or update release PR
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
@@ -317,13 +334,20 @@ jobs:
               exit 1
             fi
 
-            if gh pr merge "$PR_NUMBER" --squash --delete-branch; then
+            merge_output="$(gh pr merge "$PR_NUMBER" --squash --delete-branch 2>&1)" && {
               echo "Merged bump PR #${PR_NUMBER}."
               exit 0
-            fi
-
-            echo "PR #${PR_NUMBER} not mergeable yet. Waiting ${sleep_seconds}s..."
-            sleep "$sleep_seconds"
+            } || {
+              # Fail immediately on auth errors rather than retrying for 10 minutes
+              # with a misleading "not mergeable yet" message.
+              if echo "$merge_output" | grep -qiE "401|403|bad credentials|unauthorized|forbidden"; then
+                echo "::error title=Authentication failure merging bump PR::VERSION_BUMP_TOKEN authentication failed on gh pr merge. The token may have expired since the validation step. Renew it and update the VERSION_BUMP_TOKEN secret."
+                echo "gh pr merge output: ${merge_output}"
+                exit 1
+              fi
+              echo "PR #${PR_NUMBER} not mergeable yet (${merge_output}). Waiting ${sleep_seconds}s..."
+              sleep "$sleep_seconds"
+            }
           done
 
           echo "::error title=Timed out merging bump PR::PR #${PR_NUMBER} did not become mergeable within $((max_attempts * sleep_seconds / 60)) minutes."
