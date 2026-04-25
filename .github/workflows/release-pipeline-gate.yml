@@ -8,7 +8,7 @@
 # pipeline is currently free:
 #
 #   - [None]  : always 'success' (does not bump or release).
-#   - [Force] : always 'success' (it IS the release, does not gate itself).
+#   - [Release]: always 'success' (it IS the release, does not gate itself).
 #   - [Patch]/[Minor]/[Major]: 'success' when no release PR
 #     (head=ci/version-bump-main) is open; 'pending' otherwise.
 #
@@ -51,7 +51,7 @@ jobs:
       startsWith(github.event.pull_request.title, '[Minor]') ||
       startsWith(github.event.pull_request.title, '[Major]') ||
       startsWith(github.event.pull_request.title, '[None]') ||
-      startsWith(github.event.pull_request.title, '[Force]')
+      startsWith(github.event.pull_request.title, '[Release]')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -62,7 +62,7 @@ jobs:
             const pr = context.payload.pull_request;
             const sha = pr.head.sha;
             const isNone = pr.title.startsWith("[None]");
-            const isForce = pr.title.startsWith("[Force]");
+            const isRelease = pr.title.startsWith("[Release]");
 
             // [None] PRs do not interact with the release pipeline.
             if (isNone) {
@@ -78,10 +78,10 @@ jobs:
               return;
             }
 
-            // The auto-generated [Force] release PR IS the in-flight release;
+            // The auto-generated [Release] PR IS the in-flight release;
             // it does not block itself. It must still satisfy the required
             // gate status, so post 'success' on it directly.
-            if (isForce) {
+            if (isRelease) {
               await github.rest.repos.createCommitStatus({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -90,7 +90,7 @@ jobs:
                 context: "release-pipeline-gate",
                 description: "Release PR; gate does not apply to itself",
               });
-              core.info(`PR #${pr.number} is [Force]; gate set to success (does not gate itself).`);
+              core.info(`PR #${pr.number} is [Release]; gate set to success (does not gate itself).`);
               return;
             }
 
