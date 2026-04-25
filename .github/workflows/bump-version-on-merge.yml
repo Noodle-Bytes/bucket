@@ -173,7 +173,7 @@ jobs:
 
             This PR intentionally uses `[Force]` so manual version-file changes are allowed by repository checks.
 
-      - name: Approve bump PR as GitHub Actions
+      - name: Merge or enable auto-merge for bump PR
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump) && steps.bump_pr.outputs.pull-request-number != ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -183,61 +183,16 @@ jobs:
 
           pr_state="$(gh pr view "$PR_NUMBER" --json state --jq .state)"
           if [ "$pr_state" != "OPEN" ]; then
-            echo "PR #${PR_NUMBER} is ${pr_state}. Skipping automated approval."
+            echo "PR #${PR_NUMBER} is already ${pr_state}. Nothing to merge."
             exit 0
           fi
 
-          reviewer_login="$(gh api user --jq .login)"
-          author_login="$(gh pr view "$PR_NUMBER" --json author --jq .author.login)"
-
-          if [ "$reviewer_login" = "$author_login" ]; then
-            echo "::error title=Invalid approval actor setup::Approval actor ${reviewer_login} matches PR author ${author_login}. Required-review rules disallow self-approval."
-            echo "Use VERSION_BUMP_TOKEN for PR creation and GITHUB_TOKEN for approval."
-            exit 1
-          fi
-
-          existing_approvals="$(gh pr view "$PR_NUMBER" --json reviews --jq "[.reviews[] | select(.author.login == \"$reviewer_login\" and .state == \"APPROVED\")] | length")"
-          if [ "$existing_approvals" -gt 0 ]; then
-            echo "PR #${PR_NUMBER} already has an approval from ${reviewer_login}."
+          if gh pr merge "$PR_NUMBER" --auto --squash --delete-branch; then
+            echo "Merged or enabled auto-merge for bump PR #${PR_NUMBER}."
             exit 0
           fi
 
-          gh pr review "$PR_NUMBER" \
-            --approve \
-            --body "Automated approval from GitHub Actions for generated [Force] version bump PR."
-          echo "Approved bump PR #${PR_NUMBER} as ${reviewer_login}."
-
-      - name: Merge bump PR when checks are ready
-        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump) && steps.bump_pr.outputs.pull-request-number != ''
-        env:
-          GH_TOKEN: ${{ secrets.VERSION_BUMP_TOKEN }}
-          PR_NUMBER: ${{ steps.bump_pr.outputs.pull-request-number }}
-        run: |
-          set -euo pipefail
-          max_attempts=80
-          sleep_seconds=15
-          attempt=0
-
-          while [ "$attempt" -lt "$max_attempts" ]; do
-            attempt=$((attempt + 1))
-            echo "Attempt ${attempt}/${max_attempts}: merging bump PR #${PR_NUMBER}"
-
-            pr_state="$(gh pr view "$PR_NUMBER" --json state --jq .state)"
-            if [ "$pr_state" != "OPEN" ]; then
-              echo "PR #${PR_NUMBER} is already ${pr_state}. Nothing to merge."
-              exit 0
-            fi
-
-            if gh pr merge "$PR_NUMBER" --squash --delete-branch; then
-              echo "Merged bump PR #${PR_NUMBER}."
-              exit 0
-            fi
-
-            echo "PR #${PR_NUMBER} is not mergeable yet. Waiting ${sleep_seconds}s..."
-            sleep "$sleep_seconds"
-          done
-
-          echo "::error title=Timed out merging bump PR::PR #${PR_NUMBER} did not become mergeable within $((max_attempts * sleep_seconds / 60)) minutes."
+          echo "::error title=Unable to merge bump PR::Failed to merge or enable auto-merge for PR #${PR_NUMBER}. Check branch protection and repository Actions permissions."
           exit 1
 
       - name: Report bump PR
