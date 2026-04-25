@@ -7,6 +7,9 @@ on:
   pull_request:
     branches: [main]
     types: [opened, edited, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    branches: [main]
+    types: [submitted, edited, dismissed]
 
 permissions:
   contents: read
@@ -112,6 +115,10 @@ jobs:
               return parsed.version;
             }
 
+            function escapeRegex(text) {
+              return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            }
+
             const files = [
               { path: "pyproject.toml", parser: getPyprojectVersion },
               { path: "viewer/package.json", parser: getPackageVersion },
@@ -173,7 +180,7 @@ jobs:
               core.info("No manual version changes detected in tracked version files.");
             }
 
-      - name: Force mode requires manual version change
+      - name: Force mode requires version-only changes in tracked files
         if: ${{ startsWith(github.event.pull_request.title, '[Force]') }}
         uses: actions/github-script@v7
         with:
@@ -234,15 +241,114 @@ jobs:
               return parsed.version;
             }
 
+            function normalizePyprojectVersion(text) {
+              const lines = text.split(/\r?\n/);
+              let inProjectSection = false;
+              let replaced = false;
+              const normalized = [];
+
+              for (const line of lines) {
+                const section = line.match(/^\s*\[([^\]]+)\]\s*$/);
+                if (section) {
+                  inProjectSection = section[1] === "project";
+                  normalized.push(line);
+                  continue;
+                }
+
+                if (inProjectSection) {
+                  const versionMatch = line.match(/^(\s*version\s*=\s*)"([^"]+)"(\s*)$/);
+                  if (versionMatch) {
+                    normalized.push(`${versionMatch[1]}"__VERSION__"${versionMatch[3]}`);
+                    replaced = true;
+                    continue;
+                  }
+                }
+
+                normalized.push(line);
+              }
+
+              if (!replaced) {
+                throw new Error("Could not normalize [project].version in pyproject.toml");
+              }
+
+              return normalized.join("\n");
+            }
+
+            function normalizePackageVersion(text, path) {
+              const parsed = JSON.parse(text);
+              if (typeof parsed.version !== "string") {
+                throw new Error(`Missing string \"version\" in ${path}`);
+              }
+              const escapedVersion = escapeRegex(parsed.version);
+              const pattern = new RegExp(
+                `(^|\\r?\\n)(\\s*"version"\\s*:\\s*)"${escapedVersion}"(\\s*,?)`,
+                "m",
+              );
+              let replaced = false;
+              const normalized = text.replace(
+                pattern,
+                (_match, linePrefix, keyPrefix, suffix) => {
+                  replaced = true;
+                  return `${linePrefix}${keyPrefix}"__VERSION__"${suffix}`;
+                },
+              );
+
+              if (!replaced) {
+                throw new Error(`Could not normalize \"version\" in ${path}`);
+              }
+
+              return normalized;
+            }
+
             const files = [
-              { path: "pyproject.toml", parser: getPyprojectVersion },
-              { path: "viewer/package.json", parser: getPackageVersion },
-              { path: "electron/package.json", parser: getPackageVersion },
+              { path: "pyproject.toml", parser: getPyprojectVersion, normalizer: normalizePyprojectVersion },
+              { path: "viewer/package.json", parser: getPackageVersion, normalizer: normalizePackageVersion },
+              { path: "electron/package.json", parser: getPackageVersion, normalizer: normalizePackageVersion },
             ];
+            const allowedPaths = new Set(files.map((file) => file.path));
+            const changedFiles = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+            const changedPaths = changedFiles.map((file) => file.filename);
+            const disallowedPaths = changedPaths.filter((path) => !allowedPaths.has(path));
+            if (disallowedPaths.length > 0) {
+              core.setFailed(
+                [
+                  "[Force] PRs may only modify tracked version files.",
+                  "",
+                  "Allowed files:",
+                  ...files.map((file) => `- ${file.path}`),
+                  "",
+                  "Disallowed changed files:",
+                  ...disallowedPaths.map((path) => `- ${path}`),
+                ].join("\n"),
+              );
+              return;
+            }
+
+            const missingChangedPaths = files
+              .map((file) => file.path)
+              .filter((path) => !changedPaths.includes(path));
+            if (missingChangedPaths.length > 0) {
+              core.setFailed(
+                [
+                  "[Force] PRs must update version values in all tracked version files.",
+                  "",
+                  "Files missing from this PR diff:",
+                  ...missingChangedPaths.map((path) => `- ${path}`),
+                ].join("\n"),
+              );
+              return;
+            }
 
             const headVersions = {};
             const changedVersions = [];
+            const changedVersionPaths = new Set();
             const missingRequiredFiles = [];
+            const nonVersionEdits = [];
 
             for (const file of files) {
               const baseText = await readTextFile(baseOwner, baseRepo, file.path, baseRef);
@@ -258,8 +364,15 @@ jobs:
               const headVersion = file.parser(headText, file.path);
               headVersions[file.path] = headVersion;
 
+              const baseNormalized = file.normalizer(baseText, file.path);
+              const headNormalized = file.normalizer(headText, file.path);
+              if (baseNormalized !== headNormalized) {
+                nonVersionEdits.push(file.path);
+              }
+
               if (baseVersion !== headVersion) {
                 changedVersions.push(`${file.path}: ${baseVersion} -> ${headVersion}`);
+                changedVersionPaths.add(file.path);
               }
             }
 
@@ -279,16 +392,37 @@ jobs:
               return;
             }
 
-            if (changedVersions.length === 0) {
+            if (nonVersionEdits.length > 0) {
               core.setFailed(
                 [
-                  "[Force] requires a manual version change compared to main.",
-                  "No tracked version values changed in this PR.",
+                  "[Force] PRs may only change version fields.",
+                  "Detected non-version edits in tracked version files.",
+                  "",
+                  "Files with non-version edits:",
+                  ...nonVersionEdits.map((path) => `- ${path}`),
                   "",
                   "What to do:",
-                  "1. Update version fields in pyproject.toml, viewer/package.json, and electron/package.json.",
-                  "2. Keep those version values aligned to the same X.Y.Z.",
-                  "3. Keep the PR title prefix as [Force] for manual release mode.",
+                  "1. Revert any edits other than the version value.",
+                  "2. Keep only version updates in pyproject.toml, viewer/package.json, and electron/package.json.",
+                ].join("\n"),
+              );
+              return;
+            }
+
+            const unchangedVersionFiles = files
+              .map((file) => file.path)
+              .filter((path) => !changedVersionPaths.has(path));
+            if (unchangedVersionFiles.length > 0) {
+              core.setFailed(
+                [
+                  "[Force] requires a version bump in all tracked version files.",
+                  "",
+                  "Files where version did not change:",
+                  ...unchangedVersionFiles.map((path) => `- ${path}`),
+                  "",
+                  "What to do:",
+                  "1. Update version in pyproject.toml, viewer/package.json, and electron/package.json.",
+                  "2. Keep all three version values aligned to the same X.Y.Z.",
                 ].join("\n"),
               );
               return;
@@ -311,4 +445,87 @@ jobs:
               return;
             }
 
-            core.info("[Force] manual version change detected and version files are synchronized.");
+            core.info("[Force] version-only changes validated and version files are synchronized.");
+
+      - name: Restrict bot approvals to action-generated force PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const allowedApprover = "noodle-bucket-bot";
+            const isForce = pr.title.startsWith("[Force]");
+            const allowedForceCreators = new Set(["github-actions[bot]", "noodle-byte-bot"]);
+            const isSameRepoHead =
+              pr.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`;
+            const isActionGeneratedForce =
+              isForce &&
+              pr.head.ref === "ci/version-bump-main" &&
+              isSameRepoHead &&
+              allowedForceCreators.has(pr.user.login);
+
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const latestStateByUser = new Map();
+            for (const review of reviews) {
+              latestStateByUser.set(review.user.login, review.state);
+            }
+
+            const approvedUsers = [...latestStateByUser.entries()]
+              .filter(([, state]) => state === "APPROVED")
+              .map(([login]) => login);
+            const botApproved = approvedUsers.includes(allowedApprover);
+
+            if (botApproved && !isActionGeneratedForce) {
+              core.setFailed(
+                [
+                  `${allowedApprover} may only approve action-generated [Force] PRs.`,
+                  "",
+                  "Detected an approval from this bot on a disallowed PR.",
+                  "What to do:",
+                  "1. Dismiss the bot approval review.",
+                  "2. Use a human reviewer for this PR.",
+                ].join("\n"),
+              );
+              return;
+            }
+
+            if (isActionGeneratedForce) {
+              const unauthorizedApprovers = approvedUsers.filter(
+                (login) => login !== allowedApprover,
+              );
+              if (unauthorizedApprovers.length > 0) {
+                core.setFailed(
+                  [
+                    "Action-generated [Force] PRs may only be approved by noodle-bucket-bot.",
+                    "",
+                    "Unauthorized approving reviewers:",
+                    ...unauthorizedApprovers.map((login) => `- ${login}`),
+                    "",
+                    "What to do:",
+                    "1. Dismiss non-bot approvals on this PR.",
+                    "2. Keep only noodle-bucket-bot approval.",
+                  ].join("\n"),
+                );
+                return;
+              }
+
+              if (!botApproved) {
+                core.setFailed(
+                  [
+                    "Action-generated [Force] PR is waiting for noodle-bucket-bot approval.",
+                    "This check will pass automatically once the bot review is submitted.",
+                  ].join("\n"),
+                );
+                return;
+              }
+
+              core.info("Action-generated [Force] PR approval policy satisfied.");
+              return;
+            }
+
+            core.info("Bot approval policy satisfied for this PR.");
