@@ -105,9 +105,13 @@ jobs:
       - name: Create or update force release PR
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
         id: bump_pr
-        uses: peter-evans/create-pull-request@v7
+        # v8.1.1 (2026-04-10)
+        # refs/tags/v8.1.1 -> 5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
         with:
           token: ${{ github.token }}
+          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           base: main
           branch: ci/version-bump-main
           delete-branch: true
