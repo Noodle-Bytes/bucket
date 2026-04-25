@@ -1,23 +1,23 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
-# Required status check named 'release-pipeline-gate' on every PR with a
-# recognized release-prefix title.
+# Two jobs run on every PR targeting main:
 #
-# Posts a commit status on the PR's head SHA reflecting whether the release
-# pipeline is currently free:
+# 1. set-gate  — posts a 'release-pipeline-gate' commit status.
+#      - [None]/[Release]: always 'success'.
+#      - [Patch]/[Minor]/[Major]: 'success' when no release PR
+#        (head=ci/version-bump-main) is open; 'pending' otherwise.
+#    The bump workflow keeps this fresh dynamically (pending → success
+#    around each release). If it fails mid-run, gates stay 'pending'
+#    (stay-blocked policy) until a human investigates.
 #
-#   - [None]  : always 'success' (does not bump or release).
-#   - [Release]: always 'success' (it IS the release, does not gate itself).
-#   - [Patch]/[Minor]/[Major]: 'success' when no release PR
-#     (head=ci/version-bump-main) is open; 'pending' otherwise.
+# 2. check-release-secrets  — validates release-bot credentials on
+#    [Patch]/[Minor]/[Major] PRs so a broken token blocks the PR
+#    BEFORE it merges, not after. Safe to use pull_request_target here
+#    because no code from the head ref is ever checked out or executed.
 #
-# The bump workflow (`Bump Version On Merge`) keeps this status fresh
-# dynamically: it flips every other open source PR's gate to 'pending' the
-# moment a source PR merges, and back to 'success' once the release PR has
-# successfully merged. If the bump workflow fails before reaching the
-# success step, gates intentionally stay 'pending' (stay-blocked policy)
-# until a human investigates.
+# Both jobs use pull_request_target so they have access to secrets and
+# can post statuses on PRs from forks.
 #
 # Operator guide (including how to manually clear a stuck gate):
 #   .github/RELEASE_AUTOMATION.md
@@ -129,3 +129,60 @@ jobs:
               description: "No active release PR; clear to merge",
             });
             core.info(`PR #${pr.number} gated success: no active release PR.`);
+
+  # Validates that the secrets required by the bump workflow are present and
+  # working on every [Patch]/[Minor]/[Major] PR, so a broken or expired token
+  # blocks the PR before it merges rather than after.
+  # Safe: no checkout or execution of head-ref code; only API calls.
+  check-release-secrets:
+    if: |
+      startsWith(github.event.pull_request.title, '[Patch]') ||
+      startsWith(github.event.pull_request.title, '[Minor]') ||
+      startsWith(github.event.pull_request.title, '[Major]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate VERSION_BUMP_TOKEN
+        env:
+          VERSION_BUMP_TOKEN: ${{ secrets.VERSION_BUMP_TOKEN }}
+        run: |
+          set -euo pipefail
+          expected_login="noodle-bucket-bot"
+
+          if [ -z "${VERSION_BUMP_TOKEN:-}" ]; then
+            echo "::error title=Missing VERSION_BUMP_TOKEN::The release pipeline cannot run. Set the VERSION_BUMP_TOKEN secret to a PAT from ${expected_login} (repo scope for classic PAT, or fine-grained Contents + Pull requests: Read and write)."
+            exit 1
+          fi
+
+          if ! login="$(GH_TOKEN="${VERSION_BUMP_TOKEN}" gh api user --jq .login 2>&1)"; then
+            echo "::error title=Expired or revoked VERSION_BUMP_TOKEN::Token authentication failed — the PAT for ${expected_login} has likely expired or been revoked. Renew it and update the VERSION_BUMP_TOKEN secret before merging this PR."
+            echo "Response: ${login}"
+            exit 1
+          fi
+
+          if [ "$login" != "$expected_login" ]; then
+            echo "::error title=Wrong VERSION_BUMP_TOKEN owner::Token belongs to '${login}', expected '${expected_login}'. Update VERSION_BUMP_TOKEN to a PAT from ${expected_login}."
+            exit 1
+          fi
+
+          echo "VERSION_BUMP_TOKEN is valid (authenticated as ${login})."
+
+      - name: Check approver app secrets are set
+        env:
+          APPROVER_APP_ID: ${{ secrets.APPROVER_APP_ID }}
+          APPROVER_APP_PRIVATE_KEY: ${{ secrets.APPROVER_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          failed=0
+
+          if [ -z "${APPROVER_APP_ID:-}" ]; then
+            echo "::error title=Missing APPROVER_APP_ID::Set the APPROVER_APP_ID secret to the bucket-release-approver GitHub App ID."
+            failed=1
+          fi
+
+          if [ -z "${APPROVER_APP_PRIVATE_KEY:-}" ]; then
+            echo "::error title=Missing APPROVER_APP_PRIVATE_KEY::Set the APPROVER_APP_PRIVATE_KEY secret to the bucket-release-approver GitHub App private key."
+            failed=1
+          fi
+
+          [ "$failed" -eq 0 ] && echo "Approver app secrets are set." || exit 1
