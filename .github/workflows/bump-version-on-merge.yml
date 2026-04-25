@@ -127,6 +127,9 @@ jobs:
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
         env:
           GH_TOKEN: ${{ github.token }}
+          # GH_REPO is required because this step runs before actions/checkout,
+          # so `gh` has no local .git to detect the repository from.
+          GH_REPO: ${{ github.repository }}
           REPO_OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
