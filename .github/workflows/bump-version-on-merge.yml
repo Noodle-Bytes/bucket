@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+#
+# Operator guide (release pipeline overview, stay-blocked recovery policy,
+# and how to manually clear a stuck release-pipeline-gate):
+#   .github/RELEASE_AUTOMATION.md
 
 name: Bump Version On Merge
 

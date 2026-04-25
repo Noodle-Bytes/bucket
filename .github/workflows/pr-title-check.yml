@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+#
+# Enforces release-prefix titles ([Patch]/[Minor]/[Major]/[None]/[Force])
+# and restricts which actors may author or approve action-generated [Force]
+# release PRs. See .github/RELEASE_AUTOMATION.md for the full release
+# pipeline overview.
 
 name: PR Title Check
 

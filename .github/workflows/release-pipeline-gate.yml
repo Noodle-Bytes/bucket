@@ -18,6 +18,9 @@
 # successfully merged. If the bump workflow fails before reaching the
 # success step, gates intentionally stay 'pending' (stay-blocked policy)
 # until a human investigates.
+#
+# Operator guide (including how to manually clear a stuck gate):
+#   .github/RELEASE_AUTOMATION.md
 
 name: Release Pipeline Gate
 
