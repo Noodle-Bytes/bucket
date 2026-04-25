@@ -24,7 +24,7 @@ permissions:
 concurrency:
   group: >-
     version-bump-main-${{
-      (github.event.pull_request.head.ref == 'ci/version-bump-main' && startsWith(github.event.pull_request.title, '[Force]'))
+      (github.event.pull_request.head.ref == 'ci/version-bump-main' && startsWith(github.event.pull_request.title, '[Release]'))
       && 'release'
       || 'source'
     }}
@@ -55,12 +55,12 @@ jobs:
             \[None\]*)
               echo "bump=none" >> "$GITHUB_OUTPUT"
               ;;
-            \[Force\]*)
-              echo "bump=force" >> "$GITHUB_OUTPUT"
+            \[Release\]*)
+              echo "bump=release" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "Unsupported PR title prefix: '$PR_TITLE'"
-              echo "Expected one of: [Patch], [Minor], [Major], [None], [Force]"
+              echo "Expected one of: [Patch], [Minor], [Major], [None], [Release]"
               exit 1
               ;;
           esac
@@ -69,9 +69,9 @@ jobs:
         if: steps.pr_meta.outputs.bump == 'none'
         run: echo "PR title starts with [None]. Skipping version bump, tag, and release."
 
-      - name: Force mode notice
-        if: steps.pr_meta.outputs.bump == 'force'
-        run: echo "PR title starts with [Force]. Skipping auto-bump and using merged commit version for tag/release."
+      - name: Release mode notice
+        if: steps.pr_meta.outputs.bump == 'release'
+        run: echo "PR title starts with [Release]. Skipping auto-bump and using merged commit version for tag/release."
 
       # Lock the release pipeline by flipping the gate to 'pending' on every
       # other open source PR before doing any other work. This narrows the race
@@ -160,7 +160,7 @@ jobs:
             echo ""
             echo "What to do:"
             echo "1. Investigate why the release-pipeline-gate let this source PR (#${{ github.event.pull_request.number }}) merge while the release PR was still open."
-            echo "2. Once the in-flight release PR has merged, manually create a [Force] PR for this source PR's bump (see scripts/bump_version.py) so the release for this PR is not lost."
+            echo "2. Once the in-flight release PR has merged, manually create a [Release] PR for this source PR's bump (see scripts/bump_version.py) so the release for this PR is not lost."
             echo "3. Restore source PR gates by re-running this workflow on a successful source PR merge, or by posting a 'success' commit status with context 'release-pipeline-gate' on each open source PR's head SHA."
           } >&2
           exit 1
@@ -208,18 +208,35 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Bumped version: ${VERSION}"
 
-      - name: Require VERSION_BUMP_TOKEN
+      - name: Validate VERSION_BUMP_TOKEN
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
         env:
           VERSION_BUMP_TOKEN: ${{ secrets.VERSION_BUMP_TOKEN }}
         run: |
           set -euo pipefail
+          expected_login="noodle-bucket-bot"
+
           if [ -z "${VERSION_BUMP_TOKEN:-}" ]; then
-            echo "::error title=Missing VERSION_BUMP_TOKEN::Set repository secret VERSION_BUMP_TOKEN to a PAT from noodle-bucket-bot (repo scope for classic PAT, or fine-grained Contents: Read and write + Pull requests: Read and write)."
+            echo "::error title=Missing VERSION_BUMP_TOKEN::Set repository secret VERSION_BUMP_TOKEN to a PAT from ${expected_login} (repo scope for classic PAT, or fine-grained Contents: Read and write + Pull requests: Read and write)."
             exit 1
           fi
 
-      - name: Create or update force release PR
+          # Validate the token is not expired/revoked and belongs to the right account.
+          # An expired PAT is non-empty but would silently fail later steps.
+          if ! login="$(GH_TOKEN="${VERSION_BUMP_TOKEN}" gh api user --jq .login 2>&1)"; then
+            echo "::error title=Invalid VERSION_BUMP_TOKEN::Token authentication failed. It may be expired or revoked. Renew the PAT for ${expected_login} and update the VERSION_BUMP_TOKEN secret."
+            echo "gh api user output: ${login}"
+            exit 1
+          fi
+
+          if [ "$login" != "$expected_login" ]; then
+            echo "::error title=Wrong VERSION_BUMP_TOKEN owner::Token belongs to '${login}', expected '${expected_login}'. Update VERSION_BUMP_TOKEN to a PAT from ${expected_login}."
+            exit 1
+          fi
+
+          echo "VERSION_BUMP_TOKEN is valid (authenticated as ${login})."
+
+      - name: Create or update release PR
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
         id: bump_pr
         # v8.1.1 (2026-04-10)
@@ -238,14 +255,14 @@ jobs:
             electron/package.json
             viewer/package.json
           commit-message: "chore: bump version (${{ steps.pr_meta.outputs.bump }})"
-          title: "[Force] release v${{ steps.bumped_version.outputs.version }}"
+          title: "[Release] release v${{ steps.bumped_version.outputs.version }}"
           body: |
             Auto-generated version bump for a merged `${{ steps.pr_meta.outputs.bump }}` PR.
 
             Source PR:
             - #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}
 
-            This PR uses `[Force]` so manual version-file changes are allowed by repository checks.
+            This PR uses `[Release]` so manual version-file changes are allowed by repository checks.
 
       # Mint a short-lived (1 hour) installation token for the bucket-release-approver GitHub App.
       # The App is the second identity required to satisfy branch protection's "1 approval"
@@ -279,10 +296,10 @@ jobs:
           echo "Approving PR #${PR_NUMBER} as $reviewer_login..."
           gh api -X POST "repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
             -f event=APPROVE \
-            -f body="Auto-approved by ${reviewer_login} for action-generated [Force] release PR."
+            -f body="Auto-approved by ${reviewer_login} for action-generated [Release] PR."
 
       # Merge as noodle-bucket-bot (NOT github.token), because GITHUB_TOKEN-driven merges
-      # do not trigger downstream pull_request_target events, which would skip the [Force]
+      # do not trigger downstream pull_request_target events, which would skip the [Release]
       # release/tag step in this same workflow.
       - name: Merge bump PR once checks pass
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump) && steps.bump_pr.outputs.pull-request-number != ''
@@ -317,13 +334,20 @@ jobs:
               exit 1
             fi
 
-            if gh pr merge "$PR_NUMBER" --squash --delete-branch; then
+            merge_output="$(gh pr merge "$PR_NUMBER" --squash --delete-branch 2>&1)" && {
               echo "Merged bump PR #${PR_NUMBER}."
               exit 0
-            fi
-
-            echo "PR #${PR_NUMBER} not mergeable yet. Waiting ${sleep_seconds}s..."
-            sleep "$sleep_seconds"
+            } || {
+              # Fail immediately on auth errors rather than retrying for 10 minutes
+              # with a misleading "not mergeable yet" message.
+              if echo "$merge_output" | grep -qiE "401|403|bad credentials|unauthorized|forbidden"; then
+                echo "::error title=Authentication failure merging bump PR::VERSION_BUMP_TOKEN authentication failed on gh pr merge. The token may have expired since the validation step. Renew it and update the VERSION_BUMP_TOKEN secret."
+                echo "gh pr merge output: ${merge_output}"
+                exit 1
+              fi
+              echo "PR #${PR_NUMBER} not mergeable yet (${merge_output}). Waiting ${sleep_seconds}s..."
+              sleep "$sleep_seconds"
+            }
           done
 
           echo "::error title=Timed out merging bump PR::PR #${PR_NUMBER} did not become mergeable within $((max_attempts * sleep_seconds / 60)) minutes."
@@ -378,8 +402,8 @@ jobs:
             echo "No version changes detected; no bump PR created."
           fi
 
-      - name: Resolve release target SHA for force mode
-        if: steps.pr_meta.outputs.bump == 'force'
+      - name: Resolve release target SHA for release mode
+        if: steps.pr_meta.outputs.bump == 'release'
         id: release_target_force
         env:
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
@@ -389,7 +413,7 @@ jobs:
           echo "Release target SHA: ${MERGE_SHA}"
 
       - name: Derive release tag from pyproject version
-        if: steps.pr_meta.outputs.bump == 'force'
+        if: steps.pr_meta.outputs.bump == 'release'
         id: version_meta
         env:
           TARGET_SHA: ${{ steps.release_target_force.outputs.sha }}
@@ -454,9 +478,12 @@ jobs:
             core.info(`Release tag will be ${tag}`);
 
       - name: Create GitHub release with generated notes
-        if: steps.pr_meta.outputs.bump == 'force'
+        if: steps.pr_meta.outputs.bump == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
+          # GH_REPO is required because the [Release] code path does not run
+          # actions/checkout, so `gh` has no local .git to detect the repo.
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ steps.version_meta.outputs.tag }}
           TARGET_SHA: ${{ steps.release_target_force.outputs.sha }}
         run: |

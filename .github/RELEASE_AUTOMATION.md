@@ -25,7 +25,7 @@ file is not part of the published docs site.
 ## How the pipeline works
 
 1. A contributor opens a PR against `main` with a release-prefix title
-   (`[Patch]`, `[Minor]`, `[Major]`, `[None]`, or `[Force]`).
+   (`[Patch]`, `[Minor]`, `[Major]`, `[None]`, or `[Release]`).
 2. `Release Pipeline Gate`
    ([`.github/workflows/release-pipeline-gate.yml`](workflows/release-pipeline-gate.yml))
    posts a `release-pipeline-gate` commit status on the PR head. This is a
@@ -39,7 +39,7 @@ file is not part of the published docs site.
      already open. This must not happen if the gate is configured correctly,
      but the check exists to prevent silent version downgrades or lost
      releases if it ever does.
-   - Bumps the version files, opens a `[Force]` release PR as
+   - Bumps the version files, opens a `[Release]` PR as
      `noodle-bucket-bot`, and approves it via the `bucket-release-approver`
      GitHub App.
    - Polls `gh pr merge --squash` until the PR merges.
@@ -54,10 +54,10 @@ file is not part of the published docs site.
 | `[Minor]` | Triggers a minor bump and release                                 | `success` if pipeline free, else `pending` |
 | `[Major]` | Triggers a major bump and release                                 | `success` if pipeline free, else `pending` |
 | `[None]`  | No bump, no release                                               | always `success`          |
-| `[Force]` | Manual / automation-generated bump (the release PR itself)        | always `success`          |
+| `[Release]` | Auto-generated release PR, or manual release (the release PR itself) | always `success`      |
 
-`[Force]` PRs do not gate themselves and are normally only created by the
-bump workflow. Manual `[Force]` PRs are allowed but should be rare.
+`[Release]` PRs do not gate themselves and are normally only created by the
+bump workflow. Manual `[Release]` PRs are allowed but should be rare.
 
 ## The `release-pipeline-gate` required check
 
@@ -171,26 +171,26 @@ This must return `[]` before you clear.
 ### Workflows
 
 - [`bump-version-on-merge.yml`](workflows/bump-version-on-merge.yml) —
-  detects merged source PRs, opens / approves / merges the `[Force]` release
-  PR, manages the `release-pipeline-gate` status during a release.
+  detects merged source PRs, opens / approves / merges the `[Release]` PR,
+  manages the `release-pipeline-gate` status during a release.
 - [`release-pipeline-gate.yml`](workflows/release-pipeline-gate.yml) —
   posts the initial `release-pipeline-gate` status on every release-prefixed
   PR opened against `main`. Uses `pull_request_target` so it works for fork
   PRs.
 - [`pr-title-check.yml`](workflows/pr-title-check.yml) — enforces title
-  prefixes and restricts which actors may author or approve `[Force]` PRs.
+  prefixes and restricts which actors may author or approve `[Release]` PRs.
 
 ### Identities
 
-- **`noodle-bucket-bot`** — service-account user. Authors the `[Force]`
-  release PRs and merges them. Authentication via the `VERSION_BUMP_TOKEN`
+- **`noodle-bucket-bot`** — service-account user. Authors the `[Release]`
+  PRs and merges them. Authentication via the `VERSION_BUMP_TOKEN`
   secret. By policy (enforced in `pr-title-check.yml`), this account may
-  only author `[Force]` PRs on `ci/version-bump-main`.
-- **`bucket-release-approver` (GitHub App)** — approves the `[Force]` release
-  PR so it satisfies the "1 approving review" branch protection rule.
+  only author `[Release]` PRs on `ci/version-bump-main`.
+- **`bucket-release-approver` (GitHub App)** — approves the `[Release]` PR
+  so it satisfies the "1 approving review" branch protection rule.
   Authentication via `RELEASE_APPROVER_APP_ID` and
   `RELEASE_APPROVER_PRIVATE_KEY` secrets. By policy, this app may only
-  approve `[Force]` PRs authored by `noodle-bucket-bot`.
+  approve `[Release]` PRs authored by `noodle-bucket-bot`.
 
 ### Required status checks on `main`
 
@@ -206,7 +206,7 @@ Plus 1 approving review and `strict: true` (branch must be up-to-date with
 
 Bypass for required pull request reviews is granted to:
 
-- `noodle-bucket-bot` (so it can merge its own `[Force]` release PRs without
+- `noodle-bucket-bot` (so it can merge its own `[Release]` PRs without
   a human approval, in conjunction with the App approval).
 - `github-actions[bot]` (legacy; the App approval flow does not require it
   but it is left in place for safety).
