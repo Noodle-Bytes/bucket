@@ -299,12 +299,15 @@ jobs:
             attempt=$((attempt + 1))
             echo "Attempt ${attempt}/${max_attempts}: trying to merge bump PR #${PR_NUMBER}"
 
-            pr_info="$(gh pr view "$PR_NUMBER" --json state,merged)"
+            # `gh pr view` does not expose a boolean `merged` field; use
+            # `mergedAt` (a timestamp string when merged, null otherwise)
+            # to distinguish a merged PR from a closed-without-merge PR.
+            pr_info="$(gh pr view "$PR_NUMBER" --json state,mergedAt)"
             pr_state="$(echo "$pr_info" | jq -r .state)"
-            pr_merged="$(echo "$pr_info" | jq -r .merged)"
+            pr_merged_at="$(echo "$pr_info" | jq -r '.mergedAt // ""')"
             if [ "$pr_state" != "OPEN" ]; then
-              if [ "$pr_merged" = "true" ]; then
-                echo "PR #${PR_NUMBER} was merged externally. Continuing."
+              if [ -n "$pr_merged_at" ]; then
+                echo "PR #${PR_NUMBER} was merged externally at ${pr_merged_at}. Continuing."
                 exit 0
               fi
               # Closed without merge: stay-blocked policy. Fail loudly so
