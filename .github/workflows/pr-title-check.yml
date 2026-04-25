@@ -115,6 +115,10 @@ jobs:
               return parsed.version;
             }
 
+            function escapeRegex(text) {
+              return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            }
+
             const files = [
               { path: "pyproject.toml", parser: getPyprojectVersion },
               { path: "viewer/package.json", parser: getPackageVersion },
@@ -275,8 +279,25 @@ jobs:
               if (typeof parsed.version !== "string") {
                 throw new Error(`Missing string \"version\" in ${path}`);
               }
-              parsed.version = "__VERSION__";
-              return JSON.stringify(parsed);
+              const escapedVersion = escapeRegex(parsed.version);
+              const pattern = new RegExp(
+                `(^|\\r?\\n)(\\s*"version"\\s*:\\s*)"${escapedVersion}"(\\s*,?)`,
+                "m",
+              );
+              let replaced = false;
+              const normalized = text.replace(
+                pattern,
+                (_match, linePrefix, keyPrefix, suffix) => {
+                  replaced = true;
+                  return `${linePrefix}${keyPrefix}"__VERSION__"${suffix}`;
+                },
+              );
+
+              if (!replaced) {
+                throw new Error(`Could not normalize \"version\" in ${path}`);
+              }
+
+              return normalized;
             }
 
             const files = [
@@ -433,10 +454,14 @@ jobs:
             const pr = context.payload.pull_request;
             const allowedApprover = "noodle-bucket-bot";
             const isForce = pr.title.startsWith("[Force]");
+            const allowedForceCreators = new Set(["github-actions[bot]", "noodle-byte-bot"]);
+            const isSameRepoHead =
+              pr.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`;
             const isActionGeneratedForce =
               isForce &&
               pr.head.ref === "ci/version-bump-main" &&
-              pr.user.login === "github-actions[bot]";
+              isSameRepoHead &&
+              allowedForceCreators.has(pr.user.login);
 
             const reviews = await github.paginate(github.rest.pulls.listReviews, {
               owner: context.repo.owner,

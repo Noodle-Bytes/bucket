@@ -102,6 +102,17 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Bumped version: ${VERSION}"
 
+      - name: Require VERSION_BUMP_TOKEN
+        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
+        env:
+          VERSION_BUMP_TOKEN: ${{ secrets.VERSION_BUMP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VERSION_BUMP_TOKEN:-}" ]; then
+            echo "::error title=Missing VERSION_BUMP_TOKEN::Set repository secret VERSION_BUMP_TOKEN to a fine-grained PAT from your PR-creator bot account (Contents: Read and write, Pull requests: Read and write)."
+            exit 1
+          fi
+
       - name: Create or update force release PR
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
         id: bump_pr
@@ -109,7 +120,7 @@ jobs:
         # refs/tags/v8.1.1 -> 5f6978faf089d4d20b00c7766989d076bb2fc7f1
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
         with:
-          token: ${{ github.token }}
+          token: ${{ secrets.VERSION_BUMP_TOKEN }}
           committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           base: main
