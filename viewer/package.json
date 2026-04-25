@@ -1,7 +1,7 @@
 {
   "name": "bucketbase",
   "private": true,
-  "version": "2.2.2",
+  "version": "2.2.3",
   "type": "module",
   "scripts": {
     "dev": "vite --port 4000 --config vite.config.ts",
