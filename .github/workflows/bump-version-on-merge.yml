@@ -123,12 +123,17 @@ jobs:
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
 
-          existing="$(gh pr list --state open --base main --head ci/version-bump-main --json number,title,url,author --jq '.[0] // empty')"
+          # Restrict the head match to the BASE repo to avoid false positives
+          # from a fork PR that happens to use the same branch name.
+          existing="$(gh pr list --state open --base main \
+            --json number,title,url,author,headRepositoryOwner,headRefName \
+            --jq "[.[] | select(.headRefName == \"ci/version-bump-main\" and .headRepositoryOwner.login == \"${REPO_OWNER}\")] | .[0] // empty")"
           if [ -z "$existing" ]; then
-            echo "No open release PR on ci/version-bump-main; safe to proceed."
+            echo "No open release PR on ${REPO_OWNER}:ci/version-bump-main; safe to proceed."
             exit 0
           fi
 
@@ -287,10 +292,19 @@ jobs:
             attempt=$((attempt + 1))
             echo "Attempt ${attempt}/${max_attempts}: trying to merge bump PR #${PR_NUMBER}"
 
-            pr_state="$(gh pr view "$PR_NUMBER" --json state --jq .state)"
+            pr_info="$(gh pr view "$PR_NUMBER" --json state,merged)"
+            pr_state="$(echo "$pr_info" | jq -r .state)"
+            pr_merged="$(echo "$pr_info" | jq -r .merged)"
             if [ "$pr_state" != "OPEN" ]; then
-              echo "PR #${PR_NUMBER} is already ${pr_state}. Nothing to merge."
-              exit 0
+              if [ "$pr_merged" = "true" ]; then
+                echo "PR #${PR_NUMBER} was merged externally. Continuing."
+                exit 0
+              fi
+              # Closed without merge: stay-blocked policy. Fail loudly so
+              # downstream gate-clearing step does not run, leaving open
+              # source PRs in 'pending' until a human investigates.
+              echo "::error title=Bump PR closed without merging::PR #${PR_NUMBER} is ${pr_state} but was not merged. Release pipeline gates will remain pending until manually cleared."
+              exit 1
             fi
 
             if gh pr merge "$PR_NUMBER" --squash --delete-branch; then

@@ -21,8 +21,13 @@
 
 name: Release Pipeline Gate
 
+# Uses pull_request_target (NOT pull_request) so the workflow runs with the
+# base repo's GITHUB_TOKEN and can post commit statuses on PRs from forks.
+# This is safe because the only step is an actions/github-script call that
+# never checks out, builds, or executes any code from the head ref. It only
+# reads metadata (title, head SHA, head ref) and posts a commit status.
 on:
-  pull_request:
+  pull_request_target:
     branches: [main]
     types: [opened, reopened, synchronize, ready_for_review, edited]
 
