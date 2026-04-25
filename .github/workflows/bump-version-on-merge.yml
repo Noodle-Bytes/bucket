@@ -113,6 +113,38 @@ jobs:
             exit 1
           fi
 
+      - name: Reset legacy force bump PR author
+        if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          existing_number="$(gh pr list --state open --base main --head ci/version-bump-main --json number --jq '.[0].number // ""')"
+          if [ -z "$existing_number" ]; then
+            echo "No existing open bump PR on ci/version-bump-main."
+            exit 0
+          fi
+
+          existing_author="$(gh pr view "$existing_number" --json author --jq .author.login)"
+          existing_title="$(gh pr view "$existing_number" --json title --jq .title)"
+
+          if [[ "$existing_title" != \[Force\]* ]]; then
+            echo "::error title=Unexpected PR on ci/version-bump-main::Open PR #${existing_number} does not use a [Force] title: '${existing_title}'."
+            echo "Resolve the conflicting PR on ci/version-bump-main and re-run this workflow."
+            exit 1
+          fi
+
+          if [ "$existing_author" = "github-actions[bot]" ]; then
+            echo "Existing bump PR #${existing_number} already authored by github-actions[bot]."
+            exit 0
+          fi
+
+          echo "Closing legacy bump PR #${existing_number} authored by ${existing_author} so it can be recreated by github-actions[bot]."
+          gh pr close "$existing_number" \
+            --delete-branch \
+            --comment "Resetting this PR so it is recreated by github-actions[bot] for automated required-review approval flow."
+
       - name: Create or update force release PR
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
         id: bump_pr
