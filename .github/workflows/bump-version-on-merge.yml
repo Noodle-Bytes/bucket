@@ -107,7 +107,7 @@ jobs:
         id: bump_pr
         uses: peter-evans/create-pull-request@v7
         with:
-          token: ${{ secrets.RELEASE_APPROVER_TOKEN != '' && secrets.RELEASE_APPROVER_TOKEN || github.token }}
+          token: ${{ github.token }}
           base: main
           branch: ci/version-bump-main
           delete-branch: true
@@ -141,7 +141,7 @@ jobs:
       - name: Enable auto-merge for bump PR
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump) && steps.bump_pr.outputs.pull-request-number != ''
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_APPROVER_TOKEN != '' && secrets.RELEASE_APPROVER_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.bump_pr.outputs.pull-request-number }}
         run: |
           set -euo pipefail
