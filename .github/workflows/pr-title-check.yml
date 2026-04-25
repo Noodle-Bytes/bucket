@@ -452,9 +452,8 @@ jobs:
         with:
           script: |
             const pr = context.payload.pull_request;
-            const allowedForceApproverLogins = new Set(["app/github-actions", "github-actions[bot]"]);
-            const forceApproverDisplay = "GitHub Actions";
             const expectedActionAuthor = "noodle-bucket-bot";
+            const restrictedApproverLogin = "noodle-bucket-bot";
             const isForce = pr.title.startsWith("[Force]");
             const isSameRepoHead =
               pr.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`;
@@ -478,12 +477,12 @@ jobs:
             const approvedUsers = [...latestStateByUser.entries()]
               .filter(([, state]) => state === "APPROVED")
               .map(([login]) => login);
-            const botApproved = approvedUsers.some((login) => allowedForceApproverLogins.has(login));
+            const restrictedBotApproved = approvedUsers.includes(restrictedApproverLogin);
 
-            if (botApproved && !isActionGeneratedForce) {
+            if (restrictedBotApproved && !isActionGeneratedForce) {
               core.setFailed(
                 [
-                  `${forceApproverDisplay} may only approve action-generated [Force] PRs.`,
+                  `${restrictedApproverLogin} may only approve action-generated [Force] PRs.`,
                   "",
                   "Detected an approval from this bot on a disallowed PR.",
                   "What to do:",
@@ -508,21 +507,6 @@ jobs:
                 );
                 return;
               }
-
-              if (!botApproved) {
-                core.setFailed(
-                  [
-                    `Action-generated [Force] PR requires an approval from ${forceApproverDisplay}.`,
-                    "",
-                    "What to do:",
-                    "1. Ensure repository setting 'Allow GitHub Actions to create and approve pull requests' is enabled.",
-                    "2. Ensure workflow permissions allow pull-requests: write for GITHUB_TOKEN.",
-                    "3. Re-run the bump workflow so GitHub Actions submits approval automatically.",
-                  ].join("\n"),
-                );
-                return;
-              }
-
               core.info("Automation policy satisfied for action-generated [Force] PR.");
               return;
             }
