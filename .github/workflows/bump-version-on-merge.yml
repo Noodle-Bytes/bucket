@@ -135,15 +135,15 @@ jobs:
             exit 1
           fi
 
-          if [ "$existing_author" = "github-actions[bot]" ]; then
-            echo "Existing bump PR #${existing_number} already authored by github-actions[bot]."
+          if [ "$existing_author" = "noodle-bucket-bot" ]; then
+            echo "Existing bump PR #${existing_number} already authored by noodle-bucket-bot."
             exit 0
           fi
 
-          echo "Closing legacy bump PR #${existing_number} authored by ${existing_author} so it can be recreated by github-actions[bot]."
+          echo "Closing incompatible bump PR #${existing_number} authored by ${existing_author} so it can be recreated by noodle-bucket-bot."
           gh pr close "$existing_number" \
             --delete-branch \
-            --comment "Resetting this PR so it is recreated by github-actions[bot] for automated required-review approval flow."
+            --comment "Resetting this PR so it is recreated by noodle-bucket-bot for automated required-review approval flow."
 
       - name: Create or update force release PR
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump)
@@ -152,8 +152,8 @@ jobs:
         # refs/tags/v8.1.1 -> 5f6978faf089d4d20b00c7766989d076bb2fc7f1
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
         with:
-          # Keep PR author as github-actions[bot] so noodle-bucket-bot can approve it.
-          token: ${{ github.token }}
+          # Use VERSION_BUMP_TOKEN so pull_request workflows run on the generated PR.
+          token: ${{ secrets.VERSION_BUMP_TOKEN }}
           committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           base: main
@@ -173,10 +173,10 @@ jobs:
 
             This PR intentionally uses `[Force]` so manual version-file changes are allowed by repository checks.
 
-      - name: Approve bump PR as noodle-bucket-bot
+      - name: Approve bump PR as GitHub Actions
         if: contains(fromJSON('["patch","minor","major"]'), steps.pr_meta.outputs.bump) && steps.bump_pr.outputs.pull-request-number != ''
         env:
-          GH_TOKEN: ${{ secrets.VERSION_BUMP_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.bump_pr.outputs.pull-request-number }}
         run: |
           set -euo pipefail
@@ -191,8 +191,8 @@ jobs:
           author_login="$(gh pr view "$PR_NUMBER" --json author --jq .author.login)"
 
           if [ "$reviewer_login" = "$author_login" ]; then
-            echo "::error title=Invalid bot approval setup::VERSION_BUMP_TOKEN resolves to ${reviewer_login}, which is also the PR author. Required-review rules disallow self-approval."
-            echo "Set VERSION_BUMP_TOKEN to noodle-bucket-bot and keep PR creation on GITHUB_TOKEN."
+            echo "::error title=Invalid approval actor setup::Approval actor ${reviewer_login} matches PR author ${author_login}. Required-review rules disallow self-approval."
+            echo "Use VERSION_BUMP_TOKEN for PR creation and GITHUB_TOKEN for approval."
             exit 1
           fi
 
@@ -204,7 +204,7 @@ jobs:
 
           gh pr review "$PR_NUMBER" \
             --approve \
-            --body "Automated approval for action-generated [Force] version bump PR."
+            --body "Automated approval from GitHub Actions for generated [Force] version bump PR."
           echo "Approved bump PR #${PR_NUMBER} as ${reviewer_login}."
 
       - name: Merge bump PR when checks are ready
