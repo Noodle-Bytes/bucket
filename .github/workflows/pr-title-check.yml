@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 #
-# Enforces release-prefix titles ([Patch]/[Minor]/[Major]/[None]/[Force])
-# and restricts which actors may author or approve action-generated [Force]
-# release PRs. See .github/RELEASE_AUTOMATION.md for the full release
-# pipeline overview.
+# Enforces release-prefix titles ([Patch]/[Minor]/[Major]/[None]/[Release])
+# and restricts which actors may author or approve action-generated [Release]
+# PRs. See .github/RELEASE_AUTOMATION.md for the full release pipeline overview.
 
 name: PR Title Check
 
@@ -31,11 +30,11 @@ jobs:
           set -euo pipefail
 
           case "$PR_TITLE" in
-            \[Patch\]*|\[Minor\]*|\[Major\]*|\[None\]*|\[Force\]*)
+            \[Patch\]*|\[Minor\]*|\[Major\]*|\[None\]*|\[Release\]*)
               echo "PR title prefix is valid."
               ;;
             *)
-              echo "::error title=Invalid PR title prefix::PR title must start with one of: [Patch], [Minor], [Major], [None], [Force]"
+              echo "::error title=Invalid PR title prefix::PR title must start with one of: [Patch], [Minor], [Major], [None], [Release]"
               echo "Invalid PR title: '$PR_TITLE'"
               echo ""
               echo "How to fix:"
@@ -47,21 +46,21 @@ jobs:
               echo "[Minor] Backward-compatible feature/improvement (bump minor; create tag/release)."
               echo "[Major] Breaking change (bump major; create tag/release)."
               echo "[None] No release-impacting change (no version bump, no tag, no release)."
-              echo "[Force] Manual release mode (no auto bump; requires version change; allow version-file edits; create tag/release)."
+              echo "[Release] Manual release mode (no auto bump; requires version change; allow version-file edits; create tag/release)."
               echo ""
               echo "Examples:"
               echo "[Patch] fix crash when loading archive"
               echo "[Minor] add CSV import filters"
               echo "[Major] remove legacy JSON schema"
               echo "[None] docs cleanup for coverage guide"
-              echo "[Force] release v2.3.0 with manual version update"
+              echo "[Release] release v2.3.0 with manual version update"
               exit 1
               ;;
           esac
 
       - name: Block manual version changes in PRs
-        if: ${{ !startsWith(github.event.pull_request.title, '[Force]') }}
-        uses: actions/github-script@v7
+        if: ${{ !startsWith(github.event.pull_request.title, '[Release]') }}
+        uses: actions/github-script@v9
         with:
           script: |
             const pr = context.payload.pull_request;
@@ -171,7 +170,7 @@ jobs:
                   "",
                   "What to do:",
                   "1. Revert version field edits in pyproject.toml, viewer/package.json, and electron/package.json.",
-                  "2. Keep your PR title prefix as [Patch]/[Minor]/[Major]/[None] for automated versioning, or use [Force] for manual versioning + release.",
+                  "2. Keep your PR title prefix as [Patch]/[Minor]/[Major]/[None] for automated versioning, or use [Release] for manual versioning + release.",
                   "",
                   "Detected manual version changes:",
                   ...changedVersions.map((line) => `- ${line}`),
@@ -181,9 +180,9 @@ jobs:
               core.info("No manual version changes detected in tracked version files.");
             }
 
-      - name: Force mode requires version-only changes in tracked files
-        if: ${{ startsWith(github.event.pull_request.title, '[Force]') }}
-        uses: actions/github-script@v7
+      - name: Release mode requires version-only changes in tracked files
+        if: ${{ startsWith(github.event.pull_request.title, '[Release]') }}
+        uses: actions/github-script@v9
         with:
           script: |
             const pr = context.payload.pull_request;
@@ -322,7 +321,7 @@ jobs:
             if (disallowedPaths.length > 0) {
               core.setFailed(
                 [
-                  "[Force] PRs may only modify tracked version files.",
+                  "[Release] PRs may only modify tracked version files.",
                   "",
                   "Allowed files:",
                   ...files.map((file) => `- ${file.path}`),
@@ -340,7 +339,7 @@ jobs:
             if (missingChangedPaths.length > 0) {
               core.setFailed(
                 [
-                  "[Force] PRs must update version values in all tracked version files.",
+                  "[Release] PRs must update version values in all tracked version files.",
                   "",
                   "Files missing from this PR diff:",
                   ...missingChangedPaths.map((path) => `- ${path}`),
@@ -384,7 +383,7 @@ jobs:
             if (missingRequiredFiles.length > 0) {
               core.setFailed(
                 [
-                  "[Force] requires all version files to exist in both base and head refs.",
+                  "[Release] requires all version files to exist in both base and head refs.",
                   "",
                   "What to do:",
                   "1. Ensure pyproject.toml, viewer/package.json, and electron/package.json all exist.",
@@ -400,7 +399,7 @@ jobs:
             if (nonVersionEdits.length > 0) {
               core.setFailed(
                 [
-                  "[Force] PRs may only change version fields.",
+                  "[Release] PRs may only change version fields.",
                   "Detected non-version edits in tracked version files.",
                   "",
                   "Files with non-version edits:",
@@ -420,7 +419,7 @@ jobs:
             if (unchangedVersionFiles.length > 0) {
               core.setFailed(
                 [
-                  "[Force] requires a version bump in all tracked version files.",
+                  "[Release] requires a version bump in all tracked version files.",
                   "",
                   "Files where version did not change:",
                   ...unchangedVersionFiles.map((path) => `- ${path}`),
@@ -437,7 +436,7 @@ jobs:
             if (uniqueHeadVersions.length !== 1) {
               core.setFailed(
                 [
-                  "[Force] requires synchronized version values.",
+                  "[Release] requires synchronized version values.",
                   "Tracked version files do not all match after your changes.",
                   "",
                   "Current head versions:",
@@ -450,27 +449,28 @@ jobs:
               return;
             }
 
-            core.info("[Force] version-only changes validated and version files are synchronized.");
+            core.info("[Release] version-only changes validated and version files are synchronized.");
 
-      - name: Enforce automation policy for action-generated force PRs
-        uses: actions/github-script@v7
+      - name: Enforce automation policy for action-generated release PRs
+        uses: actions/github-script@v9
         with:
           script: |
             const pr = context.payload.pull_request;
             const expectedActionAuthor = "noodle-bucket-bot";
             // Identities that are scoped to the release-automation flow only and must
-            // never appear as approvers on human-authored or non-bump PRs. If a token
-            // for one of these identities ever leaks, this gate ensures the blast
-            // radius is bounded to the bot-authored bump PR on ci/version-bump-main.
+            // never appear as approvers on human-authored or non-release PRs. If a
+            // token for one of these identities ever leaks, this gate ensures the
+            // blast radius is bounded to the bot-authored release PR on
+            // ci/version-bump-main.
             const restrictedApprovers = new Set([
               "noodle-bucket-bot",
               "bucket-release-approver[bot]",
             ]);
-            const isForce = pr.title.startsWith("[Force]");
+            const isRelease = pr.title.startsWith("[Release]");
             const isSameRepoHead =
               pr.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`;
-            const isActionGeneratedForce =
-              isForce &&
+            const isActionGeneratedRelease =
+              isRelease &&
               pr.head.ref === "ci/version-bump-main" &&
               isSameRepoHead;
 
@@ -493,10 +493,10 @@ jobs:
               restrictedApprovers.has(login),
             );
 
-            if (disallowedRestrictedApprovers.length > 0 && !isActionGeneratedForce) {
+            if (disallowedRestrictedApprovers.length > 0 && !isActionGeneratedRelease) {
               core.setFailed(
                 [
-                  `Restricted release-automation identities may only approve action-generated [Force] PRs.`,
+                  `Restricted release-automation identities may only approve action-generated [Release] PRs.`,
                   "",
                   `Detected disallowed approval(s): ${disallowedRestrictedApprovers.join(", ")}`,
                   "What to do:",
@@ -507,11 +507,11 @@ jobs:
               return;
             }
 
-            if (isActionGeneratedForce) {
+            if (isActionGeneratedRelease) {
               if (pr.user.login !== expectedActionAuthor) {
                 core.setFailed(
                   [
-                    `Action-generated [Force] PR must be created by ${expectedActionAuthor}.`,
+                    `Action-generated [Release] PR must be created by ${expectedActionAuthor}.`,
                     "",
                     `Detected PR author: ${pr.user.login}`,
                     "What to do:",
@@ -521,25 +521,25 @@ jobs:
                 );
                 return;
               }
-              core.info("Automation policy satisfied for action-generated [Force] PR.");
+              core.info("Automation policy satisfied for action-generated [Release] PR.");
               return;
             }
 
             // Inverse guard: if noodle-bucket-bot is the author, the PR MUST be
-            // an action-generated [Force] release. This blocks a leaked
+            // an action-generated [Release] PR. This blocks a leaked
             // VERSION_BUMP_TOKEN from being used to open arbitrary PRs that
             // would otherwise look benign (e.g. a [Patch] PR opened by the bot).
             if (pr.user.login === expectedActionAuthor) {
               core.setFailed(
                 [
-                  `${expectedActionAuthor} may only author action-generated [Force] release PRs.`,
+                  `${expectedActionAuthor} may only author action-generated [Release] PRs.`,
                   "",
                   `Detected PR title:    ${pr.title}`,
                   `Detected PR head ref: ${pr.head.ref}`,
                   `Detected PR head repo: ${pr.head.repo.full_name}`,
                   "",
-                  "Required for an action-generated [Force] PR:",
-                  "- Title must start with '[Force]'",
+                  "Required for an action-generated [Release] PR:",
+                  "- Title must start with '[Release]'",
                   "- Head ref must be 'ci/version-bump-main'",
                   "- Head and base must be the same repository",
                   "",
