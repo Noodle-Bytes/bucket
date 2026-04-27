@@ -68,6 +68,11 @@ type RootCoverageInfo = {
     recSha: string | null;
 };
 
+type TopLevelCoverageCounts = {
+    coverpoints: number;
+    covergroups: number;
+};
+
 const ColorModeToggleButton = (props: FloatButtonProps) => {
     return (
         <Theme.Consumer>
@@ -119,30 +124,40 @@ function getReadoutSource(readout: Readout): string | null {
 }
 
 function getTopLevelCoverageInfo(
-    tree: Tree,
     node: TreeNode,
+    counts: TopLevelCoverageCounts,
 ): RootCoverageInfo {
-    let coverpoints = 0;
-    let covergroups = 0;
-
-    for (const [subNode] of tree.walk([node])) {
-        if (subNode.children?.length) {
-            covergroups += 1;
-        } else {
-            coverpoints += 1;
-        }
-    }
-
     const readout = node.data.readout as Readout;
 
     return {
         name: node.data.point?.name ?? String(node.title),
-        coverpoints,
-        covergroups,
+        coverpoints: counts.coverpoints,
+        covergroups: counts.covergroups,
         source: getReadoutSource(readout),
         defSha: getReadoutValue(readout, "get_def_sha"),
         recSha: getReadoutValue(readout, "get_rec_sha"),
     };
+}
+
+function getTopLevelCoverageCountsByKey(tree: Tree): Map<TreeKey, TopLevelCoverageCounts> {
+    const countsByKey = new Map<TreeKey, TopLevelCoverageCounts>();
+
+    for (const root of tree.getRoots()) {
+        let coverpoints = 0;
+        let covergroups = 0;
+
+        for (const [subNode] of tree.walk([root])) {
+            if (subNode.children?.length) {
+                covergroups += 1;
+            } else {
+                coverpoints += 1;
+            }
+        }
+
+        countsByKey.set(root.key, { coverpoints, covergroups });
+    }
+
+    return countsByKey;
 }
 
 function CoverageInfoField({
@@ -556,10 +571,24 @@ export default function Dashboard({
         return { source: null, source_key: null };
     }, [tree, viewKey]);
 
+    const topLevelCoverageCountsByKey = useMemo(
+        () => getTopLevelCoverageCountsByKey(tree),
+        [tree],
+    );
+
     const topLevelCoverageInfo = useMemo(() => {
         const infoNode = getTopLevelInfoNode(tree, viewKey);
-        return infoNode ? getTopLevelCoverageInfo(tree, infoNode) : null;
-    }, [tree, viewKey]);
+        if (!infoNode) {
+            return null;
+        }
+
+        const counts = topLevelCoverageCountsByKey.get(infoNode.key);
+        if (!counts) {
+            return null;
+        }
+
+        return getTopLevelCoverageInfo(infoNode, counts);
+    }, [tree, viewKey, topLevelCoverageCountsByKey]);
 
     const selectedViewContent = useMemo(() => {
         if (isEmpty) {

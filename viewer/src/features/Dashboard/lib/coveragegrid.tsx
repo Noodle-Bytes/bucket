@@ -106,6 +106,46 @@ type AxisSortState = {
     mode: AxisSortMode;
 };
 
+const largeModeControlsThemeCache = new Map<string, object>();
+
+function getLargeModeControlsTheme(colors: ThemeType["theme"]["colors"]) {
+    const cacheKey = [
+        colors.primarytxt.value,
+        colors.desaturatedtxt.value,
+        colors.tertiarybg.value,
+        colors.highlightbg.value,
+        colors.lowlightbg.value,
+    ].join("|");
+    const cachedTheme = largeModeControlsThemeCache.get(cacheKey);
+    if (cachedTheme) {
+        return cachedTheme;
+    }
+
+    const nextTheme = {
+        token: {
+            colorText: colors.primarytxt.value,
+            colorTextPlaceholder: colors.desaturatedtxt.value,
+            colorBgElevated: colors.tertiarybg.value,
+            controlItemBgHover: colors.highlightbg.value,
+            controlItemBgActive: colors.lowlightbg.value,
+            colorBorder: colors.lowlightbg.value,
+        },
+        components: {
+            Select: {
+                colorBgContainer: colors.tertiarybg.value,
+                colorText: colors.primarytxt.value,
+                colorTextPlaceholder: colors.desaturatedtxt.value,
+                colorBorder: colors.lowlightbg.value,
+                optionSelectedBg: colors.lowlightbg.value,
+                optionActiveBg: colors.highlightbg.value,
+                selectorBg: colors.tertiarybg.value,
+            },
+        },
+    };
+    largeModeControlsThemeCache.set(cacheKey, nextTheme);
+    return nextTheme;
+}
+
 export type PointGridProps = {
     node: PointNode;
 };
@@ -804,27 +844,7 @@ export function PointGrid({ node }: PointGridProps) {
 
                 const largeControls = isLargeMode ? (
                     <ConfigProvider
-                        theme={{
-                            token: {
-                                colorText: colors.primarytxt.value,
-                                colorTextPlaceholder: colors.desaturatedtxt.value,
-                                colorBgElevated: colors.tertiarybg.value,
-                                controlItemBgHover: colors.highlightbg.value,
-                                controlItemBgActive: colors.lowlightbg.value,
-                                colorBorder: colors.lowlightbg.value,
-                            },
-                            components: {
-                                Select: {
-                                    colorBgContainer: colors.tertiarybg.value,
-                                    colorText: colors.primarytxt.value,
-                                    colorTextPlaceholder: colors.desaturatedtxt.value,
-                                    colorBorder: colors.lowlightbg.value,
-                                    optionSelectedBg: colors.lowlightbg.value,
-                                    optionActiveBg: colors.highlightbg.value,
-                                    selectorBg: colors.tertiarybg.value,
-                                },
-                            },
-                        }}>
+                        theme={getLargeModeControlsTheme(colors)}>
                         <Space wrap style={{ marginBottom: 10, color: colors.primarytxt.value }}>
                             <Typography.Text
                                 strong
