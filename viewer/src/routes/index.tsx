@@ -6,13 +6,14 @@
 import { useRoutes } from "react-router-dom";
 import Dashboard from "@/features/Dashboard";
 import { useFileLoader } from "@/hooks/useFileLoader";
-import { Spin } from "antd";
+import { CoverageLoadingOverlay } from "@/components/CoverageLoadingOverlay";
 
 export const AppRoutes = () => {
     const {
         tree,
         session,
         isLoading,
+        loadingProgress,
         isDragging,
         fileInputRef,
         handleFileInput,
@@ -38,20 +39,19 @@ export const AppRoutes = () => {
                         multiple
                         style={{ display: 'none' }}
                     />
-                    <Spin spinning={isLoading} size="large" tip="Loading coverage data...">
-                        <Dashboard
-                            tree={tree}
-                            records={session.records}
-                            sources={session.sources}
-                            onOpenFile={openFileDialog}
-                            onClearCoverage={clearCoverage}
-                            onSetLoadedRecords={setLoadedRecords}
-                            onMergeRecords={mergeRecords}
-                            onRefreshRecords={refreshLoadedRecords}
-                            onExportRecords={exportRecords}
-                            isDragging={isDragging}
-                        />
-                    </Spin>
+                    <Dashboard
+                        tree={tree}
+                        records={session.records}
+                        sources={session.sources}
+                        onOpenFile={openFileDialog}
+                        onClearCoverage={clearCoverage}
+                        onSetLoadedRecords={setLoadedRecords}
+                        onMergeRecords={mergeRecords}
+                        onRefreshRecords={refreshLoadedRecords}
+                        onExportRecords={exportRecords}
+                        isDragging={isDragging}
+                    />
+                    <CoverageLoadingOverlay open={isLoading} loadingProgress={loadingProgress} />
                 </>
             ),
         },
