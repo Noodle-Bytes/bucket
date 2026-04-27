@@ -328,7 +328,17 @@ export function CoverageDonut({
             {(themeContextRaw) => {
                 const isRoot = node.key === CoverageTree.ROOT;
                 const roots = tree.getRoots();
-                if (isRoot && roots.length > 1) {
+                if (isRoot) {
+                    if (roots.length === 1) {
+                        return (
+                            <CoverageDonutInner
+                                node={roots[0]}
+                                themeContext={themeContextRaw}
+                                setSelectedTreeKeys={setSelectedTreeKeys}
+                            />
+                        );
+                    }
+
                     // Grid layout for multiple root donuts
                     return (
                         <div

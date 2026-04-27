@@ -4,7 +4,7 @@
  */
 
 import CoverageTree, { PointNode } from "./coveragetree";
-import { Alert, Button, Modal, Select, Space, Table, TableProps, Typography } from "antd";
+import { Alert, Button, ConfigProvider, Modal, Select, Space, Table, TableProps, Typography } from "antd";
 import { view } from "../theme";
 import { TreeKey } from "./tree";
 import { Theme as ThemeType } from "@/theme";
@@ -759,20 +759,34 @@ export function PointGrid({ node }: PointGridProps) {
     return (
         <Theme.Consumer>
             {({ theme }) => {
+                const colors = theme.theme.colors;
                 const banner = isLargeDataset ? (
                     <Alert
-                        style={{ marginBottom: 10 }}
+                        style={{
+                            marginBottom: 10,
+                            color: colors.primarytxt.value,
+                            backgroundColor: colors.secondarybg.value,
+                            borderColor: isLargeMode
+                                ? colors.accentbg.value
+                                : colors.lowlightbg.value,
+                        }}
                         showIcon
                         type={isLargeMode ? "warning" : "info"}
                         message={
-                            isLargeMode
-                                ? `Large dataset mode active (${model.rowCount.toLocaleString()} rows).`
-                                : `Full features forced for ${model.rowCount.toLocaleString()} rows.`
+                            <Typography.Text
+                                strong
+                                style={{ color: colors.saturatedtxt.value }}>
+                                {isLargeMode
+                                    ? `Large dataset mode active (${model.rowCount.toLocaleString()} rows).`
+                                    : `Full features forced for ${model.rowCount.toLocaleString()} rows.`}
+                            </Typography.Text>
                         }
                         description={
-                            isLargeMode
-                                ? `Optimized rendering is enabled above ${POINT_FULL_FEATURE_ROW_LIMIT.toLocaleString()} rows.`
-                                : "Optimized large mode is available if performance drops."
+                            <Typography.Text style={{ color: colors.primarytxt.value }}>
+                                {isLargeMode
+                                    ? `Optimized rendering is enabled above ${POINT_FULL_FEATURE_ROW_LIMIT.toLocaleString()} rows.`
+                                    : "Optimized large mode is available if performance drops."}
+                            </Typography.Text>
                         }
                         action={
                             isLargeMode ? (
@@ -789,47 +803,74 @@ export function PointGrid({ node }: PointGridProps) {
                 ) : null;
 
                 const largeControls = isLargeMode ? (
-                    <Space wrap style={{ marginBottom: 10 }}>
-                        <Typography.Text strong>Large mode controls:</Typography.Text>
-                        <Select
-                            size="small"
-                            value={largeGoalFilter}
-                            onChange={(value) => setLargeGoalFilter(value)}
-                            options={largeGoalOptions}
-                            style={{ minWidth: 210 }}
-                        />
-                        <Select
-                            size="small"
-                            value={largeHitFilter}
-                            onChange={(value) => setLargeHitFilter(value as HitClassFilter)}
-                            options={[
-                                { label: "All hit states", value: "all" },
-                                { label: "Full", value: "full" },
-                                { label: "Partial", value: "partial" },
-                                { label: "Empty", value: "empty" },
-                                { label: "Illegal", value: "illegal" },
-                                { label: "Ignore", value: "ignore" },
-                            ]}
-                            style={{ minWidth: 160 }}
-                        />
-                        <Select
-                            size="small"
-                            value={largeSort}
-                            onChange={(value) => setLargeSort(value as LargeSortOption)}
-                            options={[
-                                { label: "Bucket (asc)", value: "bucket_asc" },
-                                { label: "Bucket (desc)", value: "bucket_desc" },
-                                { label: "Hits (desc)", value: "hits_desc" },
-                                { label: "Hits (asc)", value: "hits_asc" },
-                                { label: "Hit % (desc)", value: "ratio_desc" },
-                                { label: "Hit % (asc)", value: "ratio_asc" },
-                            ]}
-                            style={{ minWidth: 150 }}
-                        />
-                        <Typography.Text type="secondary">
-                            Showing {largeDataSource.length.toLocaleString()} of {model.rowCount.toLocaleString()} rows
-                        </Typography.Text>
-                    </Space>
+                    <ConfigProvider
+                        theme={{
+                            token: {
+                                colorText: colors.primarytxt.value,
+                                colorTextPlaceholder: colors.desaturatedtxt.value,
+                                colorBgElevated: colors.tertiarybg.value,
+                                controlItemBgHover: colors.highlightbg.value,
+                                controlItemBgActive: colors.lowlightbg.value,
+                                colorBorder: colors.lowlightbg.value,
+                            },
+                            components: {
+                                Select: {
+                                    colorBgContainer: colors.tertiarybg.value,
+                                    colorText: colors.primarytxt.value,
+                                    colorTextPlaceholder: colors.desaturatedtxt.value,
+                                    colorBorder: colors.lowlightbg.value,
+                                    optionSelectedBg: colors.lowlightbg.value,
+                                    optionActiveBg: colors.highlightbg.value,
+                                    selectorBg: colors.tertiarybg.value,
+                                },
+                            },
+                        }}>
+                        <Space wrap style={{ marginBottom: 10, color: colors.primarytxt.value }}>
+                            <Typography.Text
+                                strong
+                                style={{ color: colors.primarytxt.value }}>
+                                Large mode controls:
+                            </Typography.Text>
+                            <Select
+                                size="small"
+                                value={largeGoalFilter}
+                                onChange={(value) => setLargeGoalFilter(value)}
+                                options={largeGoalOptions}
+                                style={{ minWidth: 210 }}
+                            />
+                            <Select
+                                size="small"
+                                value={largeHitFilter}
+                                onChange={(value) => setLargeHitFilter(value as HitClassFilter)}
+                                options={[
+                                    { label: "All hit states", value: "all" },
+                                    { label: "Full", value: "full" },
+                                    { label: "Partial", value: "partial" },
+                                    { label: "Empty", value: "empty" },
+                                    { label: "Illegal", value: "illegal" },
+                                    { label: "Ignore", value: "ignore" },
+                                ]}
+                                style={{ minWidth: 160 }}
+                            />
+                            <Select
+                                size="small"
+                                value={largeSort}
+                                onChange={(value) => setLargeSort(value as LargeSortOption)}
+                                options={[
+                                    { label: "Bucket (asc)", value: "bucket_asc" },
+                                    { label: "Bucket (desc)", value: "bucket_desc" },
+                                    { label: "Hits (desc)", value: "hits_desc" },
+                                    { label: "Hits (asc)", value: "hits_asc" },
+                                    { label: "Hit % (desc)", value: "ratio_desc" },
+                                    { label: "Hit % (asc)", value: "ratio_asc" },
+                                ]}
+                                style={{ minWidth: 150 }}
+                            />
+                            <Typography.Text style={{ color: colors.desaturatedtxt.value }}>
+                                Showing {largeDataSource.length.toLocaleString()} of {model.rowCount.toLocaleString()} rows
+                            </Typography.Text>
+                        </Space>
+                    </ConfigProvider>
                 ) : null;
 
                 if (isLargeMode) {
