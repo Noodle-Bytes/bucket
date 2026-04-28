@@ -4,10 +4,10 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { Button, ConfigProvider, Modal, Typography, notification } from "antd";
-import type { ThemeConfig } from "antd";
-import type { Theme as BucketTheme } from "@/theme";
+import { Button, Flex, Typography } from "antd";
 import { getThemePreference } from "@/utils/themePreference";
+import { confirmThemed, infoThemed } from "@/utils/themedStaticModal";
+import { notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/utils/themedStaticNotification";
 import CoverageTree from "../features/Dashboard/lib/coveragetree";
 import {
     isElectron,
@@ -48,8 +48,8 @@ type SourceLoadPayload = {
 
 type LoadMode = "replace" | "append";
 
-/** Above this many archives in one action, offer merge vs individual load. */
-const BULK_MERGE_THRESHOLD = 50;
+/** Offer merge vs individual load when more than one archive is selected in one action. */
+const BULK_MERGE_THRESHOLD = 1;
 
 type ArchiveFileItem =
     | { kind: "fileObject"; file: File }
@@ -147,57 +147,15 @@ async function promptCoverageFileReselect(): Promise<File | null> {
     });
 }
 
-function bucketAntModalTheme(pref: BucketTheme): ThemeConfig {
-    const cl = pref.theme.colors;
-    const panel = cl.tertiarybg.value;
-    const border = cl.secondarybg.value;
-    const txt = cl.primarytxt.value;
-    const accent = cl.accentbg.value;
-    const saturated = cl.saturatedtxt.value;
-    return {
-        token: {
-            colorPrimary: accent,
-            colorText: txt,
-            colorTextHeading: txt,
-            colorBgElevated: panel,
-            colorBorder: border,
-            colorSplit: border,
-        },
-        components: {
-            Modal: {
-                contentBg: panel,
-                headerBg: panel,
-                footerBg: panel,
-                titleColor: txt,
-                titleFontSize: 16,
-                titleLineHeight: 1.4,
-            },
-            Button: {
-                defaultBg: panel,
-                defaultColor: saturated,
-                defaultBorderColor: cl.lowlightbg.value,
-                defaultHoverBg: cl.highlightbg.value,
-                defaultHoverColor: saturated,
-                defaultHoverBorderColor: cl.highlightbg.value,
-                defaultActiveBg: cl.lowlightbg.value,
-                defaultActiveColor: saturated,
-                defaultActiveBorderColor: cl.lowlightbg.value,
-            },
-        },
-    };
-}
-
 function promptBulkLoadStrategy(fileCount: number): Promise<"merge" | "individual" | "cancel"> {
     return new Promise((resolve) => {
         let settled = false;
         let destroyModal: (() => void) | null = null;
         const pref = getThemePreference();
         const cl = pref.theme.colors;
-        const panel = cl.tertiarybg.value;
         const border = cl.secondarybg.value;
         const txt = cl.primarytxt.value;
         const muted = cl.desaturatedtxt.value;
-        const antTheme = bucketAntModalTheme(pref);
 
         const finish = (choice: "merge" | "individual" | "cancel") => {
             if (settled) {
@@ -215,59 +173,55 @@ function promptBulkLoadStrategy(fileCount: number): Promise<"merge" | "individua
             e.preventDefault();
             finish("cancel");
         };
-        const instance = Modal.info({
-            title: `Many files selected (${fileCount})`,
+        const archiveWord = fileCount === 1 ? "archive" : "archives";
+        const instance = infoThemed({
+            title: `Load ${fileCount} coverage ${archiveWord}`,
             icon: null,
+            width: 520,
             maskClosable: false,
-            closable: true,
+            closable: false,
             keyboard: true,
             onCancel: () => finish("cancel"),
-            footer: null,
-            rootClassName: pref.theme.className,
-            styles: {
-                mask: { backgroundColor: "rgba(0, 0, 0, 0.55)" },
-                content: { backgroundColor: panel, padding: 0 },
-                header: {
-                    backgroundColor: panel,
-                    color: txt,
-                    borderBottom: `1px solid ${border}`,
-                    margin: 0,
-                },
-                body: { backgroundColor: panel, padding: "16px 24px 20px" },
-            },
             content: (
-                <ConfigProvider theme={antTheme}>
-                    <Typography.Paragraph style={{ marginBottom: 12, color: txt }}>
-                        Loading this many archives at once can make the viewer slow. You can merge
-                        them into a single loaded record instead, which keeps the UI responsive.
+                <>
+                    <Typography.Paragraph
+                        style={{ marginBottom: 10, fontSize: 14, color: txt, lineHeight: 1.5 }}
+                    >
+                        Loading several archives as separate records can slow the viewer. You can
+                        merge them into one loaded record to keep things responsive, or load each
+                        archive as its own record.
                     </Typography.Paragraph>
-                    <Typography.Paragraph style={{ marginBottom: 0, color: txt }}>
+                    <Typography.Paragraph
+                        style={{ marginBottom: 0, fontSize: 14, color: txt, lineHeight: 1.5 }}
+                    >
                         <Typography.Text strong style={{ color: txt }}>
                             Note:
                         </Typography.Text>{" "}
-                        <span style={{ color: muted }}>
-                            A merged result exists only in this session until you use Export to save a
-                            .bktgz (or JSON) file if you want to keep it.
+                        <span style={{ color: muted, opacity: 0.95 }}>
+                            A merged result exists only in this session. Use Export to save an Archive
+                            or JSON file if you want to keep it.
                         </span>
                     </Typography.Paragraph>
-                    <div
-                        style={{
-                            display: "flex",
-                            justifyContent: "flex-end",
-                            alignItems: "center",
-                            gap: 8,
-                            flexWrap: "nowrap",
-                            marginTop: 20,
-                            paddingTop: 16,
-                            borderTop: `1px solid ${border}`,
-                        }}
-                    >
+                </>
+            ),
+            footer: (
+                <div
+                    style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        borderTop: `1px solid ${border}`,
+                        marginTop: 4,
+                        paddingTop: 14,
+                        paddingBottom: 2,
+                    }}
+                >
+                    <Flex justify="flex-end" gap={8} wrap="wrap">
                         <Button onClick={() => finish("individual")}>Load individually</Button>
                         <Button type="primary" onClick={() => finish("merge")}>
                             Merge into one record
                         </Button>
-                    </div>
-                </ConfigProvider>
+                    </Flex>
+                </div>
             ),
         });
         destroyModal = instance.destroy;
@@ -427,7 +381,7 @@ export function useFileLoader() {
                     ],
                     mode,
                 );
-                notification.success({
+                notifySuccess({
                     message: "Merged load complete",
                     description:
                         "One merged record is in the viewer. Export to .bktgz or JSON if you want to save it.",
@@ -442,14 +396,14 @@ export function useFileLoader() {
             setError(errorMessage);
             if (!suppressNotification) {
                 if (isNoCoverageError(errorMessage)) {
-                    notification.error({
+                    notifyError({
                         message: "No Coverage Data",
                         description:
                             "The loaded .bktgz file contains no coverage data. Please ensure the file was exported correctly from a Bucket coverage run.",
                         duration: 5,
                     });
                 } else {
-                    notification.error({
+                    notifyError({
                         message: "Failed to Load File",
                         description: errorMessage,
                         duration: 5,
@@ -490,7 +444,7 @@ export function useFileLoader() {
     };
 
     const clearCoverage = (): void => {
-        Modal.confirm({
+        confirmThemed({
             title: "Clear Coverage",
             content: "Are you sure you want to clear all coverage data?",
             okText: "Clear",
@@ -518,7 +472,7 @@ export function useFileLoader() {
     const mergeRecords = async (recordIds: string[]): Promise<void> => {
         const selected = session.records.filter((record) => recordIds.includes(record.id));
         if (selected.length < 2) {
-            notification.warning({
+            notifyWarning({
                 message: "Merge Requires Two or More Records",
                 description: "Select at least two records to merge.",
                 duration: 4,
@@ -546,14 +500,14 @@ export function useFileLoader() {
                 records: [...current.records, mergedRecord],
                 loadedRecordIds: [...current.loadedRecordIds, mergedRecord.id],
             }));
-            notification.success({
+            notifySuccess({
                 message: "Records Merged",
                 description: "Merged record added and loaded.",
                 duration: 3,
             });
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err);
-            notification.error({
+            notifyError({
                 message: "Merge Failed",
                 description: errorMessage,
                 duration: 5,
@@ -652,13 +606,13 @@ export function useFileLoader() {
             });
 
             if (refreshedRecordIds.length > 0) {
-                notification.success({
+                notifySuccess({
                     message: "Refresh Complete",
                     description: `Refreshed ${refreshedRecordIds.length} loaded record(s).`,
                     duration: 3,
                 });
             } else {
-                notification.info({
+                notifyInfo({
                     message: "Nothing Refreshed",
                     description: "No loaded file-backed records were refreshed.",
                     duration: 3,
@@ -666,7 +620,7 @@ export function useFileLoader() {
             }
 
             if (warnings.length > 0) {
-                notification.warning({
+                notifyWarning({
                     message: "Refresh Warnings",
                     description: warnings
                         .map((warning) => `${warning.sourceLabel}: ${warning.detail}`)
@@ -677,7 +631,7 @@ export function useFileLoader() {
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err);
             setError(errorMessage);
-            notification.error({
+            notifyError({
                 message: "Refresh Failed",
                 description: errorMessage,
                 duration: 5,
@@ -697,7 +651,7 @@ export function useFileLoader() {
             (record) => record.isLoaded && options.recordIds.includes(record.id),
         );
         if (selected.length === 0) {
-            notification.warning({
+            notifyWarning({
                 message: "No Records Selected",
                 description: "Select at least one loaded record to export.",
                 duration: 4,
@@ -725,7 +679,7 @@ export function useFileLoader() {
                 safeBaseName.length === 0 ? defaultBaseName + extension : `${safeBaseName}${extension}`;
             const result = await saveExportBytes(bytes, options.format, fileName);
             if (!result.canceled) {
-                notification.success({
+                notifySuccess({
                     message: "Export Complete",
                     description: `Exported ${exportReadouts.length} record(s).`,
                     duration: 3,
@@ -733,7 +687,7 @@ export function useFileLoader() {
             }
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err);
-            notification.error({
+            notifyError({
                 message: "Export Failed",
                 description: errorMessage,
                 duration: 5,
@@ -756,7 +710,7 @@ export function useFileLoader() {
                     archiveFiles.map((file) => ({ kind: "fileObject" as const, file })),
                 );
             } else {
-                notification.warning({
+                notifyWarning({
                     message: "Invalid File Type",
                     description: "Please drop a .bktgz file.",
                     duration: 3,
@@ -811,7 +765,7 @@ export function useFileLoader() {
                             })),
                         );
                     } catch (err) {
-                        notification.error({
+                        notifyError({
                             message: "Failed to Load File",
                             description: err instanceof Error ? err.message : String(err),
                             duration: 5,
@@ -835,7 +789,7 @@ export function useFileLoader() {
                         filePaths.map((path) => ({ kind: "electronPath" as const, path })),
                     );
                 } catch (err) {
-                    notification.error({
+                    notifyError({
                         message: "Failed to Open File",
                         description: err instanceof Error ? err.message : String(err),
                         duration: 5,
