@@ -216,6 +216,7 @@ function promptBulkLoadStrategy(fileCount: number): Promise<"merge" | "individua
                     }}
                 >
                     <Flex justify="flex-end" gap={8} wrap="wrap">
+                        <Button onClick={() => finish("cancel")}>Cancel</Button>
                         <Button onClick={() => finish("individual")}>Load individually</Button>
                         <Button type="primary" onClick={() => finish("merge")}>
                             Merge into one record
