@@ -25,3 +25,51 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Themed bottom notifications: show pause glyph when hover-paused. */
+.bucket-themed-notification .bucket-notification-close-pause {
+  opacity: 0;
+}
+
+.bucket-themed-notification:hover .bucket-notification-close-pause {
+  opacity: 1;
+}
+
+.bucket-themed-notification:hover .bucket-notification-close-x {
+  opacity: 0;
+}
+
+/* Force wrapper and notice to share one rounded panel (avoid white corner bleed). */
+.bucket-themed-notification {
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+.ant-notification-notice-wrapper:has(> .bucket-themed-notification) {
+  background: transparent !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+.ant-notification-notice-wrapper > .bucket-themed-notification {
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+/* Keep ring animation and auto-dismiss timer aligned, including hover pause/resume. */
+@keyframes bucketNotificationRing {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 50.2654824574; /* 2*pi*8 */
+  }
+}
+
+.bucket-themed-notification .bucket-notification-close-ring {
+  animation-play-state: running !important;
+}
+
+.bucket-themed-notification:hover .bucket-notification-close-ring {
+  animation-play-state: paused !important;
+}

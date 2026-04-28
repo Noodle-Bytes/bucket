@@ -15,6 +15,7 @@ import {
     FloatButton,
     Input,
     Layout,
+    List,
     Modal,
     Segmented,
     Select,
@@ -27,6 +28,7 @@ import {
     CaretDownOutlined,
     CaretRightOutlined,
     ClearOutlined,
+    DownOutlined,
     EditOutlined,
     ExportOutlined,
     FileAddOutlined,
@@ -44,6 +46,7 @@ import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
 import { PointPivotView } from "./lib/pivottable";
 import { CoverageDonut } from "./lib/coveragedonut";
 import { hexToRgba } from "@/utils/colors";
+import { buildBucketAntModalTheme } from "@/utils/bucketAntModalTheme";
 import type { CoverageRecord, CoverageSourceRef, ExportFormat } from "@/types/coverageSession";
 import { getDefaultExportFileName } from "@/services/exportSaver";
 
@@ -55,7 +58,6 @@ type RecordTableRow = {
     label: string;
     sourceLabel: string;
     sourceKind: string;
-    recordIndex: number;
     isLoaded: boolean;
 };
 
@@ -379,7 +381,11 @@ function getBreadCrumbItems({
     return breadCrumbItems;
 }
 
-function getReadoutLabel(record: CoverageRecord, source: CoverageSourceRef | undefined): string {
+function getReadoutLabel(
+    record: CoverageRecord,
+    source: CoverageSourceRef | undefined,
+    recordsInSource: number,
+): string {
     const sourceLabel = source?.label ?? "Unknown Source";
     let readoutSource = "";
     try {
@@ -396,7 +402,11 @@ function getReadoutLabel(record: CoverageRecord, source: CoverageSourceRef | und
         readoutSource = "";
     }
     const prefix = readoutSource ? `${readoutSource} - ` : "";
-    return `${prefix}${sourceLabel} (record ${record.sourceRecordIndex})`;
+    const base = `${prefix}${sourceLabel}`;
+    if (recordsInSource <= 1) {
+        return base;
+    }
+    return `${base} (record ${record.sourceRecordIndex + 1})`;
 }
 
 function stripExportExtension(fileName: string): string {
@@ -459,20 +469,28 @@ export default function Dashboard({
         return new Map(sources.map((source) => [source.id, source]));
     }, [sources]);
 
+    const recordCountBySourceRef = useMemo(() => {
+        const counts = new Map<string, number>();
+        for (const record of records) {
+            counts.set(record.sourceRef, (counts.get(record.sourceRef) ?? 0) + 1);
+        }
+        return counts;
+    }, [records]);
+
     const recordRows = useMemo<RecordTableRow[]>(() => {
         return records.map((record) => {
             const source = sourceById.get(record.sourceRef);
+            const recordsInSource = recordCountBySourceRef.get(record.sourceRef) ?? 1;
             return {
                 id: record.id,
                 key: record.id,
-                label: getReadoutLabel(record, source),
+                label: getReadoutLabel(record, source, recordsInSource),
                 sourceLabel: source?.label ?? "Unknown",
                 sourceKind: source?.kind ?? "unknown",
-                recordIndex: record.sourceRecordIndex,
                 isLoaded: record.isLoaded,
             };
         });
-    }, [records, sourceById]);
+    }, [records, sourceById, recordCountBySourceRef]);
 
     const loadedRecordRows = useMemo(
         () => recordRows.filter((record) => record.isLoaded),
@@ -711,7 +729,37 @@ export default function Dashboard({
                               transition: "all 0.2s ease-in-out",
                           }
                         : {};
+                    const modalAnt = buildBucketAntModalTheme(themeContext);
+                    const clM = themeContext.theme.colors;
+                    const panelM = clM.tertiarybg.value;
+                    const borderM = clM.secondarybg.value;
+                    const txtM = clM.primarytxt.value;
+                    const mutedM = clM.desaturatedtxt.value;
+                    const tableSurfaceM = clM.primarybg.value;
+                    const baseModalChrome = {
+                        rootClassName: themeContext.theme.className,
+                        styles: {
+                            mask: { backgroundColor: "rgba(0, 0, 0, 0.55)" },
+                            content: {
+                                backgroundColor: panelM,
+                                padding: 0,
+                                border: `1px solid ${borderM}`,
+                            },
+                            header: {
+                                backgroundColor: panelM,
+                                color: txtM,
+                                borderBottom: `1px solid ${borderM}`,
+                            },
+                            body: { backgroundColor: panelM },
+                            footer: {
+                                backgroundColor: panelM,
+                                borderTop: `1px solid ${borderM}`,
+                            },
+                        },
+                    };
+
                     return (
+                        <>
                         <Layout
                             {...view.props}
                             style={{
@@ -890,147 +938,392 @@ export default function Dashboard({
                                 <Content {...view.body.content.props}>{selectedViewContent}</Content>
                             </Layout>
                         </Layout>
+                        <ConfigProvider theme={modalAnt}>
+                            <Modal
+                                title={
+                                    <span
+                                        style={{
+                                            fontSize: 16,
+                                            fontWeight: 600,
+                                            letterSpacing: "-0.01em",
+                                            color: txtM,
+                                            lineHeight: 1.35,
+                                        }}
+                                    >
+                                        Edit records
+                                    </span>
+                                }
+                                open={editModalOpen}
+                                onCancel={() => setEditModalOpen(false)}
+                                width={1040}
+                                closable={false}
+                                {...baseModalChrome}
+                                styles={{
+                                    ...baseModalChrome.styles,
+                                    header: {
+                                        ...baseModalChrome.styles.header,
+                                        padding: "16px 20px 14px",
+                                        borderBottom: `1px solid ${borderM}`,
+                                    },
+                                    content: {
+                                        ...baseModalChrome.styles.content,
+                                        maxHeight: "min(720px, 88vh)",
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        overflow: "hidden",
+                                    },
+                                    body: {
+                                        ...baseModalChrome.styles.body,
+                                        flex: "1 1 auto",
+                                        minHeight: 0,
+                                        overflow: "hidden",
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        padding: "12px 16px",
+                                        WebkitFontSmoothing: "antialiased",
+                                    },
+                                    footer: {
+                                        ...baseModalChrome.styles.footer,
+                                        flexShrink: 0,
+                                        padding: "12px 16px",
+                                    },
+                                }}
+                                footer={
+                                    <div
+                                        style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            width: "100%",
+                                            gap: 8,
+                                            flexWrap: "wrap",
+                                            justifyContent: "flex-end",
+                                        }}
+                                    >
+                                        <Typography.Text
+                                            style={{
+                                                flex: "1 1 200px",
+                                                marginRight: "auto",
+                                                color: mutedM,
+                                                fontSize: 13,
+                                            }}
+                                        >
+                                            Selected for merge: {mergeSelectedIds.length}
+                                        </Typography.Text>
+                                        <Button key="cancel" onClick={() => setEditModalOpen(false)}>
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            key="merge"
+                                            onClick={() => void runMergeSelected()}
+                                            disabled={mergeSelectedIds.length < 2}
+                                            loading={editActionBusy}
+                                        >
+                                            Merge Selected
+                                        </Button>
+                                        <Button key="apply" type="primary" onClick={applyLoadedEdits}>
+                                            Apply
+                                        </Button>
+                                    </div>
+                                }
+                            >
+                                <div
+                                    style={{
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        flex: 1,
+                                        minHeight: 0,
+                                    }}
+                                >
+                                    <div
+                                        style={{
+                                            flex: 1,
+                                            minHeight: 200,
+                                            overflow: "hidden",
+                                            border: `1px solid ${borderM}`,
+                                            borderRadius: 8,
+                                            backgroundColor: tableSurfaceM,
+                                        }}
+                                    >
+                                        <Table<RecordTableRow>
+                                            size="small"
+                                            bordered={false}
+                                            showSorterTooltip={false}
+                                            pagination={false}
+                                            rowKey="id"
+                                            dataSource={recordRows}
+                                            tableLayout="fixed"
+                                            scroll={{ y: 400 }}
+                                            rowSelection={{
+                                                selectedRowKeys: mergeSelectedIds,
+                                                onChange: (selectedKeys) =>
+                                                    setMergeSelectedIds(selectedKeys as string[]),
+                                            }}
+                                            columns={[
+                                                {
+                                                    title: "Loaded",
+                                                    width: 88,
+                                                    render: (_value, row) => (
+                                                        <Switch
+                                                            checked={
+                                                                editLoadedById[row.id] ?? row.isLoaded
+                                                            }
+                                                            onChange={(checked) =>
+                                                                setEditLoadedById((current) => ({
+                                                                    ...current,
+                                                                    [row.id]: checked,
+                                                                }))
+                                                            }
+                                                        />
+                                                    ),
+                                                },
+                                                {
+                                                    title: "Record",
+                                                    dataIndex: "label",
+                                                    ellipsis: true,
+                                                    render: (text: string) => (
+                                                        <Typography.Text
+                                                            style={{
+                                                                color: txtM,
+                                                                fontSize: 13,
+                                                                lineHeight: 1.45,
+                                                            }}
+                                                        >
+                                                            {text}
+                                                        </Typography.Text>
+                                                    ),
+                                                },
+                                                {
+                                                    title: "Source",
+                                                    dataIndex: "sourceLabel",
+                                                    width: 220,
+                                                    ellipsis: true,
+                                                },
+                                                {
+                                                    title: "Kind",
+                                                    dataIndex: "sourceKind",
+                                                    width: 112,
+                                                    align: "left",
+                                                    render: (text: string) => (
+                                                        <Typography.Text
+                                                            style={{ color: txtM, fontSize: 13 }}
+                                                        >
+                                                            {text}
+                                                        </Typography.Text>
+                                                    ),
+                                                },
+                                            ]}
+                                        />
+                                    </div>
+                                </div>
+                            </Modal>
+
+                            <Modal
+                                title={
+                                    <span
+                                        style={{
+                                            fontSize: 16,
+                                            fontWeight: 600,
+                                            letterSpacing: "-0.01em",
+                                            color: txtM,
+                                            lineHeight: 1.35,
+                                        }}
+                                    >
+                                        Export records
+                                    </span>
+                                }
+                                open={exportModalOpen}
+                                onCancel={() => setExportModalOpen(false)}
+                                closable={false}
+                                footer={
+                                    <div
+                                        style={{
+                                            display: "flex",
+                                            justifyContent: "flex-end",
+                                            gap: 8,
+                                            width: "100%",
+                                        }}
+                                    >
+                                        <Button key="cancel" onClick={() => setExportModalOpen(false)}>
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            key="export"
+                                            type="primary"
+                                            loading={exportBusy}
+                                            disabled={exportSelectedIds.length === 0}
+                                            onClick={() => void runExport()}
+                                        >
+                                            Export
+                                        </Button>
+                                    </div>
+                                }
+                                width={960}
+                                {...baseModalChrome}
+                                styles={{
+                                    ...baseModalChrome.styles,
+                                    header: {
+                                        ...baseModalChrome.styles.header,
+                                        padding: "16px 20px 14px",
+                                        borderBottom: `1px solid ${borderM}`,
+                                    },
+                                    content: {
+                                        ...baseModalChrome.styles.content,
+                                        maxHeight: "min(88vh, 820px)",
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        overflow: "hidden",
+                                    },
+                                    body: {
+                                        ...baseModalChrome.styles.body,
+                                        flex: "1 1 auto",
+                                        minHeight: 0,
+                                        overflow: "hidden",
+                                        padding: "14px 20px 16px",
+                                        WebkitFontSmoothing: "antialiased",
+                                    },
+                                    footer: {
+                                        ...baseModalChrome.styles.footer,
+                                        flexShrink: 0,
+                                        padding: "12px 16px",
+                                    },
+                                }}
+                            >
+                                <Flex vertical gap="middle" style={{ minHeight: 0 }}>
+                                    <div>
+                                        <Typography.Text strong style={{ color: txtM }}>
+                                            File name
+                                        </Typography.Text>
+                                        <Input
+                                            style={{ marginTop: 8 }}
+                                            value={exportFileName}
+                                            onChange={(event) =>
+                                                setExportFileName(event.target.value)
+                                            }
+                                            placeholder="bucket_export"
+                                            addonAfter={
+                                                <Select<ExportFormat>
+                                                    variant="borderless"
+                                                    popupMatchSelectWidth={88}
+                                                    listHeight={88}
+                                                    suffixIcon={
+                                                        <DownOutlined
+                                                            style={{
+                                                                color: txtM,
+                                                                fontSize: 11,
+                                                                opacity: 0.92,
+                                                            }}
+                                                        />
+                                                    }
+                                                    value={exportFormat}
+                                                    onChange={(value) => {
+                                                        setExportFormat(value);
+                                                        setExportFileName((current) =>
+                                                            stripExportExtension(current),
+                                                        );
+                                                    }}
+                                                    options={[
+                                                        { value: "bktgz", label: ".bktgz" },
+                                                        { value: "json", label: ".json" },
+                                                    ]}
+                                                    style={{
+                                                        width: 88,
+                                                        minWidth: 88,
+                                                        maxWidth: 88,
+                                                    }}
+                                                    styles={{
+                                                        popup: { root: { width: 88, minWidth: 88 } },
+                                                    }}
+                                                    aria-label="Export file format"
+                                                />
+                                            }
+                                        />
+                                    </div>
+
+                                    <Flex align="center" gap="small" wrap="wrap">
+                                        <Typography.Text strong style={{ color: txtM }}>
+                                            Merge before writing
+                                        </Typography.Text>
+                                        <Switch
+                                            checked={exportMergeBeforeWrite}
+                                            onChange={setExportMergeBeforeWrite}
+                                        />
+                                    </Flex>
+
+                                    <div style={{ flex: "1 1 auto", minHeight: 0 }}>
+                                        <Typography.Text strong style={{ color: txtM }}>
+                                            Records
+                                        </Typography.Text>
+                                        <div
+                                            style={{
+                                                marginTop: 8,
+                                                maxHeight: "min(240px, 32vh)",
+                                                minHeight: 96,
+                                                overflowY: "auto",
+                                                overflowX: "hidden",
+                                                scrollbarGutter: "stable",
+                                                border: `1px solid ${borderM}`,
+                                                borderRadius: 8,
+                                                padding: "8px 10px",
+                                                backgroundColor: tableSurfaceM,
+                                            }}
+                                        >
+                                            {loadedRecordRows.length === 0 ? (
+                                                <Typography.Text
+                                                    style={{ color: mutedM, fontSize: 13 }}
+                                                >
+                                                    No loaded records to export.
+                                                </Typography.Text>
+                                            ) : (
+                                                <Checkbox.Group
+                                                    style={{ display: "block", width: "100%" }}
+                                                    value={exportSelectedIds}
+                                                    onChange={(values) =>
+                                                        setExportSelectedIds(
+                                                            values.map((value) => String(value)),
+                                                        )
+                                                    }
+                                                >
+                                                    <List<RecordTableRow>
+                                                        split={false}
+                                                        bordered={false}
+                                                        dataSource={loadedRecordRows}
+                                                        rowKey="id"
+                                                        style={{
+                                                            background: "transparent",
+                                                        }}
+                                                        renderItem={(record) => (
+                                                            <List.Item
+                                                                style={{
+                                                                    padding: "5px 4px",
+                                                                    border: "none",
+                                                                    display: "block",
+                                                                }}
+                                                            >
+                                                                <Checkbox value={record.id}>
+                                                                    <Typography.Text
+                                                                        style={{
+                                                                            color: txtM,
+                                                                            fontSize: 13,
+                                                                            lineHeight: 1.45,
+                                                                        }}
+                                                                    >
+                                                                        {record.label}
+                                                                    </Typography.Text>
+                                                                </Checkbox>
+                                                            </List.Item>
+                                                        )}
+                                                    />
+                                                </Checkbox.Group>
+                                            )}
+                                        </div>
+                                    </div>
+                                </Flex>
+                            </Modal>
+                        </ConfigProvider>
+                        </>
                     );
                 }}
             </Theme.Consumer>
-
-            <Modal
-                title="Edit Records"
-                open={editModalOpen}
-                onCancel={() => setEditModalOpen(false)}
-                width={900}
-                footer={[
-                    <Button key="cancel" onClick={() => setEditModalOpen(false)}>
-                        Cancel
-                    </Button>,
-                    <Button
-                        key="merge"
-                        onClick={() => void runMergeSelected()}
-                        disabled={mergeSelectedIds.length < 2}
-                        loading={editActionBusy}>
-                        Merge Selected
-                    </Button>,
-                    <Button key="apply" type="primary" onClick={applyLoadedEdits}>
-                        Apply
-                    </Button>,
-                ]}>
-                <Table<RecordTableRow>
-                    size="small"
-                    pagination={false}
-                    rowKey="id"
-                    dataSource={recordRows}
-                    rowSelection={{
-                        selectedRowKeys: mergeSelectedIds,
-                        onChange: (selectedKeys) =>
-                            setMergeSelectedIds(selectedKeys as string[]),
-                    }}
-                    columns={[
-                        {
-                            title: "Loaded",
-                            width: 90,
-                            render: (_value, row) => (
-                                <Switch
-                                    checked={editLoadedById[row.id] ?? row.isLoaded}
-                                    onChange={(checked) =>
-                                        setEditLoadedById((current) => ({
-                                            ...current,
-                                            [row.id]: checked,
-                                        }))
-                                    }
-                                />
-                            ),
-                        },
-                        {
-                            title: "Record",
-                            dataIndex: "label",
-                        },
-                        {
-                            title: "Source",
-                            dataIndex: "sourceLabel",
-                            width: 190,
-                        },
-                        {
-                            title: "Kind",
-                            dataIndex: "sourceKind",
-                            width: 130,
-                        },
-                        {
-                            title: "Index",
-                            dataIndex: "recordIndex",
-                            width: 90,
-                        },
-                    ]}
-                />
-                <Typography.Text type="secondary" style={{ marginTop: 12, display: "block" }}>
-                    Selected for merge: {mergeSelectedIds.length}
-                </Typography.Text>
-            </Modal>
-
-            <Modal
-                title="Export Records"
-                open={exportModalOpen}
-                onCancel={() => setExportModalOpen(false)}
-                onOk={() => void runExport()}
-                okText="Export"
-                confirmLoading={exportBusy}
-                okButtonProps={{ disabled: exportSelectedIds.length === 0 }}>
-                <Flex vertical gap="middle">
-                    <div>
-                        <Typography.Text strong>Records</Typography.Text>
-                        <div style={{ marginTop: 8, maxHeight: 220, overflowY: "auto" }}>
-                            <Checkbox.Group
-                                style={{
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: 8,
-                                }}
-                                value={exportSelectedIds}
-                                onChange={(values) =>
-                                    setExportSelectedIds(values.map((value) => String(value)))
-                                }>
-                                {loadedRecordRows.map((record) => (
-                                    <Checkbox key={record.id} value={record.id}>
-                                        {record.label}
-                                    </Checkbox>
-                                ))}
-                            </Checkbox.Group>
-                        </div>
-                    </div>
-
-                    <div>
-                        <Typography.Text strong>Format</Typography.Text>
-                        <Select
-                            value={exportFormat}
-                            onChange={(value) => setExportFormat(value as ExportFormat)}
-                            style={{ width: 200, marginLeft: 12 }}
-                            options={[
-                                { value: "bktgz", label: ".bktgz (Bucket Archive)" },
-                                { value: "json", label: ".json" },
-                            ]}
-                        />
-                    </div>
-
-                    <div>
-                        <Typography.Text strong>Merge Before Writing</Typography.Text>
-                        <Switch
-                            style={{ marginLeft: 12 }}
-                            checked={exportMergeBeforeWrite}
-                            onChange={setExportMergeBeforeWrite}
-                        />
-                    </div>
-
-                    <div>
-                        <Typography.Text strong>File Name</Typography.Text>
-                        <Input
-                            style={{ marginTop: 8 }}
-                            value={exportFileName}
-                            onChange={(event) => setExportFileName(event.target.value)}
-                            placeholder="coverage_export"
-                            addonAfter={exportFormat === "json" ? ".json" : ".bktgz"}
-                        />
-                    </div>
-                </Flex>
-            </Modal>
 
             <ColorModeToggleButton {...view.float.theme.props} />
         </ConfigProvider>

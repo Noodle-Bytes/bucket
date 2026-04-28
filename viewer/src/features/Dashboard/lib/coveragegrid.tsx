@@ -4,7 +4,7 @@
  */
 
 import CoverageTree, { PointNode } from "./coveragetree";
-import { Alert, Button, ConfigProvider, Modal, Select, Space, Table, TableProps, Typography } from "antd";
+import { Alert, Button, ConfigProvider, Select, Space, Table, TableProps, Typography } from "antd";
 import { view } from "../theme";
 import { TreeKey } from "./tree";
 import { Theme as ThemeType } from "@/theme";
@@ -17,6 +17,7 @@ import {
     CaretDownOutlined,
 } from "@ant-design/icons";
 import { hexToRgba, getCoverageColor } from "@/utils/colors";
+import { confirmThemed } from "@/utils/themedStaticModal";
 import { CSSProperties, MouseEvent, useEffect, useMemo, useState } from "react";
 import {
     LARGE_TABLE_SCROLL_Y,
@@ -781,7 +782,7 @@ export function PointGrid({ node }: PointGridProps) {
             return;
         }
 
-        Modal.confirm({
+        confirmThemed({
             title: "Enable full features for large table?",
             content:
                 "Rendering full sorting/filtering for this dataset may be slow and could temporarily freeze the UI.",
