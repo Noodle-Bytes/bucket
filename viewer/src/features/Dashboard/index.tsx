@@ -25,6 +25,8 @@ import {
 } from "antd";
 import {
     BgColorsOutlined,
+    CaretDownOutlined,
+    CaretRightOutlined,
     ClearOutlined,
     DownOutlined,
     EditOutlined,
@@ -38,7 +40,7 @@ import Tree, { TreeKey, TreeNode } from "./lib/tree";
 import Sider from "./components/Sider";
 import EmptyState from "./components/EmptyState";
 import { antTheme, view } from "./theme";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
 import { PointPivotView } from "./lib/pivottable";
@@ -57,6 +59,20 @@ type RecordTableRow = {
     sourceLabel: string;
     sourceKind: string;
     isLoaded: boolean;
+};
+
+type RootCoverageInfo = {
+    name: string;
+    coverpoints: number;
+    covergroups: number;
+    source: string | null;
+    defSha: string | null;
+    recSha: string | null;
+};
+
+type TopLevelCoverageCounts = {
+    coverpoints: number;
+    covergroups: number;
 };
 
 const ColorModeToggleButton = (props: FloatButtonProps) => {
@@ -81,6 +97,211 @@ const ColorModeToggleButton = (props: FloatButtonProps) => {
         </Theme.Consumer>
     );
 };
+
+function getReadoutValue(readout: Readout, getter: keyof Pick<Readout, "get_def_sha" | "get_rec_sha">) {
+    try {
+        return readout[getter]();
+    } catch {
+        return null;
+    }
+}
+
+function getReadoutSource(readout: Readout): string | null {
+    try {
+        const source = readout.get_source?.();
+        const sourceKey = readout.get_source_key?.();
+        if (source && sourceKey) {
+            return `${source}[${sourceKey}]`;
+        }
+        if (source) {
+            return source;
+        }
+        if (sourceKey) {
+            return `[${sourceKey}]`;
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+function getTopLevelCoverageInfo(
+    node: TreeNode,
+    counts: TopLevelCoverageCounts,
+): RootCoverageInfo {
+    const readout = node.data.readout as Readout;
+
+    return {
+        name: node.data.point?.name ?? String(node.title),
+        coverpoints: counts.coverpoints,
+        covergroups: counts.covergroups,
+        source: getReadoutSource(readout),
+        defSha: getReadoutValue(readout, "get_def_sha"),
+        recSha: getReadoutValue(readout, "get_rec_sha"),
+    };
+}
+
+function getTopLevelCoverageCountsByKey(tree: Tree): Map<TreeKey, TopLevelCoverageCounts> {
+    const countsByKey = new Map<TreeKey, TopLevelCoverageCounts>();
+
+    for (const root of tree.getRoots()) {
+        let coverpoints = 0;
+        let covergroups = 0;
+
+        for (const [subNode] of tree.walk([root])) {
+            if (subNode.children?.length) {
+                covergroups += 1;
+            } else {
+                coverpoints += 1;
+            }
+        }
+
+        countsByKey.set(root.key, { coverpoints, covergroups });
+    }
+
+    return countsByKey;
+}
+
+function CoverageInfoField({
+    label,
+    value,
+    mono = false,
+    colors,
+}: {
+    label: string;
+    value: string | number | null;
+    mono?: boolean;
+    colors: ThemeType["theme"]["colors"];
+}) {
+    const displayValue = value === null || value === "" ? "Unknown" : value;
+
+    return (
+        <>
+            <Typography.Text style={{ color: colors.desaturatedtxt.value, fontSize: 12 }}>
+                {label}
+            </Typography.Text>
+            <Typography.Text
+                style={{
+                    color: colors.primarytxt.value,
+                    fontSize: 12,
+                    fontFamily: mono ? "monospace" : undefined,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                }}>
+                {displayValue}
+            </Typography.Text>
+        </>
+    );
+}
+
+function TopLevelCoverageInfoPanel({ info }: { info: RootCoverageInfo }) {
+    const [isCollapsed, setIsCollapsed] = useState(false);
+
+    return (
+        <Theme.Consumer>
+            {({ theme }) => {
+                const colors = theme.theme.colors;
+                return (
+                    <section
+                        style={{
+                            margin: "6px 10px 8px",
+                            border: `1px solid ${colors.lowlightbg.value}`,
+                            backgroundColor: colors.secondarybg.value,
+                        }}>
+                        <button
+                            type="button"
+                            aria-expanded={!isCollapsed}
+                            onClick={() => setIsCollapsed((current) => !current)}
+                            style={{
+                                width: "100%",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                border: 0,
+                                padding: "5px 8px",
+                                color: colors.primarytxt.value,
+                                background: "transparent",
+                                cursor: "pointer",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                textAlign: "left",
+                            }}>
+                            {isCollapsed ? <CaretRightOutlined /> : <CaretDownOutlined />}
+                            Coverage Info
+                        </button>
+                        {!isCollapsed && (
+                            <div
+                                style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "max-content minmax(0, 1fr) max-content minmax(0, 1fr)",
+                                    gap: "4px 14px",
+                                    padding: "0 8px 8px 24px",
+                                }}>
+                                <CoverageInfoField label="Name" value={info.name} colors={colors} />
+                                <CoverageInfoField
+                                    label="Source"
+                                    value={info.source}
+                                    colors={colors}
+                                />
+                                <CoverageInfoField
+                                    label="Coverpoints"
+                                    value={info.coverpoints.toLocaleString()}
+                                    colors={colors}
+                                />
+                                <CoverageInfoField
+                                    label="Covergroups"
+                                    value={info.covergroups.toLocaleString()}
+                                    colors={colors}
+                                />
+                                <CoverageInfoField
+                                    label="Definition SHA"
+                                    value={info.defSha}
+                                    mono
+                                    colors={colors}
+                                />
+                                <CoverageInfoField
+                                    label="Record SHA"
+                                    value={info.recSha}
+                                    mono
+                                    colors={colors}
+                                />
+                            </div>
+                        )}
+                    </section>
+                );
+            }}
+        </Theme.Consumer>
+    );
+}
+
+function getTopLevelInfoNode(tree: Tree, viewKey: TreeKey): TreeNode | null {
+    const roots = tree.getRoots();
+    if (viewKey === Tree.ROOT) {
+        return roots.length === 1 ? roots[0] : null;
+    }
+
+    return roots.find((node) => node.key === viewKey) ?? null;
+}
+
+function withTopLevelInfoPanel({
+    content,
+    info,
+}: {
+    content: ReactNode;
+    info: RootCoverageInfo | null;
+}) {
+    if (!info) {
+        return content;
+    }
+
+    return (
+        <>
+            <TopLevelCoverageInfoPanel info={info} />
+            {content}
+        </>
+    );
+}
 
 type BreadCrumbMenuProps = {
     pathNode: TreeDataNode;
@@ -368,6 +589,25 @@ export default function Dashboard({
         return { source: null, source_key: null };
     }, [tree, viewKey]);
 
+    const topLevelCoverageCountsByKey = useMemo(
+        () => getTopLevelCoverageCountsByKey(tree),
+        [tree],
+    );
+
+    const topLevelCoverageInfo = useMemo(() => {
+        const infoNode = getTopLevelInfoNode(tree, viewKey);
+        if (!infoNode) {
+            return null;
+        }
+
+        const counts = topLevelCoverageCountsByKey.get(infoNode.key);
+        if (!counts) {
+            return null;
+        }
+
+        return getTopLevelCoverageInfo(infoNode, counts);
+    }, [tree, viewKey, topLevelCoverageCountsByKey]);
+
     const selectedViewContent = useMemo(() => {
         if (isEmpty) {
             return <EmptyState logoSrc={logoSrc} onOpenFile={onOpenFile} />;
@@ -380,30 +620,55 @@ export default function Dashboard({
 
         switch (currentContentKey) {
             case "Pivot":
-                return <PointPivotView node={currentNode} />;
-            case "Summary":
+                return withTopLevelInfoPanel({
+                    content: <PointPivotView node={currentNode} />,
+                    info: topLevelCoverageInfo,
+                });
+            case "Summary": {
                 if (summaryViewMode === "donut") {
-                    return (
+                    const donut = (
                         <CoverageDonut
                             tree={tree}
                             node={currentNode}
                             setSelectedTreeKeys={onSelect}
                         />
                     );
+                    return withTopLevelInfoPanel({
+                        content: donut,
+                        info: topLevelCoverageInfo,
+                    });
                 }
-                return (
+                const summary = (
                     <PointSummaryGrid
                         tree={tree}
                         node={currentNode}
                         setSelectedTreeKeys={onSelect}
                     />
                 );
+                return withTopLevelInfoPanel({
+                    content: summary,
+                    info: topLevelCoverageInfo,
+                });
+            }
             case "Point":
-                return <PointGrid node={currentNode} />;
+                return withTopLevelInfoPanel({
+                    content: <PointGrid node={currentNode} />,
+                    info: topLevelCoverageInfo,
+                });
             default:
                 throw new Error("Invalid view!?");
         }
-    }, [viewKey, currentContentKey, tree, isEmpty, onOpenFile, logoSrc, summaryViewMode, onSelect]);
+    }, [
+        viewKey,
+        currentContentKey,
+        tree,
+        isEmpty,
+        onOpenFile,
+        logoSrc,
+        summaryViewMode,
+        onSelect,
+        topLevelCoverageInfo,
+    ]);
 
     const applyLoadedEdits = () => {
         if (!onSetLoadedRecords) {
