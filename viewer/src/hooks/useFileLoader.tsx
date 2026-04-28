@@ -3,8 +3,11 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Modal, notification } from "antd";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { Button, Flex, Typography } from "antd";
+import { getThemePreference } from "@/utils/themePreference";
+import { confirmThemed, infoThemed } from "@/utils/themedStaticModal";
+import { notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/utils/themedStaticNotification";
 import CoverageTree from "../features/Dashboard/lib/coveragetree";
 import {
     isElectron,
@@ -44,6 +47,31 @@ type SourceLoadPayload = {
 };
 
 type LoadMode = "replace" | "append";
+
+/** Offer merge vs individual load when more than one archive is selected in one action. */
+const BULK_MERGE_THRESHOLD = 1;
+
+type ArchiveFileItem =
+    | { kind: "fileObject"; file: File }
+    | { kind: "electronPath"; path: string }
+    | { kind: "fileHandle"; handle: FileSystemFileHandle };
+
+export type LoadingProgress = {
+    completed: number;
+    total: number;
+    /** `reading` = parsing archives; `applying` = merge or committing huge session state (blocks UI). */
+    phase?: "reading" | "applying";
+    /** Meaningful when `phase === "applying"`. */
+    applyingKind?: "merge" | "individual";
+};
+
+function yieldToBrowser(): Promise<void> {
+    return new Promise((resolve) => {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => resolve());
+        });
+    });
+}
 
 function getDefaultSession(): CoverageSession {
     return {
@@ -119,9 +147,125 @@ async function promptCoverageFileReselect(): Promise<File | null> {
     });
 }
 
+function promptBulkLoadStrategy(fileCount: number): Promise<"merge" | "individual" | "cancel"> {
+    return new Promise((resolve) => {
+        let settled = false;
+        let destroyModal: (() => void) | null = null;
+        const pref = getThemePreference();
+        const cl = pref.theme.colors;
+        const border = cl.secondarybg.value;
+        const txt = cl.primarytxt.value;
+        const muted = cl.desaturatedtxt.value;
+
+        const finish = (choice: "merge" | "individual" | "cancel") => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            window.removeEventListener("keydown", onKeyDown, true);
+            destroyModal?.();
+            resolve(choice);
+        };
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key !== "Escape") {
+                return;
+            }
+            e.preventDefault();
+            finish("cancel");
+        };
+        const archiveWord = fileCount === 1 ? "archive" : "archives";
+        const instance = infoThemed({
+            title: `Load ${fileCount} coverage ${archiveWord}`,
+            icon: null,
+            width: 520,
+            maskClosable: false,
+            closable: false,
+            keyboard: true,
+            onCancel: () => finish("cancel"),
+            content: (
+                <>
+                    <Typography.Paragraph
+                        style={{ marginBottom: 10, fontSize: 14, color: txt, lineHeight: 1.5 }}
+                    >
+                        Loading several archives as separate records can slow the viewer. You can
+                        merge them into one loaded record to keep things responsive, or load each
+                        archive as its own record.
+                    </Typography.Paragraph>
+                    <Typography.Paragraph
+                        style={{ marginBottom: 0, fontSize: 14, color: txt, lineHeight: 1.5 }}
+                    >
+                        <Typography.Text strong style={{ color: txt }}>
+                            Note:
+                        </Typography.Text>{" "}
+                        <span style={{ color: muted, opacity: 0.95 }}>
+                            A merged result exists only in this session. Use Export to save an Archive
+                            or JSON file if you want to keep it.
+                        </span>
+                    </Typography.Paragraph>
+                </>
+            ),
+            footer: (
+                <div
+                    style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        borderTop: `1px solid ${border}`,
+                        marginTop: 4,
+                        paddingTop: 14,
+                        paddingBottom: 2,
+                    }}
+                >
+                    <Flex justify="flex-end" gap={8} wrap="wrap">
+                        <Button onClick={() => finish("cancel")}>Cancel</Button>
+                        <Button onClick={() => finish("individual")}>Load individually</Button>
+                        <Button type="primary" onClick={() => finish("merge")}>
+                            Merge into one record
+                        </Button>
+                    </Flex>
+                </div>
+            ),
+        });
+        destroyModal = instance.destroy;
+        window.addEventListener("keydown", onKeyDown, true);
+    });
+}
+
+async function loadPayloadFromArchiveItem(item: ArchiveFileItem): Promise<SourceLoadPayload> {
+    switch (item.kind) {
+        case "fileObject":
+            return {
+                readouts: await loadReadoutsFromFileObject(item.file),
+                source: {
+                    kind: "fileObject",
+                    label: item.file.name,
+                    fileObject: item.file,
+                },
+            };
+        case "electronPath":
+            return {
+                readouts: await loadReadoutsFromElectronPath(item.path),
+                source: {
+                    kind: "electronPath",
+                    label: item.path.split(/[\\/]/).pop() ?? item.path,
+                    path: item.path,
+                },
+            };
+        case "fileHandle":
+            return {
+                readouts: await loadReadoutsFromFileHandle(item.handle),
+                source: {
+                    kind: "fileHandle",
+                    label: item.handle.name,
+                    fileHandle: item.handle,
+                },
+            };
+    }
+}
+
 export function useFileLoader() {
     const [session, setSession] = useState<CoverageSession>(getDefaultSession);
     const [isLoading, setIsLoading] = useState(false);
+    const [loadingProgress, setLoadingProgress] = useState<LoadingProgress | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -184,33 +328,83 @@ export function useFileLoader() {
         });
     };
 
-    const loadWithSources = async (
-        loadFn: () => Promise<SourceLoadPayload[]>,
+    const loadArchiveBatch = async (
+        items: ArchiveFileItem[],
         suppressNotification: boolean = false,
         mode: LoadMode = "append",
     ): Promise<{ success: boolean }> => {
+        if (items.length === 0) {
+            return { success: false };
+        }
+
+        let strategy: "merge" | "individual" = "individual";
+        if (items.length > BULK_MERGE_THRESHOLD) {
+            const choice = await promptBulkLoadStrategy(items.length);
+            if (choice === "cancel") {
+                return { success: false };
+            }
+            strategy = choice;
+        }
+
         setIsLoading(true);
         setError(null);
+        setLoadingProgress({ completed: 0, total: items.length, phase: "reading" });
         try {
-            const payloads = await loadFn();
-            if (payloads.length === 0) {
-                throw new Error("No coverage files selected.");
+            const payloads: SourceLoadPayload[] = [];
+            for (let i = 0; i < items.length; i++) {
+                payloads.push(await loadPayloadFromArchiveItem(items[i]));
+                setLoadingProgress({ completed: i + 1, total: items.length, phase: "reading" });
             }
-            setSessionFromSources(payloads, mode);
+
+            setLoadingProgress({
+                completed: items.length,
+                total: items.length,
+                phase: "applying",
+                applyingKind: strategy,
+            });
+            await yieldToBrowser();
+
+            if (strategy === "merge") {
+                const allReadouts = payloads.flatMap((payload) => payload.readouts);
+                if (allReadouts.length === 0) {
+                    throw new Error("No coverage data");
+                }
+                const mergedReadout = mergeReadoutsStrict(allReadouts);
+                setSessionFromSources(
+                    [
+                        {
+                            readouts: [mergedReadout],
+                            source: {
+                                kind: "virtualMerged",
+                                label: `Merged (${items.length} archives)`,
+                            },
+                        },
+                    ],
+                    mode,
+                );
+                notifySuccess({
+                    message: "Merged load complete",
+                    description:
+                        "One merged record is in the viewer. Export to .bktgz or JSON if you want to save it.",
+                    duration: 5,
+                });
+            } else {
+                setSessionFromSources(payloads, mode);
+            }
             return { success: true };
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err);
             setError(errorMessage);
             if (!suppressNotification) {
                 if (isNoCoverageError(errorMessage)) {
-                    notification.error({
+                    notifyError({
                         message: "No Coverage Data",
                         description:
                             "The loaded .bktgz file contains no coverage data. Please ensure the file was exported correctly from a Bucket coverage run.",
                         duration: 5,
                     });
                 } else {
-                    notification.error({
+                    notifyError({
                         message: "Failed to Load File",
                         description: errorMessage,
                         duration: 5,
@@ -220,28 +414,16 @@ export function useFileLoader() {
             return { success: false };
         } finally {
             setIsLoading(false);
+            setLoadingProgress(null);
         }
     };
 
-    const handleFileInput = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const handleFileInput = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
         const files = Array.from(event.target.files ?? []).filter((file) =>
             file.name.endsWith(".bktgz"),
         );
         if (files.length > 0) {
-            await loadWithSources(async () => {
-                const payloads: SourceLoadPayload[] = [];
-                for (const file of files) {
-                    payloads.push({
-                        readouts: await loadReadoutsFromFileObject(file),
-                        source: {
-                            kind: "fileObject",
-                            label: file.name,
-                            fileObject: file,
-                        },
-                    });
-                }
-                return payloads;
-            });
+            await loadArchiveBatch(files.map((file) => ({ kind: "fileObject" as const, file })));
         }
         if (event.target) {
             event.target.value = "";
@@ -254,27 +436,16 @@ export function useFileLoader() {
             if (!filePaths || filePaths.length === 0) {
                 return;
             }
-            await loadWithSources(async () => {
-                const payloads: SourceLoadPayload[] = [];
-                for (const filePath of filePaths) {
-                    payloads.push({
-                        readouts: await loadReadoutsFromElectronPath(filePath),
-                        source: {
-                            kind: "electronPath",
-                            label: filePath.split(/[\\/]/).pop() ?? filePath,
-                            path: filePath,
-                        },
-                    });
-                }
-                return payloads;
-            });
+            await loadArchiveBatch(
+                filePaths.map((path) => ({ kind: "electronPath" as const, path })),
+            );
             return;
         }
         fileInputRef.current?.click();
     };
 
     const clearCoverage = (): void => {
-        Modal.confirm({
+        confirmThemed({
             title: "Clear Coverage",
             content: "Are you sure you want to clear all coverage data?",
             okText: "Clear",
@@ -302,7 +473,7 @@ export function useFileLoader() {
     const mergeRecords = async (recordIds: string[]): Promise<void> => {
         const selected = session.records.filter((record) => recordIds.includes(record.id));
         if (selected.length < 2) {
-            notification.warning({
+            notifyWarning({
                 message: "Merge Requires Two or More Records",
                 description: "Select at least two records to merge.",
                 duration: 4,
@@ -330,14 +501,14 @@ export function useFileLoader() {
                 records: [...current.records, mergedRecord],
                 loadedRecordIds: [...current.loadedRecordIds, mergedRecord.id],
             }));
-            notification.success({
+            notifySuccess({
                 message: "Records Merged",
                 description: "Merged record added and loaded.",
                 duration: 3,
             });
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err);
-            notification.error({
+            notifyError({
                 message: "Merge Failed",
                 description: errorMessage,
                 duration: 5,
@@ -436,13 +607,13 @@ export function useFileLoader() {
             });
 
             if (refreshedRecordIds.length > 0) {
-                notification.success({
+                notifySuccess({
                     message: "Refresh Complete",
                     description: `Refreshed ${refreshedRecordIds.length} loaded record(s).`,
                     duration: 3,
                 });
             } else {
-                notification.info({
+                notifyInfo({
                     message: "Nothing Refreshed",
                     description: "No loaded file-backed records were refreshed.",
                     duration: 3,
@@ -450,7 +621,7 @@ export function useFileLoader() {
             }
 
             if (warnings.length > 0) {
-                notification.warning({
+                notifyWarning({
                     message: "Refresh Warnings",
                     description: warnings
                         .map((warning) => `${warning.sourceLabel}: ${warning.detail}`)
@@ -461,7 +632,7 @@ export function useFileLoader() {
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err);
             setError(errorMessage);
-            notification.error({
+            notifyError({
                 message: "Refresh Failed",
                 description: errorMessage,
                 duration: 5,
@@ -481,7 +652,7 @@ export function useFileLoader() {
             (record) => record.isLoaded && options.recordIds.includes(record.id),
         );
         if (selected.length === 0) {
-            notification.warning({
+            notifyWarning({
                 message: "No Records Selected",
                 description: "Select at least one loaded record to export.",
                 duration: 4,
@@ -509,7 +680,7 @@ export function useFileLoader() {
                 safeBaseName.length === 0 ? defaultBaseName + extension : `${safeBaseName}${extension}`;
             const result = await saveExportBytes(bytes, options.format, fileName);
             if (!result.canceled) {
-                notification.success({
+                notifySuccess({
                     message: "Export Complete",
                     description: `Exported ${exportReadouts.length} record(s).`,
                     duration: 3,
@@ -517,7 +688,7 @@ export function useFileLoader() {
             }
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err);
-            notification.error({
+            notifyError({
                 message: "Export Failed",
                 description: errorMessage,
                 duration: 5,
@@ -536,22 +707,11 @@ export function useFileLoader() {
                 file.name.endsWith(".bktgz"),
             );
             if (archiveFiles.length > 0) {
-                await loadWithSources(async () => {
-                    const payloads: SourceLoadPayload[] = [];
-                    for (const file of archiveFiles) {
-                        payloads.push({
-                            readouts: await loadReadoutsFromFileObject(file),
-                            source: {
-                                kind: "fileObject",
-                                label: file.name,
-                                fileObject: file,
-                            },
-                        });
-                    }
-                    return payloads;
-                });
+                await loadArchiveBatch(
+                    archiveFiles.map((file) => ({ kind: "fileObject" as const, file })),
+                );
             } else {
-                notification.warning({
+                notifyWarning({
                     message: "Invalid File Type",
                     description: "Please drop a .bktgz file.",
                     duration: 3,
@@ -599,22 +759,14 @@ export function useFileLoader() {
             window.launchQueue.setConsumer(
                 async (launchParams: { files: FileSystemFileHandle[] }) => {
                     try {
-                        await loadWithSources(async () => {
-                            const payloads: SourceLoadPayload[] = [];
-                            for (const fileHandle of launchParams.files) {
-                                payloads.push({
-                                    readouts: await loadReadoutsFromFileHandle(fileHandle),
-                                    source: {
-                                        kind: "fileHandle",
-                                        label: fileHandle.name,
-                                        fileHandle,
-                                    },
-                                });
-                            }
-                            return payloads;
-                        });
+                        await loadArchiveBatch(
+                            launchParams.files.map((handle) => ({
+                                kind: "fileHandle" as const,
+                                handle,
+                            })),
+                        );
                     } catch (err) {
-                        notification.error({
+                        notifyError({
                             message: "Failed to Load File",
                             description: err instanceof Error ? err.message : String(err),
                             duration: 5,
@@ -634,22 +786,11 @@ export function useFileLoader() {
             const electronAPI = window.electronAPI;
             electronAPI.onFilesOpened(async (filePaths: string[]) => {
                 try {
-                    await loadWithSources(async () => {
-                        const payloads: SourceLoadPayload[] = [];
-                        for (const filePath of filePaths) {
-                            payloads.push({
-                                readouts: await loadReadoutsFromElectronPath(filePath),
-                                source: {
-                                    kind: "electronPath",
-                                    label: filePath.split(/[\\/]/).pop() ?? filePath,
-                                    path: filePath,
-                                },
-                            });
-                        }
-                        return payloads;
-                    });
+                    await loadArchiveBatch(
+                        filePaths.map((path) => ({ kind: "electronPath" as const, path })),
+                    );
                 } catch (err) {
-                    notification.error({
+                    notifyError({
                         message: "Failed to Open File",
                         description: err instanceof Error ? err.message : String(err),
                         duration: 5,
@@ -675,6 +816,7 @@ export function useFileLoader() {
         tree,
         session,
         isLoading,
+        loadingProgress,
         isDragging,
         error,
         fileInputRef,
