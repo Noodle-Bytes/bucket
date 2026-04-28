@@ -4,7 +4,7 @@
  */
 
 import { LoadingOutlined } from "@ant-design/icons";
-import { Progress, Spin, Typography } from "antd";
+import { Spin, Typography } from "antd";
 import Theme from "@/providers/Theme";
 import type { LoadingProgress } from "@/hooks/useFileLoader";
 
@@ -43,13 +43,12 @@ export function CoverageLoadingOverlay({ open, loadingProgress }: CoverageLoadin
                 const muted = theme.theme.colors.desaturatedtxt.value;
                 const hasCounts = loadingProgress !== null && loadingProgress.total > 0;
                 const isApplying = loadingProgress?.phase === "applying";
-                const pct =
-                    hasCounts && !isApplying
-                        ? archiveReadPercent(
-                              loadingProgress!.completed,
-                              loadingProgress!.total,
-                          )
-                        : null;
+                const pct = hasCounts
+                    ? archiveReadPercent(
+                          loadingProgress!.completed,
+                          loadingProgress!.total,
+                      )
+                    : null;
 
                 return (
                     <div
@@ -62,7 +61,7 @@ export function CoverageLoadingOverlay({ open, loadingProgress }: CoverageLoadin
                         aria-valuetext={
                             hasCounts
                                 ? isApplying
-                                    ? "Applying to viewer"
+                                    ? `All ${loadingProgress!.total} archives read; applying to viewer`
                                     : `${loadingProgress!.completed} of ${loadingProgress!.total} archives read`
                                 : "Loading"
                         }
@@ -94,93 +93,58 @@ export function CoverageLoadingOverlay({ open, loadingProgress }: CoverageLoadin
                                     fontWeight: 600,
                                     textAlign: "center",
                                 }}>
-                                {isApplying ? "Finishing up" : "Loading coverage"}
+                                Loading coverage
                             </Typography.Title>
 
                             {hasCounts ? (
-                                isApplying ? (
-                                    <>
+                                <>
+                                    <div
+                                        style={{
+                                            marginBottom: 4,
+                                            height: 8,
+                                            borderRadius: 999,
+                                            backgroundColor: border,
+                                            overflow: "hidden",
+                                        }}
+                                    >
                                         <div
                                             style={{
-                                                display: "flex",
-                                                flexDirection: "column",
-                                                alignItems: "center",
-                                                gap: 18,
-                                                padding: "8px 0 4px",
-                                            }}>
-                                            <Spin
-                                                size="large"
-                                                indicator={
-                                                    <LoadingOutlined
-                                                        spin
-                                                        style={{ fontSize: 36, color: accent }}
-                                                    />
-                                                }
-                                            />
-                                        </div>
-                                        <Typography.Text
-                                            style={{
-                                                display: "block",
-                                                fontSize: 15,
-                                                lineHeight: 1.5,
-                                                color: titleColor,
-                                                textAlign: "center",
-                                            }}>
-                                            {loadingProgress!.applyingKind === "merge"
-                                                ? "Merging coverage from all archives into a single record."
-                                                : `Preparing ${loadingProgress!.total} archives in the viewer (records, tree, and views).`}
-                                        </Typography.Text>
-                                        <Typography.Text
-                                            style={{
-                                                display: "block",
-                                                marginTop: 12,
-                                                fontSize: 13,
-                                                lineHeight: 1.45,
-                                                color: muted,
-                                                textAlign: "center",
-                                            }}>
-                                            Archive decoding is finished. This step can take a while
-                                            for very large batches and uses more memory the more
-                                            archives you load at once.
-                                        </Typography.Text>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Progress
-                                            percent={pct ?? 0}
-                                            showInfo={false}
-                                            strokeColor={accent}
-                                            trailColor={border}
-                                            strokeLinecap="round"
-                                            style={{ marginBottom: 4 }}
+                                                width: `${pct ?? 0}%`,
+                                                height: "100%",
+                                                borderRadius: 999,
+                                                backgroundColor: accent,
+                                                transition: "width 0.2s ease",
+                                            }}
                                         />
-                                        <Typography.Text
-                                            style={{
-                                                display: "block",
-                                                marginTop: 14,
-                                                fontSize: 17,
-                                                fontWeight: 500,
-                                                color: titleColor,
-                                                textAlign: "center",
-                                            }}>
-                                            {loadingProgress!.completed} / {loadingProgress!.total}{" "}
-                                            archives read
-                                        </Typography.Text>
-                                        <Typography.Text
-                                            style={{
-                                                display: "block",
-                                                marginTop: 10,
-                                                fontSize: 14,
-                                                lineHeight: 1.45,
-                                                color: muted,
-                                                textAlign: "center",
-                                            }}>
-                                            The bar tracks decoded archives. After the last one, the
-                                            viewer runs a final preparation step before the UI is
-                                            ready.
-                                        </Typography.Text>
-                                    </>
-                                )
+                                    </div>
+                                    <Typography.Text
+                                        style={{
+                                            display: "block",
+                                            marginTop: 14,
+                                            fontSize: 17,
+                                            fontWeight: 500,
+                                            color: titleColor,
+                                            textAlign: "center",
+                                        }}>
+                                        {loadingProgress!.completed} / {loadingProgress!.total}{" "}
+                                        archives read
+                                    </Typography.Text>
+                                    <Typography.Text
+                                        style={{
+                                            display: "block",
+                                            marginTop: 10,
+                                            fontSize: 14,
+                                            lineHeight: 1.45,
+                                            color: muted,
+                                            textAlign: "center",
+                                        }}>
+                                        {isApplying
+                                            ? loadingProgress!.applyingKind === "merge"
+                                                ? "All files loaded. Merging and preparing the final record."
+                                                : "All files loaded. Preparing records, tree, and views."
+                                            : "Reading and decoding selected archive files."}
+                                    </Typography.Text>
+                                </>
                             ) : (
                                 <div
                                     style={{

@@ -355,6 +355,8 @@ export function useFileLoader() {
                 payloads.push(await loadPayloadFromArchiveItem(items[i]));
                 setLoadingProgress({ completed: i + 1, total: items.length, phase: "reading" });
             }
+            // Let the UI paint the fully-complete file-read progress before final apply starts.
+            await yieldToBrowser();
 
             setLoadingProgress({
                 completed: items.length,
