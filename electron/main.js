@@ -60,14 +60,40 @@ function saveRecentFiles(files) {
   }
 }
 
+function getUniqueFilePaths(filePaths) {
+  const uniqueFilePaths = [];
+  const seen = new Set();
+
+  filePaths.forEach(filePath => {
+    if (!filePath || seen.has(filePath)) {
+      return;
+    }
+    seen.add(filePath);
+    uniqueFilePaths.push(filePath);
+  });
+
+  return uniqueFilePaths;
+}
+
 function addToRecentFiles(filePath) {
+  addToRecentFilesBatch([filePath]);
+}
+
+function addToRecentFilesBatch(filePaths) {
+  const uniqueFilePaths = getUniqueFilePaths(filePaths);
+  if (uniqueFilePaths.length === 0) {
+    return;
+  }
+
   const recentFiles = loadRecentFiles();
-  // Remove if already exists
-  const filtered = recentFiles.filter(f => f.path !== filePath);
-  // Add to beginning
-  filtered.unshift({ path: filePath, name: path.basename(filePath) });
-  // Keep only MAX_RECENT_FILES
-  const trimmed = filtered.slice(0, MAX_RECENT_FILES);
+  const uniquePathSet = new Set(uniqueFilePaths);
+  const filtered = recentFiles.filter(file => !uniquePathSet.has(file.path));
+  const newEntries = uniqueFilePaths.map(filePath => ({
+    path: filePath,
+    name: path.basename(filePath),
+  }));
+
+  const trimmed = newEntries.concat(filtered).slice(0, MAX_RECENT_FILES);
   saveRecentFiles(trimmed);
   updateRecentFilesMenu();
 }
@@ -89,6 +115,18 @@ function sendFilesOpenedEvent(filePaths) {
   return true;
 }
 
+function queuePendingFilePaths(filePaths, { prepend = false } = {}) {
+  const uniqueFilePaths = getUniqueFilePaths(filePaths);
+  if (uniqueFilePaths.length === 0) {
+    return;
+  }
+
+  const combined = prepend
+    ? uniqueFilePaths.concat(pendingFilePaths)
+    : pendingFilePaths.concat(uniqueFilePaths);
+  pendingFilePaths = getUniqueFilePaths(combined);
+}
+
 function flushPendingFileOpens() {
   if (pendingFilePaths.length === 0) {
     return;
@@ -98,24 +136,27 @@ function flushPendingFileOpens() {
   pendingFilePaths = [];
 
   if (!sendFilesOpenedEvent(queuedFilePaths)) {
-    pendingFilePaths = queuedFilePaths.concat(pendingFilePaths);
+    queuePendingFilePaths(queuedFilePaths, { prepend: true });
   }
 }
 
 function openFilesInApp(filePaths) {
-  const validFilePaths = filePaths.filter(Boolean);
+  const validFilePaths = getUniqueFilePaths(filePaths);
   if (validFilePaths.length === 0) {
     return;
   }
 
   if (app.isReady() && BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    createWindow().catch(error => {
+      console.error('Failed to create window for file-open request:', error);
+      queuePendingFilePaths(validFilePaths, { prepend: true });
+    });
   }
 
-  validFilePaths.forEach(addToRecentFiles);
+  addToRecentFilesBatch(validFilePaths);
 
   if (!sendFilesOpenedEvent(validFilePaths)) {
-    pendingFilePaths.push(...validFilePaths);
+    queuePendingFilePaths(validFilePaths);
     return;
   }
 
@@ -695,11 +736,15 @@ app.whenReady().then(() => {
   // Register custom protocol before creating window
   setupProtocol();
   createMenu();
-  createWindow();
+  createWindow().catch(error => {
+    console.error('Failed to create initial window:', error);
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      createWindow().catch(error => {
+        console.error('Failed to create window on activate:', error);
+      });
     }
   });
 });
