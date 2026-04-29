@@ -40,6 +40,7 @@
           {
             "UTTypeIdentifier": "com.noodlebytes.bktgz",
             "UTTypeDescription": "Bucket Coverage Archive",
+            "UTTypeIconFile": "bucket_file.icns",
             "UTTypeTagSpecification": {
               "public.filename-extension": [
                 "bktgz"
@@ -60,7 +61,7 @@
           "name": "Bucket Archive",
           "role": "Viewer",
           "rank": "Owner",
-          "icon": "bucket.icns"
+          "icon": "bucket_file.icns"
         }
       ]
     },
