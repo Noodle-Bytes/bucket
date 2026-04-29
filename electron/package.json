@@ -34,19 +34,8 @@
           ]
         }
       ],
-      "icon": "../viewer/public/pwa-512x512.png",
+      "icon": "bucket.icns",
       "extendInfo": {
-        "CFBundleDocumentTypes": [
-          {
-            "CFBundleTypeName": "Bucket Archive",
-            "CFBundleTypeRole": "Viewer",
-            "CFBundleTypeIconFile": "pwa-512x512.png",
-            "LSItemContentTypes": [
-              "com.noodlebytes.bktgz"
-            ],
-            "LSHandlerRank": "Owner"
-          }
-        ],
         "UTExportedTypeDeclarations": [
           {
             "UTTypeIdentifier": "com.noodlebytes.bktgz",
@@ -56,12 +45,24 @@
                 "bktgz"
               ],
               "public.mime-type": [
-                "application/gzip"
+                "application/x-bktgz"
               ]
-            }
+            },
+            "UTTypeConformsTo": [
+              "public.data"
+            ]
           }
         ]
-      }
+      },
+      "fileAssociations": [
+        {
+          "ext": "bktgz",
+          "name": "Bucket Archive",
+          "role": "Viewer",
+          "rank": "Owner",
+          "icon": "bucket.icns"
+        }
+      ]
     },
     "files": [
       "main.js",
