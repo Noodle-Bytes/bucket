@@ -5,6 +5,17 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
+let filesOpenedCallback = null;
+const pendingFilesOpenedEvents = [];
+
+ipcRenderer.on('files-opened', (_event, filePaths) => {
+  if (filesOpenedCallback) {
+    filesOpenedCallback(filePaths);
+    return;
+  }
+  pendingFilesOpenedEvents.push(filePaths);
+});
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -13,12 +24,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveExportFile: (payload) => ipcRenderer.invoke('save-export-file', payload),
   getDroppedFiles: (filePaths) => ipcRenderer.invoke('get-dropped-file', filePaths),
   onFilesOpened: (callback) => {
-    // Remove any existing listeners to avoid duplicates
-    ipcRenderer.removeAllListeners('files-opened');
-    // Set up the new listener
-    ipcRenderer.on('files-opened', (event, filePaths) => {
-      callback(filePaths);
-    });
+    filesOpenedCallback = callback;
+    while (pendingFilesOpenedEvents.length > 0) {
+      const queuedFilePaths = pendingFilesOpenedEvents.shift();
+      callback(queuedFilePaths);
+    }
   },
   onClearCoverage: (callback) => {
     // Remove any existing listeners to avoid duplicates

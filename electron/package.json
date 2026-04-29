@@ -34,34 +34,36 @@
           ]
         }
       ],
-      "icon": "../viewer/public/pwa-512x512.png",
+      "icon": "bucket.icns",
       "extendInfo": {
-        "CFBundleDocumentTypes": [
-          {
-            "CFBundleTypeName": "Bucket Archive",
-            "CFBundleTypeRole": "Viewer",
-            "CFBundleTypeIconFile": "pwa-512x512.png",
-            "LSItemContentTypes": [
-              "com.noodlebytes.bktgz"
-            ],
-            "LSHandlerRank": "Owner"
-          }
-        ],
         "UTExportedTypeDeclarations": [
           {
             "UTTypeIdentifier": "com.noodlebytes.bktgz",
             "UTTypeDescription": "Bucket Coverage Archive",
+            "UTTypeIconFile": "bucket_file.icns",
             "UTTypeTagSpecification": {
               "public.filename-extension": [
                 "bktgz"
               ],
               "public.mime-type": [
-                "application/gzip"
+                "application/x-bktgz"
               ]
-            }
+            },
+            "UTTypeConformsTo": [
+              "public.data"
+            ]
           }
         ]
-      }
+      },
+      "fileAssociations": [
+        {
+          "ext": "bktgz",
+          "name": "Bucket Archive",
+          "role": "Viewer",
+          "rank": "Owner",
+          "icon": "bucket_file.icns"
+        }
+      ]
     },
     "files": [
       "main.js",

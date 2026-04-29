@@ -34,7 +34,7 @@ const isDevelopment = process.env.NODE_ENV === 'development' || !app.isPackaged;
 app.setName('Bucket');
 
 let mainWindow = null;
-let pendingFilePath = null;
+let pendingFilePaths = [];
 
 // Recent files management
 const MAX_RECENT_FILES = 10;
@@ -60,17 +60,120 @@ function saveRecentFiles(files) {
   }
 }
 
+function getUniqueFilePaths(filePaths) {
+  const uniqueFilePaths = [];
+  const seen = new Set();
+
+  filePaths.forEach(filePath => {
+    if (!filePath || seen.has(filePath)) {
+      return;
+    }
+    seen.add(filePath);
+    uniqueFilePaths.push(filePath);
+  });
+
+  return uniqueFilePaths;
+}
+
 function addToRecentFiles(filePath) {
+  addToRecentFilesBatch([filePath]);
+}
+
+function addToRecentFilesBatch(filePaths) {
+  const uniqueFilePaths = getUniqueFilePaths(filePaths);
+  if (uniqueFilePaths.length === 0) {
+    return;
+  }
+
   const recentFiles = loadRecentFiles();
-  // Remove if already exists
-  const filtered = recentFiles.filter(f => f.path !== filePath);
-  // Add to beginning
-  filtered.unshift({ path: filePath, name: path.basename(filePath) });
-  // Keep only MAX_RECENT_FILES
-  const trimmed = filtered.slice(0, MAX_RECENT_FILES);
+  const uniquePathSet = new Set(uniqueFilePaths);
+  const filtered = recentFiles.filter(file => !uniquePathSet.has(file.path));
+  const newEntries = uniqueFilePaths.map(filePath => ({
+    path: filePath,
+    name: path.basename(filePath),
+  }));
+
+  const trimmed = newEntries.concat(filtered).slice(0, MAX_RECENT_FILES);
   saveRecentFiles(trimmed);
   updateRecentFilesMenu();
 }
+
+function canSendFilesOpenedEvent() {
+  return Boolean(
+    mainWindow
+    && !mainWindow.isDestroyed()
+    && mainWindow.webContents
+    && !mainWindow.webContents.isDestroyed(),
+  );
+}
+
+function sendFilesOpenedEvent(filePaths) {
+  if (!canSendFilesOpenedEvent()) {
+    return false;
+  }
+  mainWindow.webContents.send('files-opened', filePaths);
+  return true;
+}
+
+function queuePendingFilePaths(filePaths, { prepend = false } = {}) {
+  const uniqueFilePaths = getUniqueFilePaths(filePaths);
+  if (uniqueFilePaths.length === 0) {
+    return;
+  }
+
+  const combined = prepend
+    ? uniqueFilePaths.concat(pendingFilePaths)
+    : pendingFilePaths.concat(uniqueFilePaths);
+  pendingFilePaths = getUniqueFilePaths(combined);
+}
+
+function flushPendingFileOpens() {
+  if (pendingFilePaths.length === 0) {
+    return;
+  }
+
+  const queuedFilePaths = pendingFilePaths;
+  pendingFilePaths = [];
+
+  if (!sendFilesOpenedEvent(queuedFilePaths)) {
+    queuePendingFilePaths(queuedFilePaths, { prepend: true });
+  }
+}
+
+function openFilesInApp(filePaths) {
+  const validFilePaths = getUniqueFilePaths(filePaths);
+  if (validFilePaths.length === 0) {
+    return;
+  }
+
+  if (app.isReady() && BrowserWindow.getAllWindows().length === 0) {
+    createWindow().catch(error => {
+      console.error('Failed to create window for file-open request:', error);
+      queuePendingFilePaths(validFilePaths, { prepend: true });
+    });
+  }
+
+  addToRecentFilesBatch(validFilePaths);
+
+  if (!sendFilesOpenedEvent(validFilePaths)) {
+    queuePendingFilePaths(validFilePaths);
+    return;
+  }
+
+  if (mainWindow && mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+  if (mainWindow) {
+    mainWindow.focus();
+  }
+}
+
+// Handle file-open requests as early as possible on macOS.
+// Electron can emit this before `ready` when launching via file association.
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  openFilesInApp([filePath]);
+});
 
 /**
  * Update the "Open Recent" submenu in the File menu.
@@ -592,20 +695,9 @@ function setupWindowEventHandlers(window) {
  * @param {BrowserWindow} window - The window that finished loading
  */
 function handleWindowReady(window) {
-  // Handle pending file open (for macOS file association)
-  // This handles the case where a file was opened before the window was ready
-  if (pendingFilePath) {
-    window.webContents.once('did-finish-load', () => {
-      // Send file path to renderer as an array to match onFilesOpened API
-      addToRecentFiles(pendingFilePath);
-      window.webContents.send('files-opened', [pendingFilePath]);
-      pendingFilePath = null;
-    });
-  }
-
-  // Update recent files menu after window is ready
-  // We do this here instead of during initial menu creation to avoid menu insertion errors
+  // Update recent files menu and flush queued file opens once the window has loaded.
   window.webContents.once('did-finish-load', () => {
+    flushPendingFileOpens();
     updateRecentFilesMenu();
   });
 }
@@ -644,26 +736,15 @@ app.whenReady().then(() => {
   // Register custom protocol before creating window
   setupProtocol();
   createMenu();
-  createWindow();
+  createWindow().catch(error => {
+    console.error('Failed to create initial window:', error);
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
-
-  // Handle file open on macOS (when user double-clicks a .bktgz file)
-  // Note: We send file paths as an array [filePath] to match the onFilesOpened API
-  // which expects an array of file paths (for future multi-file support)
-  app.on('open-file', (event, filePath) => {
-    event.preventDefault();
-    addToRecentFiles(filePath);
-    if (mainWindow && mainWindow.webContents) {
-      // Window is ready, send immediately
-      mainWindow.webContents.send('files-opened', [filePath]);
-    } else {
-      // Window not ready yet, store for later
-      pendingFilePath = filePath;
+      createWindow().catch(error => {
+        console.error('Failed to create window on activate:', error);
+      });
     }
   });
 });
