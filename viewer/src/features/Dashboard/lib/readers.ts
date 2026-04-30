@@ -46,20 +46,20 @@ export class JSONReadout implements Readout {
     get_source_key(): string | null {
         return this.record.source_key ?? null;
     }
-    private *iter_def_table(table: string, start: number=0, end: number | null=null) {
+    private *iter_def_table<T extends Record<string, unknown>>(table: string, start: number=0, end: number | null=null): Generator<T> {
         const keys = this.tables[table];
         const tableDef = this.definition[table];
         for (let idx=start; idx < (end ?? tableDef.length); idx++) {
             const values = tableDef[idx];
-            yield Object.fromEntries(keys.map((k,i) => [k, values[i]]))
+            yield Object.fromEntries(keys.map((k,i) => [k, values[i]])) as T;
         }
     }
-    private *iter_rec_table(table: string, start: number=0, end: number | null=null) {
+    private *iter_rec_table<T extends Record<string, unknown>>(table: string, start: number=0, end: number | null=null): Generator<T> {
         const keys = this.tables[table];
         const tableDef = this.record[table];
         for (let idx=start; idx < (end ?? tableDef.length); idx++) {
             const values = tableDef[idx];
-            yield Object.fromEntries(keys.map((k,i) => [k, values[i]]))
+            yield Object.fromEntries(keys.map((k,i) => [k, values[i]])) as T;
         }
     }
     *iter_points(

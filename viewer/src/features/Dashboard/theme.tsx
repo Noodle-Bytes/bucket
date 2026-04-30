@@ -186,7 +186,6 @@ export function antTheme(activeTheme: AppTheme): ThemeConfig {
                 hoverBorderColor: colors.accentbg.value,
                 multipleItemBg: colors.secondarybg.value,
                 multipleItemBorderColor: colors.lowlightbg.value,
-                multipleItemColor: colors.primarytxt.value,
             },
             Breadcrumb: {
                 itemColor: colors.primarytxt.value,

@@ -73,7 +73,7 @@ export function buildNode(node: PointNode): HierarchicalData {
         coverage: 0,
         target: 0,
         hits: 0,
-        nodeKey: node.key,
+        nodeKey: String(node.key),
         isCovergroup: isCovergroup,
     };
     if (isCovergroup) {
