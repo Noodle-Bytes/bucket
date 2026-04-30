@@ -64,7 +64,7 @@ class DogStats(Coverpoint):
 
     NAME = "Doggy stats"
     DESCRIPTION = "Covering basic stats for all dogs"
-    MOTIVATION = "Make sure we have seen a wide variety of dogs"
+    MOTIVATION = "Track the full parade of good boys, from tiny pups to mighty fluffers"
     TIER = 0
     TAGS = ["basic", "stats"]
 
@@ -123,7 +123,7 @@ class ChewToysByAgeAndFavLeg(Coverpoint):
 
     NAME = "chew_toys_by_age"
     DESCRIPTION = "Cover preferred chew toys by age category and favourite leg"
-    MOTIVATION = "Check that favourite leg does not affect preferred chew toy"
+    MOTIVATION = "Make sure paw preference does not secretly steer chew toy destiny"
 
     def setup(self, ctx):
         self.add_axis(
@@ -197,9 +197,9 @@ class ChewToysByAgeAndFavLeg(Coverpoint):
 
 class ChewToysByNameAndBreed(Coverpoint):
     NAME = "incorrect_name_which_will_be_overridden"
-    DESCRIPTION = "Incorrect description that will be overridden"
+    DESCRIPTION = "Cover chew toy preferences by dog name and breed"
     MOTIVATION = (
-        "Check we have seen all breed and all names pick each toy as their favourite"
+        "Ensure every named pupper-breed duo gets a chance to champion a favourite chew"
     )
     TIER = 3
     TAGS = ["Toys", "Age", "Breed"]
