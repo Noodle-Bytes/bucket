@@ -19,6 +19,7 @@ if [ ! -d ".venv" ] || [ ! -f "uv.lock" ]; then
     uv lock
     uv sync --extra dev
 fi
+uv pip install -e . --quiet
 
 # Ensure web environment is installed
 if npm -v >& /dev/null; then

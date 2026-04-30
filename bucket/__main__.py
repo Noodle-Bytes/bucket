@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 from pathlib import Path
 from typing import Iterable
@@ -12,6 +12,7 @@ from .rw.common import MergeReadout, Readout
 
 @click.group()
 @click.pass_context
+@click.version_option(package_name="bucket")
 @click.option(
     "--web-path",
     help="Path to the web viewer",
