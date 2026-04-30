@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { Button, Flex, Typography } from "antd";
 import { getThemePreference } from "@/utils/themePreference";
-import { confirmThemed, infoThemed } from "@/utils/themedStaticModal";
+import { infoThemed } from "@/utils/themedStaticModal";
 import { notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/utils/themedStaticNotification";
 import CoverageTree from "../features/Dashboard/lib/coveragetree";
 import {
@@ -447,17 +447,8 @@ export function useFileLoader() {
     };
 
     const clearCoverage = (): void => {
-        confirmThemed({
-            title: "Clear Coverage",
-            content: "Are you sure you want to clear all coverage data?",
-            okText: "Clear",
-            okType: "danger",
-            cancelText: "Cancel",
-            onOk: () => {
-                setSession(getDefaultSession());
-                setError(null);
-            },
-        });
+        setSession(getDefaultSession());
+        setError(null);
     };
 
     const setLoadedRecords = (loadedRecordIds: string[]): void => {
@@ -800,9 +791,6 @@ export function useFileLoader() {
                 }
             });
 
-            electronAPI.onClearCoverage(() => {
-                clearCoverage();
-            });
         }
 
         return () => {

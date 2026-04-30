@@ -38,4 +38,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       callback();
     });
   },
+  onOpenPreferences: (callback) => {
+    ipcRenderer.removeAllListeners('open-preferences');
+    ipcRenderer.on('open-preferences', () => {
+      callback();
+    });
+  },
 });

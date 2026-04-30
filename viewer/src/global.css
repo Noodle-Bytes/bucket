@@ -73,3 +73,68 @@
 .bucket-themed-notification:hover .bucket-notification-close-ring {
   animation-play-state: paused !important;
 }
+
+/* Metadata filter toolbar accessibility overrides */
+.metadata-filter-toolbar .metadata-filter-select .ant-select-selector {
+  background-color: var(--metadata-select-bg) !important;
+  border-color: var(--metadata-select-border) !important;
+  color: var(--metadata-select-text) !important;
+}
+
+.metadata-filter-toolbar .metadata-filter-select.ant-select-focused .ant-select-selector,
+.metadata-filter-toolbar .metadata-filter-select:hover .ant-select-selector {
+  border-color: var(--metadata-select-hover-border) !important;
+}
+
+.metadata-filter-toolbar .metadata-filter-select .ant-select-selection-placeholder {
+  color: var(--metadata-select-placeholder) !important;
+  opacity: 1 !important;
+}
+
+.metadata-filter-toolbar .metadata-filter-select .ant-select-selection-item,
+.metadata-filter-toolbar .metadata-filter-select .ant-select-selection-search-input,
+.metadata-filter-toolbar .metadata-filter-select .ant-select-arrow,
+.metadata-filter-toolbar .metadata-filter-select .ant-select-clear {
+  color: var(--metadata-select-text) !important;
+}
+
+.metadata-filter-dropdown {
+  background-color: var(--metadata-select-dropdown-bg) !important;
+}
+
+.metadata-filter-dropdown .ant-select-item-option-content {
+  color: var(--metadata-select-text) !important;
+}
+
+.metadata-filter-dropdown .ant-select-item-option-active {
+  background-color: var(--metadata-select-option-hover-bg) !important;
+}
+
+.metadata-filter-dropdown .ant-select-item-option-selected {
+  background-color: var(--metadata-select-option-selected-bg) !important;
+}
+
+/* Point metadata panel accessibility in dark themes */
+.point-metadata-collapse .ant-collapse-item > .ant-collapse-header {
+  background-color: var(--point-metadata-header-bg) !important;
+  color: var(--point-metadata-header-text) !important;
+  min-height: 32px;
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+}
+
+.point-metadata-collapse .ant-collapse-expand-icon,
+.point-metadata-collapse .ant-collapse-arrow {
+  color: var(--point-metadata-header-text) !important;
+}
+
+/* Keep metadata rows compact and left-aligned */
+.point-metadata-descriptions .ant-descriptions-row > th,
+.point-metadata-descriptions .ant-descriptions-row > td {
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+}
+
+.point-metadata-descriptions .ant-descriptions-item-label {
+  vertical-align: top;
+}

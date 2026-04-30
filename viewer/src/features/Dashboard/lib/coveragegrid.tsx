@@ -4,7 +4,18 @@
  */
 
 import CoverageTree, { PointNode } from "./coveragetree";
-import { Alert, Button, ConfigProvider, Select, Space, Table, TableProps, Typography } from "antd";
+import {
+    Alert,
+    Button,
+    Collapse,
+    Descriptions,
+    Select,
+    Space,
+    Table,
+    TableProps,
+    Tag,
+    Typography,
+} from "antd";
 import { view } from "../theme";
 import { TreeKey } from "./tree";
 import { Theme as ThemeType } from "@/theme";
@@ -15,6 +26,7 @@ import {
     FileTextOutlined,
     CaretRightOutlined,
     CaretDownOutlined,
+    CloseOutlined,
 } from "@ant-design/icons";
 import { hexToRgba, getCoverageColor } from "@/utils/colors";
 import { confirmThemed } from "@/utils/themedStaticModal";
@@ -52,10 +64,14 @@ type LargeCoverageRecord = {
 
 type SummaryRecord = {
     key: TreeKey;
+    parentKey: TreeKey | null;
     name: string;
     desc: string;
     depth: number;
     isCovergroup: boolean;
+    tier: number | null;
+    tags: string[];
+    tags_text: string;
     target: number;
     hits: number;
     target_buckets: number;
@@ -64,7 +80,6 @@ type SummaryRecord = {
     hit_ratio: number;
     buckets_hit_ratio: number;
     buckets_full_ratio: number;
-    [key: string]: string | number | boolean;
 };
 
 type RecordWithRatio = {
@@ -101,58 +116,45 @@ type LargeSortOption =
     | "hits_asc"
     | "ratio_desc"
     | "ratio_asc";
-type AxisSortMode = "none" | "user_desc" | "alpha_asc" | "alpha_desc";
+type AxisSortMode = "none" | "user_asc" | "user_desc" | "alpha_asc" | "alpha_desc";
 type AxisSortState = {
     axisName: string | null;
     mode: AxisSortMode;
 };
-
-const largeModeControlsThemeCache = new Map<string, object>();
-
-function getLargeModeControlsTheme(colors: ThemeType["theme"]["colors"]) {
-    const cacheKey = [
-        colors.primarytxt.value,
-        colors.desaturatedtxt.value,
-        colors.tertiarybg.value,
-        colors.highlightbg.value,
-        colors.lowlightbg.value,
-    ].join("|");
-    const cachedTheme = largeModeControlsThemeCache.get(cacheKey);
-    if (cachedTheme) {
-        return cachedTheme;
-    }
-
-    const nextTheme = {
-        token: {
-            colorText: colors.primarytxt.value,
-            colorTextPlaceholder: colors.desaturatedtxt.value,
-            colorBgElevated: colors.tertiarybg.value,
-            controlItemBgHover: colors.highlightbg.value,
-            controlItemBgActive: colors.lowlightbg.value,
-            colorBorder: colors.lowlightbg.value,
-        },
-        components: {
-            Select: {
-                colorBgContainer: colors.tertiarybg.value,
-                colorText: colors.primarytxt.value,
-                colorTextPlaceholder: colors.desaturatedtxt.value,
-                colorBorder: colors.lowlightbg.value,
-                optionSelectedBg: colors.lowlightbg.value,
-                optionActiveBg: colors.highlightbg.value,
-                selectorBg: colors.tertiarybg.value,
-            },
-        },
-    };
-    largeModeControlsThemeCache.set(cacheKey, nextTheme);
-    return nextTheme;
-}
 
 export type PointGridProps = {
     node: PointNode;
 };
 
 let sessionLargeModeWarningAcknowledged = false;
-type ComparableRecord = Record<string, string | number | boolean | undefined>;
+type ComparableRecord = Record<string, string | number | boolean | null | undefined>;
+
+function parsePointTags(tags: string | null | undefined): string[] {
+    if (!tags) {
+        return [];
+    }
+    try {
+        const decoded = JSON.parse(tags);
+        if (Array.isArray(decoded)) {
+            return decoded
+                .map((tag) => String(tag).trim())
+                .filter((tag) => tag.length > 0);
+        }
+    } catch {
+        // Fall back to legacy comma-separated format.
+    }
+    return tags
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0);
+}
+
+function normalizePointTier(tier: number | null | undefined): number | null {
+    if (tier === null || tier === undefined || Number.isNaN(tier)) {
+        return null;
+    }
+    return tier;
+}
 
 function getCoverageColumnConfig(theme: ThemeType, columnKey: string) {
     return {
@@ -190,48 +192,56 @@ function getCoverageColumnConfig(theme: ThemeType, columnKey: string) {
     };
 }
 
-function getColumnMixedCompare(columnKey: string) {
-    return (a: ComparableRecord, b: ComparableRecord) =>
+function getColumnMixedCompare<T extends object>(columnKey: string) {
+    return (a: T, b: T) =>
         natCompare(
-            (a[columnKey] as string | number | undefined) ?? "",
-            (b[columnKey] as string | number | undefined) ?? "",
+            ((a as ComparableRecord)[columnKey] as string | number | undefined) ?? "",
+            ((b as ComparableRecord)[columnKey] as string | number | undefined) ?? "",
         );
 }
 
-function getColumnNumCompare(columnKey: string) {
-    return (a: ComparableRecord, b: ComparableRecord) =>
+function getColumnNumCompare<T extends object>(columnKey: string) {
+    return (a: T, b: T) =>
         numCompare(
-            Number((a[columnKey] as number | string | undefined) ?? Number.NaN),
-            Number((b[columnKey] as number | string | undefined) ?? Number.NaN),
+            Number(
+                ((a as ComparableRecord)[columnKey] as number | string | undefined)
+                ?? Number.NaN,
+            ),
+            Number(
+                ((b as ComparableRecord)[columnKey] as number | string | undefined)
+                ?? Number.NaN,
+            ),
         );
+}
+
+function getAxisSortOrder(mode: AxisSortMode): "ascend" | "descend" | null {
+    switch (mode) {
+        case "user_asc":
+        case "alpha_asc":
+            return "ascend";
+        case "user_desc":
+        case "alpha_desc":
+            return "descend";
+        case "none":
+        default:
+            return null;
+    }
 }
 
 function getNextAxisSortMode(current: AxisSortMode): AxisSortMode {
     switch (current) {
         case "none":
+            return "user_asc";
+        case "user_asc":
             return "user_desc";
         case "user_desc":
             return "alpha_asc";
         case "alpha_asc":
             return "alpha_desc";
         case "alpha_desc":
-            return "none";
+            return "user_asc";
         default:
-            return "none";
-    }
-}
-
-function getAxisSortIndicator(mode: AxisSortMode): string {
-    switch (mode) {
-        case "user_desc":
-            return " [user↓]";
-        case "alpha_asc":
-            return " [A→Z]";
-        case "alpha_desc":
-            return " [Z→A]";
-        case "none":
-        default:
-            return "";
+            return "user_asc";
     }
 }
 
@@ -366,7 +376,6 @@ function getFullColumns(
     model: PointTableModel,
     axisValueStart: number,
     axisSortState: AxisSortState,
-    onAxisSortClick: (axisName: string) => void,
 ): TableProps<CoverageRecord>["columns"] {
     return [
         {
@@ -384,30 +393,20 @@ function getFullColumns(
                 const axisSortMode =
                     axisSortState.axisName === axis.name ? axisSortState.mode : "none";
                 return {
-                    title: (
-                        <span
-                            role="button"
-                            tabIndex={0}
-                            title={
-                                "Cycle sort: user order, reverse user order, alphabetical, reverse alphabetical"
-                            }
-                            style={{ cursor: "pointer", userSelect: "none" }}
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                onAxisSortClick(axis.name);
-                            }}
-                            onKeyDown={(event) => {
-                                if (event.key === "Enter" || event.key === " ") {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    onAxisSortClick(axis.name);
-                                }
-                            }}>
-                            {`${axis.name}${getAxisSortIndicator(axisSortMode)}`}
-                        </span>
-                    ),
+                    title: axis.name,
                     dataIndex: axis.name,
                     key: axis.name,
+                    sorter: true,
+                    sortDirections: ["ascend", "descend", "ascend"],
+                    showSorterTooltip: {
+                        title:
+                            "User order, reverse user order, alphabetical, reverse alphabetical",
+                        target: "full-header",
+                    },
+                    sortOrder:
+                        axisSortState.axisName === axis.name
+                            ? getAxisSortOrder(axisSortMode)
+                            : null,
                     filters: axisValueSlice.map((axisValue) => ({
                         text: axisValue.value,
                         value: axisValue.value,
@@ -432,19 +431,19 @@ function getFullColumns(
                     filterMode: "tree",
                     filterSearch: true,
                     onFilter: (value, record) => record.goal_name == value,
-                    sorter: getColumnMixedCompare("goal_name"),
+                    sorter: getColumnMixedCompare<CoverageRecord>("goal_name"),
                 },
                 {
                     title: "Target",
                     dataIndex: "target",
                     key: "target",
-                    sorter: getColumnNumCompare("target"),
+                    sorter: getColumnNumCompare<CoverageRecord>("target"),
                 },
                 {
                     title: "Hits",
                     dataIndex: "hits",
                     key: "hits",
-                    sorter: getColumnNumCompare("hits"),
+                    sorter: getColumnNumCompare<CoverageRecord>("hits"),
                 },
                 {
                     title: "Hit %",
@@ -480,7 +479,7 @@ function getFullColumns(
                     filterMode: "tree",
                     filterSearch: true,
                     ...getCoverageColumnConfig(theme, "hit_ratio"),
-                    sorter: getColumnNumCompare("hit_ratio"),
+                    sorter: getColumnNumCompare<CoverageRecord>("hit_ratio"),
                 },
             ],
         },
@@ -545,6 +544,7 @@ export function PointGrid({ node }: PointGridProps) {
     const [overrideState, setOverrideState] = useState<LargeModeOverrideState>(() =>
         createInitialLargeModeOverrideState(sessionLargeModeWarningAcknowledged),
     );
+    const [isLargeBannerDismissed, setIsLargeBannerDismissed] = useState(false);
     const [largeGoalFilter, setLargeGoalFilter] = useState<string>("all");
     const [largeHitFilter, setLargeHitFilter] = useState<HitClassFilter>("all");
     const [largeSort, setLargeSort] = useState<LargeSortOption>("bucket_asc");
@@ -553,6 +553,10 @@ export function PointGrid({ node }: PointGridProps) {
         axisName: null,
         mode: "none",
     });
+    const pointTags = useMemo(() => parsePointTags(node.data.point.tags), [node.data.point.tags]);
+    const pointTier = normalizePointTier(node.data.point.tier);
+    const pointDescription = String(node.data.point.description ?? "").trim();
+    const pointMotivation = String(node.data.point.motivation ?? "").trim();
 
     const model = useMemo(() => buildPointTableModel(node), [node]);
 
@@ -563,6 +567,7 @@ export function PointGrid({ node }: PointGridProps) {
         setLargeGoalFilter("all");
         setLargeHitFilter("all");
         setLargeSort("bucket_asc");
+        setIsLargeBannerDismissed(false);
         setAxisSortState({ axisName: null, mode: "none" });
     }, [node.key]);
 
@@ -700,10 +705,13 @@ export function PointGrid({ node }: PointGridProps) {
                 const aValue = String(a.row[axisName] ?? "");
                 const bValue = String(b.row[axisName] ?? "");
 
-                if (mode === "user_desc") {
-                    const aIdx = orderByValue.get(aValue) ?? Number.NEGATIVE_INFINITY;
-                    const bIdx = orderByValue.get(bValue) ?? Number.NEGATIVE_INFINITY;
-                    const cmp = bIdx - aIdx;
+                if (mode === "user_asc" || mode === "user_desc") {
+                    const aIdx = orderByValue.get(aValue);
+                    const bIdx = orderByValue.get(bValue);
+                    if (aIdx === undefined || bIdx === undefined) {
+                        return a.idx - b.idx;
+                    }
+                    const cmp = mode === "user_desc" ? bIdx - aIdx : aIdx - bIdx;
                     if (cmp !== 0) {
                         return cmp;
                     }
@@ -721,24 +729,45 @@ export function PointGrid({ node }: PointGridProps) {
         return sorted;
     }, [axisSortState, fullDataSource, model.axes, model.axisValues, node.data.point.axis_value_start]);
 
-    const onAxisSortClick = (axisName: string) => {
+    const onFullTableChange: TableProps<CoverageRecord>["onChange"] = (
+        _pagination,
+        _filters,
+        sorter,
+        extra,
+    ) => {
+        if (extra.action !== "sort") {
+            return;
+        }
+        const sorterResult = Array.isArray(sorter) ? sorter[0] : sorter;
+        if (!sorterResult.order) {
+            return;
+        }
+        const columnKey = sorterResult.columnKey;
+        if (typeof columnKey !== "string") {
+            return;
+        }
+        if (!model.axes.some((axis) => axis.name === columnKey)) {
+            return;
+        }
         setAxisSortState((current) => {
-            if (current.axisName !== axisName) {
+            // Ignore duplicate sorter events that can be emitted without a user-mode transition.
+            if (
+                current.axisName === columnKey
+                && sorterResult.order === getAxisSortOrder(current.mode)
+            ) {
+                return current;
+            }
+
+            if (current.axisName !== columnKey || current.mode === "none") {
                 return {
-                    axisName,
-                    mode: "user_desc",
+                    axisName: columnKey,
+                    mode: "user_asc",
                 };
             }
-            const nextMode = getNextAxisSortMode(current.mode);
-            if (nextMode === "none") {
-                return {
-                    axisName: null,
-                    mode: "none",
-                };
-            }
+
             return {
-                axisName,
-                mode: nextMode,
+                axisName: columnKey,
+                mode: getNextAxisSortMode(current.mode),
             };
         });
     };
@@ -800,103 +829,272 @@ export function PointGrid({ node }: PointGridProps) {
     return (
         <Theme.Consumer>
             {({ theme }) => {
-                const colors = theme.theme.colors;
-                const banner = isLargeDataset ? (
+                const pointMetadata = (
+                    <div
+                        style={{
+                            marginBottom: 8,
+                            border: `1px solid ${theme.theme.colors.secondarybg.value}`,
+                            backgroundColor: hexToRgba(theme.theme.colors.tertiarybg.value, 0.82),
+                            "--point-metadata-header-bg": hexToRgba(
+                                theme.theme.colors.secondarybg.value,
+                                0.92,
+                            ),
+                            "--point-metadata-header-text": theme.theme.colors.saturatedtxt.value,
+                            "--point-metadata-header-subtext": theme.theme.colors.primarytxt.value,
+                        } as CSSProperties}>
+                        <Collapse
+                            size="small"
+                            ghost
+                            defaultActiveKey={["metadata"]}
+                            className="point-metadata-collapse"
+                            items={[
+                                {
+                                    key: "metadata",
+                                    label: (
+                                        <Space size="small" wrap>
+                                            <Typography.Text
+                                                style={{
+                                                    fontSize: 13,
+                                                    fontWeight: 700,
+                                                    color: theme.theme.colors.saturatedtxt.value,
+                                                }}>
+                                                {`Details: ${node.data.point.name}`}
+                                            </Typography.Text>
+                                            {pointTier !== null && (
+                                                <Typography.Text
+                                                    style={{
+                                                        fontSize: 12,
+                                                        fontWeight: 600,
+                                                        color: theme.theme.colors.saturatedtxt.value,
+                                                    }}>
+                                                    Tier {pointTier}
+                                                </Typography.Text>
+                                            )}
+                                            {pointTags.length > 0 && (
+                                                <Typography.Text
+                                                    style={{
+                                                        fontSize: 12,
+                                                        fontWeight: 600,
+                                                        color: theme.theme.colors.saturatedtxt.value,
+                                                    }}>
+                                                    {pointTags.length} tag{pointTags.length === 1 ? "" : "s"}
+                                                </Typography.Text>
+                                            )}
+                                        </Space>
+                                    ),
+                                    children: (
+                                        <Descriptions
+                                            size="small"
+                                            column={1}
+                                            colon={false}
+                                            className="point-metadata-descriptions"
+                                            styles={{
+                                                label: {
+                                                    color: theme.theme.colors.primarytxt.value,
+                                                    fontWeight: 600,
+                                                    width: 84,
+                                                },
+                                                content: {
+                                                    color: theme.theme.colors.saturatedtxt.value,
+                                                    wordBreak: "break-word",
+                                                },
+                                            }}
+                                            items={[
+                                                ...(pointDescription
+                                                    ? [
+                                                          {
+                                                              key: "description",
+                                                              label: "Description",
+                                                              children: pointDescription,
+                                                          },
+                                                      ]
+                                                    : []),
+                                                ...(pointMotivation
+                                                    ? [
+                                                          {
+                                                              key: "motivation",
+                                                              label: "Motivation",
+                                                              children: pointMotivation,
+                                                          },
+                                                      ]
+                                                    : []),
+                                                ...(pointTags.length > 0
+                                                    ? [
+                                                          {
+                                                              key: "tags",
+                                                              label: "Tags",
+                                                              children: (
+                                                                  <Space wrap size={[4, 4]}>
+                                                                      {pointTags.map((tag) => (
+                                                                          <Tag
+                                                                              key={tag}
+                                                                              style={{
+                                                                                  marginInlineEnd: 0,
+                                                                                  backgroundColor: hexToRgba(
+                                                                                      theme.theme.colors.accentbg.value,
+                                                                                      0.2,
+                                                                                  ),
+                                                                                  borderColor:
+                                                                                      theme.theme.colors.accentbg.value,
+                                                                                  color:
+                                                                                      theme.theme.colors.primarytxt.value,
+                                                                              }}>
+                                                                              {tag}
+                                                                          </Tag>
+                                                                      ))}
+                                                                  </Space>
+                                                              ),
+                                                          },
+                                                      ]
+                                                    : []),
+                                                ...(pointTier !== null
+                                                    ? [
+                                                          {
+                                                              key: "tier",
+                                                              label: "Tier",
+                                                              children: pointTier,
+                                                          },
+                                                      ]
+                                                    : []),
+                                            ]}
+                                        />
+                                    ),
+                                },
+                            ]}
+                        />
+                    </div>
+                );
+
+                const largeActionButton = (
+                    <Button
+                        size="small"
+                        onClick={isLargeMode ? enableFullFeatures : disableFullFeatures}
+                        style={{
+                            borderColor: theme.theme.colors.lowlightbg.value,
+                            backgroundColor: theme.theme.colors.tertiarybg.value,
+                            color: theme.theme.colors.saturatedtxt.value,
+                        }}>
+                        {isLargeMode ? "Enable full features" : "Return to optimized mode"}
+                    </Button>
+                );
+
+                const banner = isLargeDataset && !isLargeBannerDismissed ? (
                     <Alert
                         style={{
                             marginBottom: 10,
-                            color: colors.primarytxt.value,
-                            backgroundColor: colors.secondarybg.value,
-                            borderColor: isLargeMode
-                                ? colors.accentbg.value
-                                : colors.lowlightbg.value,
+                            paddingInline: 10,
+                            border: `1px solid ${theme.theme.colors.lowlightbg.value}`,
+                            backgroundColor: hexToRgba(
+                                theme.theme.colors.tertiarybg.value,
+                                0.92,
+                            ),
                         }}
                         showIcon
+                        closable
+                        closeIcon={
+                            <CloseOutlined
+                                style={{
+                                    color: theme.theme.colors.saturatedtxt.value,
+                                    fontSize: 12,
+                                }}
+                            />
+                        }
+                        onClose={() => setIsLargeBannerDismissed(true)}
                         type={isLargeMode ? "warning" : "info"}
                         message={
                             <Typography.Text
-                                strong
-                                style={{ color: colors.saturatedtxt.value }}>
+                                style={{
+                                    color: theme.theme.colors.saturatedtxt.value,
+                                    fontWeight: 600,
+                                }}>
                                 {isLargeMode
                                     ? `Large dataset mode active (${model.rowCount.toLocaleString()} rows).`
                                     : `Full features forced for ${model.rowCount.toLocaleString()} rows.`}
                             </Typography.Text>
                         }
                         description={
-                            <Typography.Text style={{ color: colors.primarytxt.value }}>
+                            <Typography.Text
+                                style={{
+                                    color: theme.theme.colors.primarytxt.value,
+                                }}>
                                 {isLargeMode
                                     ? `Optimized rendering is enabled above ${POINT_FULL_FEATURE_ROW_LIMIT.toLocaleString()} rows.`
                                     : "Optimized large mode is available if performance drops."}
                             </Typography.Text>
                         }
-                        action={
-                            isLargeMode ? (
-                                <Button size="small" onClick={enableFullFeatures}>
-                                    Enable full features
-                                </Button>
-                            ) : (
-                                <Button size="small" onClick={disableFullFeatures}>
-                                    Return to optimized mode
-                                </Button>
-                            )
-                        }
                     />
                 ) : null;
 
-                const largeControls = isLargeMode ? (
-                    <ConfigProvider
-                        theme={getLargeModeControlsTheme(colors)}>
-                        <Space wrap style={{ marginBottom: 10, color: colors.primarytxt.value }}>
+                const largeControls = isLargeDataset ? (
+                    <div
+                        style={{
+                            marginBottom: 10,
+                            paddingInline: 8,
+                            display: "flex",
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                            gap: 8,
+                        }}>
+                        <Typography.Text
+                            strong
+                            style={{ color: theme.theme.colors.saturatedtxt.value }}>
+                            {isLargeMode ? "Large mode controls:" : "Large dataset controls:"}
+                        </Typography.Text>
+                        {isLargeMode && (
+                            <>
+                                <Select
+                                    size="small"
+                                    value={largeGoalFilter}
+                                    onChange={(value) => setLargeGoalFilter(value)}
+                                    options={largeGoalOptions}
+                                    style={{ minWidth: 210 }}
+                                />
+                                <Select
+                                    size="small"
+                                    value={largeHitFilter}
+                                    onChange={(value) => setLargeHitFilter(value as HitClassFilter)}
+                                    options={[
+                                        { label: "All hit states", value: "all" },
+                                        { label: "Full", value: "full" },
+                                        { label: "Partial", value: "partial" },
+                                        { label: "Empty", value: "empty" },
+                                        { label: "Illegal", value: "illegal" },
+                                        { label: "Ignore", value: "ignore" },
+                                    ]}
+                                    style={{ minWidth: 160 }}
+                                />
+                                <Select
+                                    size="small"
+                                    value={largeSort}
+                                    onChange={(value) => setLargeSort(value as LargeSortOption)}
+                                    options={[
+                                        { label: "Bucket (asc)", value: "bucket_asc" },
+                                        { label: "Bucket (desc)", value: "bucket_desc" },
+                                        { label: "Hits (desc)", value: "hits_desc" },
+                                        { label: "Hits (asc)", value: "hits_asc" },
+                                        { label: "Hit % (desc)", value: "ratio_desc" },
+                                        { label: "Hit % (asc)", value: "ratio_asc" },
+                                    ]}
+                                    style={{ minWidth: 150 }}
+                                />
+                            </>
+                        )}
+                        {isLargeMode && (
                             <Typography.Text
-                                strong
-                                style={{ color: colors.primarytxt.value }}>
-                                Large mode controls:
-                            </Typography.Text>
-                            <Select
-                                size="small"
-                                value={largeGoalFilter}
-                                onChange={(value) => setLargeGoalFilter(value)}
-                                options={largeGoalOptions}
-                                style={{ minWidth: 210 }}
-                            />
-                            <Select
-                                size="small"
-                                value={largeHitFilter}
-                                onChange={(value) => setLargeHitFilter(value as HitClassFilter)}
-                                options={[
-                                    { label: "All hit states", value: "all" },
-                                    { label: "Full", value: "full" },
-                                    { label: "Partial", value: "partial" },
-                                    { label: "Empty", value: "empty" },
-                                    { label: "Illegal", value: "illegal" },
-                                    { label: "Ignore", value: "ignore" },
-                                ]}
-                                style={{ minWidth: 160 }}
-                            />
-                            <Select
-                                size="small"
-                                value={largeSort}
-                                onChange={(value) => setLargeSort(value as LargeSortOption)}
-                                options={[
-                                    { label: "Bucket (asc)", value: "bucket_asc" },
-                                    { label: "Bucket (desc)", value: "bucket_desc" },
-                                    { label: "Hits (desc)", value: "hits_desc" },
-                                    { label: "Hits (asc)", value: "hits_asc" },
-                                    { label: "Hit % (desc)", value: "ratio_desc" },
-                                    { label: "Hit % (asc)", value: "ratio_asc" },
-                                ]}
-                                style={{ minWidth: 150 }}
-                            />
-                            <Typography.Text style={{ color: colors.desaturatedtxt.value }}>
+                                style={{ color: theme.theme.colors.primarytxt.value }}>
                                 Showing {largeDataSource.length.toLocaleString()} of {model.rowCount.toLocaleString()} rows
                             </Typography.Text>
-                        </Space>
-                    </ConfigProvider>
+                        )}
+                        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
+                            {largeActionButton}
+                        </div>
+                    </div>
                 ) : null;
 
                 if (isLargeMode) {
                     return (
                         <>
+                            {pointMetadata}
                             {banner}
                             {largeControls}
                             <Table<LargeCoverageRecord>
@@ -916,7 +1114,9 @@ export function PointGrid({ node }: PointGridProps) {
 
                 return (
                     <>
+                        {pointMetadata}
                         {banner}
+                        {largeControls}
                         <Table<CoverageRecord>
                             {...(view.body.content.table.props as unknown as TableProps<CoverageRecord>)}
                             key={node.key}
@@ -925,9 +1125,9 @@ export function PointGrid({ node }: PointGridProps) {
                                 model,
                                 node.data.point.axis_value_start,
                                 axisSortState,
-                                onAxisSortClick,
                             )}
                             dataSource={sortedFullDataSource}
+                            onChange={onFullTableChange}
                         />
                     </>
                 );
@@ -961,10 +1161,19 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
     const [expandedCovergroups, setExpandedCovergroups] = useState<Set<TreeKey>>(() =>
         createInitialExpandedSet(tree, node),
     );
+    const [selectedTiers, setSelectedTiers] = useState<number[]>([]);
+    const [includedTags, setIncludedTags] = useState<string[]>([]);
+    const [excludedTags, setExcludedTags] = useState<string[]>([]);
 
     useEffect(() => {
         setExpandedCovergroups(createInitialExpandedSet(tree, node));
     }, [tree, node]);
+
+    useEffect(() => {
+        setSelectedTiers([]);
+        setIncludedTags([]);
+        setExcludedTags([]);
+    }, [tree, node.key]);
 
     const toggleCovergroup = (key: TreeKey, e: MouseEvent) => {
         e.stopPropagation();
@@ -979,7 +1188,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
         });
     };
 
-    const dataSource = useMemo<SummaryRecord[]>(() => {
+    const visibleRows = useMemo<SummaryRecord[]>(() => {
         const rows: SummaryRecord[] = [];
         const isRoot = node.key == CoverageTree.ROOT;
         const root = isRoot ? null : [node];
@@ -1005,12 +1214,18 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
 
             const { point, point_hit } = subNode.data;
             const isCovergroup = (subNode.children?.length ?? 0) > 0;
+            const tier = normalizePointTier(point.tier);
+            const tags = parsePointTags(point.tags);
             rows.push({
                 key: subNode.key,
+                parentKey: parent?.key ?? null,
                 name: subNode.title as string,
                 desc: point.description,
                 depth,
                 isCovergroup,
+                tier,
+                tags,
+                tags_text: tags.join(", "),
                 target: point.target,
                 hits: point_hit.hits,
                 target_buckets: point.target_buckets,
@@ -1024,6 +1239,83 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
 
         return rows;
     }, [tree, node, expandedCovergroups]);
+
+    const tierFilterOptions = useMemo(
+        () =>
+            Array.from(
+                new Set(
+                    visibleRows
+                        .filter((row) => !row.isCovergroup && row.tier !== null)
+                        .map((row) => row.tier as number),
+                ),
+            )
+                .sort((a, b) => a - b)
+                .map((tier) => ({ label: `Tier ${tier}`, value: tier })),
+        [visibleRows],
+    );
+
+    const tagFilterOptions = useMemo(
+        () =>
+            Array.from(
+                new Set(
+                    visibleRows
+                        .filter((row) => !row.isCovergroup)
+                        .flatMap((row) => row.tags),
+                ),
+            )
+                .sort((a, b) => natCompare(a, b))
+                .map((tag) => ({ label: tag, value: tag })),
+        [visibleRows],
+    );
+
+    const dataSource = useMemo<SummaryRecord[]>(() => {
+        const hasFilters =
+            selectedTiers.length > 0
+            || includedTags.length > 0
+            || excludedTags.length > 0;
+
+        if (!hasFilters) {
+            return visibleRows;
+        }
+
+        const tierSet = new Set(selectedTiers);
+        const includeSet = new Set(includedTags);
+        const excludeSet = new Set(excludedTags);
+        const parentByKey = new Map<TreeKey, TreeKey | null>();
+        for (const row of visibleRows) {
+            parentByKey.set(row.key, row.parentKey);
+        }
+
+        const keepKeys = new Set<TreeKey>();
+        for (const row of visibleRows) {
+            if (row.isCovergroup) {
+                continue;
+            }
+
+            const tierMatch =
+                tierSet.size === 0
+                || (row.tier !== null && tierSet.has(row.tier));
+            const includeMatch =
+                includeSet.size === 0
+                || row.tags.some((tag) => includeSet.has(tag));
+            const excludeMatch = row.tags.every((tag) => !excludeSet.has(tag));
+
+            if (!tierMatch || !includeMatch || !excludeMatch) {
+                continue;
+            }
+
+            let currentKey: TreeKey | null = row.key;
+            while (currentKey !== null) {
+                if (keepKeys.has(currentKey)) {
+                    break;
+                }
+                keepKeys.add(currentKey);
+                currentKey = parentByKey.get(currentKey) ?? null;
+            }
+        }
+
+        return visibleRows.filter((row) => keepKeys.has(row.key));
+    }, [visibleRows, selectedTiers, includedTags, excludedTags]);
 
     const getColumns = (theme: ThemeType): TableProps<SummaryRecord>["columns"] => [
         {
@@ -1099,7 +1391,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                 onClick: () => setSelectedTreeKeys([record.key]),
                 style: { cursor: "pointer" },
             }),
-            sorter: getColumnMixedCompare("name"),
+            sorter: getColumnMixedCompare<SummaryRecord>("name"),
         },
         {
             title: "Description",
@@ -1117,7 +1409,46 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     paddingLeft: record.isCovergroup ? "12px" : "8px",
                 },
             }),
-            sorter: getColumnMixedCompare("desc"),
+            sorter: getColumnMixedCompare<SummaryRecord>("desc"),
+        },
+        {
+            title: "Tier",
+            dataIndex: "tier",
+            key: "tier",
+            render: (tier: number | null) => (tier === null ? "-" : String(tier)),
+            sorter: (a: SummaryRecord, b: SummaryRecord) => {
+                if (a.tier === null && b.tier === null) {
+                    return 0;
+                }
+                if (a.tier === null) {
+                    return 1;
+                }
+                if (b.tier === null) {
+                    return -1;
+                }
+                return a.tier - b.tier;
+            },
+            onCell: (record: SummaryRecord) => ({
+                style: {
+                    backgroundColor: record.isCovergroup
+                        ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                        : "transparent",
+                },
+            }),
+        },
+        {
+            title: "Tags",
+            dataIndex: "tags_text",
+            key: "tags_text",
+            render: (tags: string) => (tags === "" ? "-" : tags),
+            sorter: getColumnMixedCompare<SummaryRecord>("tags_text"),
+            onCell: (record: SummaryRecord) => ({
+                style: {
+                    backgroundColor: record.isCovergroup
+                        ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                        : "transparent",
+                },
+            }),
         },
         {
             title: "Goal",
@@ -1126,7 +1457,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     title: "Target",
                     dataIndex: "target",
                     key: "target",
-                    sorter: getColumnNumCompare("target"),
+                    sorter: getColumnNumCompare<SummaryRecord>("target"),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup
@@ -1139,7 +1470,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     title: "Hits",
                     dataIndex: "hits",
                     key: "hits",
-                    sorter: getColumnNumCompare("hits"),
+                    sorter: getColumnNumCompare<SummaryRecord>("hits"),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup
@@ -1153,11 +1484,11 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     dataIndex: "hit_ratio",
                     key: "hit_ratio",
                     ...getCoverageColumnConfig(theme, "hit_ratio"),
-                    sorter: getColumnNumCompare("hit_ratio"),
+                    sorter: getColumnNumCompare<SummaryRecord>("hit_ratio"),
                     onCell: (record: SummaryRecord) => {
                         const coverageConfig = getCoverageColumnConfig(theme, "hit_ratio");
                         const coverageStyle = coverageConfig.onCell
-                            ? coverageConfig.onCell(record).style
+                            ? coverageConfig.onCell(record as unknown as RecordWithRatio).style
                             : ({} as CSSProperties);
                         const covergroupBg = record.isCovergroup
                             ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
@@ -1183,7 +1514,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     title: "Target",
                     dataIndex: "target_buckets",
                     key: "target_buckets",
-                    sorter: getColumnNumCompare("target_buckets"),
+                    sorter: getColumnNumCompare<SummaryRecord>("target_buckets"),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup
@@ -1196,7 +1527,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     title: "Hit",
                     dataIndex: "hit_buckets",
                     key: "hit_buckets",
-                    sorter: getColumnNumCompare("hit_buckets"),
+                    sorter: getColumnNumCompare<SummaryRecord>("hit_buckets"),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup
@@ -1209,7 +1540,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     title: "Full",
                     dataIndex: "full_buckets",
                     key: "full_buckets",
-                    sorter: getColumnNumCompare("full_buckets"),
+                    sorter: getColumnNumCompare<SummaryRecord>("full_buckets"),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup
@@ -1223,14 +1554,14 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     dataIndex: "buckets_hit_ratio",
                     key: "buckets_hit_ratio",
                     ...getCoverageColumnConfig(theme, "buckets_hit_ratio"),
-                    sorter: getColumnNumCompare("buckets_hit_ratio"),
+                    sorter: getColumnNumCompare<SummaryRecord>("buckets_hit_ratio"),
                     onCell: (record: SummaryRecord) => {
                         const coverageConfig = getCoverageColumnConfig(
                             theme,
                             "buckets_hit_ratio",
                         );
                         const coverageStyle = coverageConfig.onCell
-                            ? coverageConfig.onCell(record).style
+                            ? coverageConfig.onCell(record as unknown as RecordWithRatio).style
                             : ({} as CSSProperties);
                         const covergroupBg = record.isCovergroup
                             ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
@@ -1252,14 +1583,14 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     dataIndex: "buckets_full_ratio",
                     key: "buckets_full_ratio",
                     ...getCoverageColumnConfig(theme, "buckets_full_ratio"),
-                    sorter: getColumnNumCompare("buckets_full_ratio"),
+                    sorter: getColumnNumCompare<SummaryRecord>("buckets_full_ratio"),
                     onCell: (record: SummaryRecord) => {
                         const coverageConfig = getCoverageColumnConfig(
                             theme,
                             "buckets_full_ratio",
                         );
                         const coverageStyle = coverageConfig.onCell
-                            ? coverageConfig.onCell(record).style
+                            ? coverageConfig.onCell(record as unknown as RecordWithRatio).style
                             : ({} as CSSProperties);
                         const covergroupBg = record.isCovergroup
                             ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
@@ -1282,24 +1613,132 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
 
     return (
         <Theme.Consumer>
-            {({ theme }) => (
-                <Table<SummaryRecord>
-                    {...(view.body.content.table.props as unknown as TableProps<SummaryRecord>)}
-                    key={node.key}
-                    columns={getColumns(theme)}
-                    dataSource={dataSource}
-                    onRow={(record: SummaryRecord) => ({
-                        style: {
-                            backgroundColor: record.isCovergroup
-                                ? hexToRgba(theme.theme.colors.accentbg.value, 0.12)
-                                : "transparent",
-                            borderLeft: record.isCovergroup
-                                ? `3px solid ${theme.theme.colors.accentbg.value}`
-                                : "3px solid transparent",
-                        },
-                    })}
-                />
-            )}
+            {({ theme }) => {
+                const filterToolbarStyle = {
+                    marginTop: 8,
+                    marginBottom: 12,
+                    padding: "10px 12px",
+                    border: `1px solid ${theme.theme.colors.secondarybg.value}`,
+                    backgroundColor: hexToRgba(theme.theme.colors.tertiarybg.value, 0.72),
+                    display: "flex",
+                    width: "100%",
+                    boxSizing: "border-box",
+                    alignItems: "center",
+                    rowGap: 8,
+                    "--metadata-select-bg": theme.theme.colors.secondarybg.value,
+                    "--metadata-select-border": theme.theme.colors.lowlightbg.value,
+                    "--metadata-select-text": theme.theme.colors.saturatedtxt.value,
+                    "--metadata-select-placeholder": theme.theme.colors.saturatedtxt.value,
+                    "--metadata-select-hover-border": theme.theme.colors.accentbg.value,
+                    "--metadata-select-dropdown-bg": theme.theme.colors.tertiarybg.value,
+                    "--metadata-select-option-hover-bg": theme.theme.colors.lowlightbg.value,
+                    "--metadata-select-option-selected-bg": theme.theme.colors.highlightbg.value,
+                } as CSSProperties;
+                const metadataDropdownStyle = {
+                    backgroundColor: theme.theme.colors.tertiarybg.value,
+                    color: theme.theme.colors.saturatedtxt.value,
+                    "--metadata-select-text": theme.theme.colors.saturatedtxt.value,
+                    "--metadata-select-dropdown-bg": theme.theme.colors.tertiarybg.value,
+                    "--metadata-select-option-hover-bg": theme.theme.colors.lowlightbg.value,
+                    "--metadata-select-option-selected-bg": theme.theme.colors.highlightbg.value,
+                } as CSSProperties;
+
+                return (
+                    <>
+                    <Space wrap className="metadata-filter-toolbar" style={filterToolbarStyle}>
+                        <Typography.Text
+                            strong
+                            style={{
+                                color: theme.theme.colors.saturatedtxt.value,
+                                fontSize: 13,
+                            }}>
+                            Metadata filters:
+                        </Typography.Text>
+                        <Select
+                            mode="multiple"
+                            size="middle"
+                            allowClear
+                            className="metadata-filter-select"
+                            popupClassName="metadata-filter-dropdown"
+                            dropdownStyle={metadataDropdownStyle}
+                            placeholder="Tier"
+                            value={selectedTiers}
+                            onChange={(values) => setSelectedTiers((values as number[]).map(Number))}
+                            options={tierFilterOptions}
+                            style={{ minWidth: 140 }}
+                            aria-label="Filter by tier"
+                        />
+                        <Select
+                            mode="multiple"
+                            size="middle"
+                            allowClear
+                            showSearch
+                            className="metadata-filter-select"
+                            popupClassName="metadata-filter-dropdown"
+                            dropdownStyle={metadataDropdownStyle}
+                            placeholder="Include tags (any)"
+                            value={includedTags}
+                            onChange={(values) => setIncludedTags((values as string[]).map(String))}
+                            options={tagFilterOptions}
+                            style={{ minWidth: 220 }}
+                            aria-label="Include tags filter"
+                        />
+                        <Select
+                            mode="multiple"
+                            size="middle"
+                            allowClear
+                            showSearch
+                            className="metadata-filter-select"
+                            popupClassName="metadata-filter-dropdown"
+                            dropdownStyle={metadataDropdownStyle}
+                            placeholder="Exclude tags"
+                            value={excludedTags}
+                            onChange={(values) => setExcludedTags((values as string[]).map(String))}
+                            options={tagFilterOptions}
+                            style={{ minWidth: 220 }}
+                            aria-label="Exclude tags filter"
+                        />
+                        {(selectedTiers.length > 0
+                            || includedTags.length > 0
+                            || excludedTags.length > 0) && (
+                            <Button
+                                size="small"
+                                onClick={() => {
+                                    setSelectedTiers([]);
+                                    setIncludedTags([]);
+                                    setExcludedTags([]);
+                                }}>
+                                Clear filters
+                            </Button>
+                        )}
+                        <Typography.Text
+                            style={{
+                                color: theme.theme.colors.primarytxt.value,
+                                fontSize: 13,
+                                fontWeight: 500,
+                            }}>
+                            Showing {dataSource.length.toLocaleString()} rows
+                        </Typography.Text>
+                    </Space>
+                    <Table<SummaryRecord>
+                        {...(view.body.content.table.props as unknown as TableProps<SummaryRecord>)}
+                        key={node.key}
+                        columns={getColumns(theme)}
+                        dataSource={dataSource}
+                        onRow={(record: SummaryRecord) => ({
+                            style: {
+                                backgroundColor: record.isCovergroup
+                                    ? hexToRgba(theme.theme.colors.accentbg.value, 0.12)
+                                    : "transparent",
+                                borderLeft: record.isCovergroup
+                                    ? `3px solid ${theme.theme.colors.accentbg.value}`
+                                    : "3px solid transparent",
+                            },
+                        })}
+                    />
+                </>
+                );
+            }}
         </Theme.Consumer>
     );
 }

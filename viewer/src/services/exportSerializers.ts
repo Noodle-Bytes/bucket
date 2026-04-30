@@ -32,6 +32,9 @@ const JSON_TABLES: Record<string, string[]> = {
         "target_buckets",
         "name",
         "description",
+        "tier",
+        "tags",
+        "motivation",
     ],
     axis: ["start", "value_start", "value_end", "name", "description"],
     axis_value: ["start", "value"],
@@ -166,6 +169,9 @@ export function serializeReadoutsToJsonBytes(readouts: Readout[]): Uint8Array {
                 point.target_buckets,
                 point.name,
                 point.description,
+                point.tier ?? null,
+                point.tags ?? "",
+                point.motivation ?? "",
             ]),
             axis: data.axes.map((axis) => [
                 axis.start,
@@ -243,6 +249,9 @@ export function serializeReadoutsToArchiveBytes(readouts: Readout[]): Uint8Array
                 point.target_buckets,
                 point.name,
                 point.description,
+                point.tier ?? null,
+                point.tags ?? "",
+                point.motivation ?? "",
             ]),
         );
 

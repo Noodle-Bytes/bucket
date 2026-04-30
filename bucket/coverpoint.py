@@ -112,7 +112,9 @@ class Coverpoint(CoverBase):
         self._motivation = motivation if motivation is not None else self.MOTIVATION
 
         self._default_goal = self._goal_dict["DEFAULT"]
-        self._sha = hashlib.sha256((self._name + self._description).encode())
+        self._sha = hashlib.sha256(
+            (self._name + self._description + self._motivation).encode()
+        )
         self._axis_names = [x.name for x in self._axes]
         self._axis_resolvers = tuple(
             (axis.name, axis.get_named_value) for axis in self._axes
