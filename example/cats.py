@@ -70,6 +70,7 @@ class CatStats(Coverpoint):
 
     # No name provided to demonstrate that class name will be used
     DESCRIPTION = "Some basic cat stats"
+    MOTIVATION = "Track the grand council of kitties and their daily mischief levels"
     TIER = 1
     TAGS = ["basic", "stats"]
 
@@ -141,6 +142,7 @@ class PlayToysByAge(Coverpoint):
 
     NAME = "play_toys_by_age"
     DESCRIPTION = "Preferred play toys by age"
+    MOTIVATION = "Make sure every whiskered life stage gets its ideal toy obsession"
 
     def setup(self, ctx):
         self.add_axis(
@@ -189,6 +191,8 @@ class PlayToysByAge(Coverpoint):
 
 
 class PlayToysByName(Coverpoint):
+    MOTIVATION = "Ensure each tiny floof in this name pack has a signature toy quest"
+
     def __init__(self, name_group):
         self.valid_names = name_group
 
@@ -227,6 +231,7 @@ class PlayToysByName(Coverpoint):
 class VIPNames(Coverpoint):
     NAME = "VIPs"
     DESCRIPTION = "Only important cat breeds"
+    MOTIVATION = "Keep tabs on the most self-important felines and their royal swagger"
 
     def __init__(self):
         self.important_names = ["Clive", "Derek"]
@@ -270,6 +275,9 @@ class CatNapMultiverse(Coverpoint):
 
     NAME = "cat_nap_multiverse"
     DESCRIPTION = "Every possible interdimensional cat nap"
+    MOTIVATION = (
+        "Verify that every cosmic loafing timeline receives proper snooze coverage"
+    )
     TIER = 9
     TAGS = ["performance_demo", "cats", "whimsical"]
 
