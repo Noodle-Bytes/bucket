@@ -97,8 +97,8 @@ export default class CoverageTree extends Tree<PointData> {
                 {
                     value: "Point",
                     icon: <TableOutlined />,
-                    label: "Point",
-                    title: "View detailed coverage point data",
+                    label: "Table",
+                    title: "View detailed coverage point table",
                 },
                 {
                     value: "Pivot",

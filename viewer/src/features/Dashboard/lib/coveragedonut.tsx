@@ -327,8 +327,25 @@ export function CoverageDonut({
         <Theme.Consumer>
             {(themeContextRaw) => {
                 const isRoot = node.key === CoverageTree.ROOT;
-                const roots = tree.getRoots();
                 if (isRoot) {
+                    const roots = tree.getRoots();
+
+                    if (roots.length === 0) {
+                        return (
+                            <div
+                                style={{
+                                    padding: '24px',
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    color: themeContextRaw.theme.theme.colors.desaturatedtxt.value,
+                                }}
+                            >
+                                No coverage data available
+                            </div>
+                        );
+                    }
+
                     if (roots.length === 1) {
                         return (
                             <CoverageDonutInner
@@ -390,7 +407,7 @@ export function CoverageDonut({
                         </div>
                     );
                 }
-                // Default: single donut view
+                // Non-root node: single donut view
                 return (
                     <CoverageDonutInner
                         node={node}

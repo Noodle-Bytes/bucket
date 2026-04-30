@@ -8,7 +8,7 @@
  * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
  */
 
-import theme from "@/theme";
+import defaultTheme, { Theme as AppTheme } from "@/theme";
 import type {
     SiderProps,
     ThemeConfig,
@@ -22,7 +22,7 @@ import type {
 } from "antd";
 import type { SearchProps } from "antd/es/input";
 import { ComponentPropsWithoutRef } from "react";
-const cl = theme.colors;
+const cl = defaultTheme.colors;
 
 const sider = {
     props: {
@@ -94,7 +94,7 @@ const body = {
                     block: false,
                     size: "small",
                     style: {
-                        margin: 5,
+                        margin: 0,
                         marginRight: 10,
                     },
                 } as Omit<SegmentedProps, "ref">,
@@ -137,22 +137,26 @@ export const view = {
     },
 };
 
-export const antTheme: ThemeConfig = (() => {
-    const siderBg = cl.secondarybg.toString();
+export function antTheme(activeTheme: AppTheme): ThemeConfig {
+    const colors = activeTheme.theme.colors;
+    const siderBg = colors.secondarybg.value;
     return {
         token: {
-            colorText: cl.primarytxt.toString(),
+            colorText: colors.primarytxt.value,
+            colorTextSecondary: colors.primarytxt.value,
+            colorTextTertiary: colors.desaturatedtxt.value,
+            colorTextPlaceholder: colors.desaturatedtxt.value,
             // These tokens are used in the breadcrumb menu
-            colorBgElevated: cl.secondarybg.toString(),
-            controlItemBgHover: cl.highlightbg.toString(),
-            controlItemBgActive: cl.lowlightbg.toString(),
-            controlItemBgActiveHover: cl.highlightbg.toString(),
+            colorBgElevated: colors.secondarybg.value,
+            controlItemBgHover: colors.highlightbg.value,
+            controlItemBgActive: colors.lowlightbg.value,
+            controlItemBgActiveHover: colors.highlightbg.value,
         },
         components: {
             Layout: {
-                bodyBg: cl.primarybg.toString(),
+                bodyBg: colors.primarybg.value,
                 siderBg: siderBg,
-                headerBg: cl.primarybg.toString(),
+                headerBg: colors.primarybg.value,
                 headerPadding: 0,
                 // This token doesn't work - set above in style instead
                 // triggerBg: cl.loContrast.toString(),
@@ -161,57 +165,74 @@ export const antTheme: ThemeConfig = (() => {
                 // This is the background of the tree
                 colorBgContainer: siderBg,
                 // This is used for lines between nodes
-                colorBorder: cl.primarytxt.toString(),
-                nodeSelectedBg: cl.highlightbg.toString(),
-                nodeHoverBg: cl.lowlightbg.toString(),
+                colorBorder: colors.primarytxt.value,
+                nodeSelectedBg: colors.highlightbg.value,
+                nodeHoverBg: colors.lowlightbg.value,
                 borderRadius: 0,
             },
             Input: {
                 borderRadius: 0,
-                colorBorder: cl.secondarybg.toString(),
-                colorBgContainer: cl.tertiarybg.toString(),
-                colorTextPlaceholder: cl.desaturatedtxt.toString(),
+                colorBorder: colors.secondarybg.value,
+                colorBgContainer: colors.tertiarybg.value,
+                colorTextPlaceholder: colors.desaturatedtxt.value,
+            },
+            Select: {
+                selectorBg: colors.tertiarybg.value,
+                clearBg: colors.tertiarybg.value,
+                optionActiveBg: colors.lowlightbg.value,
+                optionSelectedBg: colors.highlightbg.value,
+                optionSelectedColor: colors.saturatedtxt.value,
+                activeBorderColor: colors.accentbg.value,
+                hoverBorderColor: colors.accentbg.value,
+                multipleItemBg: colors.secondarybg.value,
+                multipleItemBorderColor: colors.lowlightbg.value,
             },
             Breadcrumb: {
-                itemColor: cl.primarytxt.toString(),
-                separatorColor: cl.primarytxt.toString(),
-                linkColor: cl.primarytxt.toString(),
-                linkHoverColor: cl.saturatedtxt.toString(),
-                colorBgTextHover: cl.lowlightbg.toString(),
+                itemColor: colors.primarytxt.value,
+                separatorColor: colors.primarytxt.value,
+                linkColor: colors.primarytxt.value,
+                linkHoverColor: colors.saturatedtxt.value,
+                colorBgTextHover: colors.lowlightbg.value,
             },
             Segmented: {
                 trackBg: undefined,
-                itemColor: cl.primarytxt.toString(),
-                itemHoverBg: cl.lowlightbg.toString(),
-                itemSelectedBg: cl.highlightbg.toString(),
+                itemColor: colors.primarytxt.value,
+                itemHoverBg: colors.lowlightbg.value,
+                itemSelectedBg: colors.highlightbg.value,
                 trackPadding: 0,
             },
             Button: {
                 // Keep default (non-primary/non-danger) buttons readable in dark themes.
-                defaultBg: cl.tertiarybg.toString(),
-                defaultColor: cl.saturatedtxt.toString(),
-                defaultBorderColor: cl.lowlightbg.toString(),
-                defaultHoverBg: cl.highlightbg.toString(),
-                defaultHoverColor: cl.saturatedtxt.toString(),
-                defaultHoverBorderColor: cl.highlightbg.toString(),
-                defaultActiveBg: cl.lowlightbg.toString(),
-                defaultActiveColor: cl.saturatedtxt.toString(),
-                defaultActiveBorderColor: cl.lowlightbg.toString(),
+                defaultBg: colors.tertiarybg.value,
+                defaultColor: colors.saturatedtxt.value,
+                defaultBorderColor: colors.lowlightbg.value,
+                defaultHoverBg: colors.highlightbg.value,
+                defaultHoverColor: colors.saturatedtxt.value,
+                defaultHoverBorderColor: colors.highlightbg.value,
+                defaultActiveBg: colors.lowlightbg.value,
+                defaultActiveColor: colors.saturatedtxt.value,
+                defaultActiveBorderColor: colors.lowlightbg.value,
             },
             FloatButton: {
-                colorBgElevated: cl.highlightbg.toString(),
+                colorBgElevated: colors.highlightbg.value,
             },
             Table: {
-                // colorBgContainer: cl.primarybg.toString(),
-                headerBg: cl.tertiarybg.toString(),
-                colorBgContainer: cl.primarybg.toString(),
-                borderColor: cl.secondarybg.toString(),
+                headerBg: colors.tertiarybg.value,
+                colorBgContainer: colors.primarybg.value,
+                borderColor: colors.secondarybg.value,
                 headerBorderRadius: 0,
-                rowHoverBg: cl.secondarybg.toString(),
-                headerSortHoverBg: cl.secondarybg.toString(),
-                headerSortActiveBg: cl.primarybg.toString(),
-                bodySortBg: cl.tertiarybg.toString(),
+                rowHoverBg: colors.secondarybg.value,
+                headerSortHoverBg: colors.secondarybg.value,
+                headerSortActiveBg: colors.primarybg.value,
+                bodySortBg: colors.tertiarybg.value,
+            },
+            Modal: {
+                titleColor: colors.saturatedtxt.value,
+                titleFontSize: 15,
+                contentBg: colors.tertiarybg.value,
+                headerBg: colors.tertiarybg.value,
+                footerBg: colors.tertiarybg.value,
             },
         },
     };
-})();
+}

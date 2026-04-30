@@ -1,5 +1,10 @@
 /*
  * SPDX-License-Identifier: MIT
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+ */
+
+/*
+ * SPDX-License-Identifier: MIT
  * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
  */
 
@@ -18,7 +23,7 @@ const lightThemeDef = {
             accentbg: "#9999DD",
             saturatedtxt: "#000000",
             primarytxt: "#222222",
-            desaturatedtxt: "#888888",
+            desaturatedtxt: "#565B61",
             positivebg: "#4bFF4b",
             negativebg: "#FF4b4b",
         },
@@ -36,8 +41,8 @@ const darkThemeDef: typeof lightThemeDef = {
             highlightbg: "#505050",
             accentbg: "#9999DD",
             saturatedtxt: "#FFFFFF",
-            primarytxt: "#CCCCCC",
-            desaturatedtxt: "#888888",
+            primarytxt: "#D7D7D7",
+            desaturatedtxt: "#C7CFD7",
             positivebg: "#2BAA2B",
             negativebg: "#AA2B2B",
         },
@@ -48,17 +53,17 @@ const oddThemeDef: typeof lightThemeDef = {
     name: "odd",
     theme: {
         colors: {
-            primarybg: "beige",
-            secondarybg: "brown",
-            tertiarybg: "#fefe84",
-            lowlightbg: "#b05050",
-            highlightbg: "#fefe84",
-            accentbg: "#9999DD",
-            saturatedtxt: "#AAFFFF",
-            primarytxt: "#44CCCC",
-            desaturatedtxt: "#888888",
-            positivebg: "#ADFF6E",
-            negativebg: "#FFB6B6",
+            primarybg: "#F7F0D8",
+            secondarybg: "#E8D5B0",
+            tertiarybg: "#FFF8DC",
+            lowlightbg: "#D2B48C",
+            highlightbg: "#FFF4C2",
+            accentbg: "#3B82F6",
+            saturatedtxt: "#1F2933",
+            primarytxt: "#2D3748",
+            desaturatedtxt: "#394857",
+            positivebg: "#2F855A",
+            negativebg: "#C53030",
         },
     },
 };

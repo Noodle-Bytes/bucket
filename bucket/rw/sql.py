@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
+import logging
 from pathlib import Path
 from typing import Iterable, overload
 
 from sqlalchemy import Integer, String, create_engine, select
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from .common import (
@@ -21,7 +24,10 @@ from .common import (
     Reader,
     Readout,
     Writer,
+    point_tuple_from_row,
 )
+
+log = logging.getLogger(__name__)
 
 ###############################################################################
 # Table definitions
@@ -73,7 +79,31 @@ class PointRow(BaseRow):
 
     @classmethod
     def from_tuple(cls, definition: int, tup: PointTuple):
-        return cls(definition=definition, **tup._asdict())
+        # Core point fields are stored in point table; optional metadata fields
+        # are stored in point_meta to preserve compatibility with older DBs.
+        data = {field: tup._asdict()[field] for field in PointTuple._fields[:15]}
+        return cls(definition=definition, **data)
+
+
+class PointMetaRow(BaseRow):
+    __tablename__ = "point_meta"
+    definition: Mapped[int] = mapped_column(Integer, primary_key=True)
+    start: Mapped[int] = mapped_column(Integer, primary_key=True)
+    depth: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tags: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    motivation: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+
+    @classmethod
+    def from_tuple(cls, definition: int, tup: PointTuple):
+        return cls(
+            definition=definition,
+            start=tup.start,
+            depth=tup.depth,
+            tier=tup.tier,
+            tags=tup.tags,
+            motivation=tup.motivation,
+        )
 
 
 class AxisRow(BaseRow):
@@ -163,6 +193,7 @@ class SQLWriter(Writer):
 
     def __init__(self, engine):
         self.engine = engine
+        self._has_point_meta = inspect(engine).has_table(PointMetaRow.__tablename__)
 
     def write(self, readout: Readout):
         with Session(self.engine) as self.session:
@@ -174,6 +205,8 @@ class SQLWriter(Writer):
 
             for point in readout.iter_points():
                 self.session.add(PointRow.from_tuple(def_ref, point))
+                if self._has_point_meta:
+                    self.session.add(PointMetaRow.from_tuple(def_ref, point))
 
             for axis in readout.iter_axes():
                 self.session.add(AxisRow.from_tuple(def_ref, axis))
@@ -257,8 +290,25 @@ class SQLReader(Reader):
                 .order_by(BucketGoalRow.start)
             )
 
+            point_metadata = {}
+            if inspect(session.bind).has_table(PointMetaRow.__tablename__):
+                point_meta_st = select(PointMetaRow).where(
+                    PointMetaRow.definition == def_ref
+                )
+                for point_meta in session.scalars(point_meta_st):
+                    point_metadata[(point_meta.start, point_meta.depth)] = (
+                        point_meta.tier,
+                        point_meta.tags,
+                        point_meta.motivation,
+                    )
+
             for point_row in session.execute(point_st).all():
-                readout.points.append(PointTuple(*point_row[1:]))
+                core_row = list(point_row[1:])
+                start = core_row[0]
+                depth = core_row[1]
+                if metadata := point_metadata.get((start, depth)):
+                    core_row.extend(metadata)
+                readout.points.append(point_tuple_from_row(core_row))
 
             for axis_row in session.execute(axis_st).all():
                 readout.axes.append(AxisTuple(*axis_row[1:]))
@@ -304,7 +354,18 @@ class SQLAccessor(Accessor):
 
     def __init__(self, url: str):
         self.engine = create_engine(url)
-        BaseRow.metadata.create_all(self.engine)
+        try:
+            BaseRow.metadata.create_all(self.engine)
+        except OperationalError as exc:
+            # Allow read-only access to legacy DBs where schema migration
+            # cannot be applied (e.g. file permissions).  Log so that
+            # unexpected errors (corrupt DB, wrong SQLite version, etc.) are
+            # not silently ignored.
+            log.warning(
+                "Could not apply schema migrations to %s (read-only access): %s",
+                self.engine.url,
+                exc,
+            )
 
     @classmethod
     def File(cls, path: str | Path) -> "SQLAccessor":

@@ -3,11 +3,6 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-/*
- * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
- */
-
 /// <reference types="vite/client" />
 
 interface ElectronAPI {
@@ -21,6 +16,7 @@ interface ElectronAPI {
   }) => Promise<{ canceled: boolean; path?: string }>;
   onFilesOpened: (callback: (filePaths: string[]) => void) => void;
   onClearCoverage: (callback: () => void) => void;
+  onOpenPreferences: (callback: () => void) => void;
 }
 
 interface Window {

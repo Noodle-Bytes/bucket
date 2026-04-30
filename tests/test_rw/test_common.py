@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 import tempfile
 from pathlib import Path
@@ -7,7 +7,14 @@ from pathlib import Path
 import pytest
 
 from bucket.rw import ArchiveAccessor, JSONAccessor, SQLAccessor
-from bucket.rw.common import CoverageAccess, MergeReadout, PuppetReadout, Reader, Writer
+from bucket.rw.common import (
+    CoverageAccess,
+    MergeReadout,
+    PuppetReadout,
+    Reader,
+    Writer,
+    point_tuple_from_row,
+)
 
 from ..utils import GeneratedReadout, readouts_are_equal
 
@@ -646,3 +653,66 @@ class TestCommon:
             merged = SQLAccessor.merge_files(path1, path2)
             assert merged is not None
             assert merged.get_def_sha() == readout.get_def_sha()
+
+    @pytest.mark.parametrize(
+        "accessor_factory,filename",
+        [
+            (lambda p: JSONAccessor(p), "storage.json"),
+            (lambda p: ArchiveAccessor(p), "storage.bktgz"),
+            (lambda p: SQLAccessor.File(p), "storage.db"),
+        ],
+    )
+    def test_roundtrip_point_tier_tags_metadata(self, accessor_factory, filename):
+        """
+        Tier/tag metadata should persist through json/archive exports.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / filename
+            accessor = accessor_factory(path)
+            writer = accessor.writer()
+            reader = accessor.reader()
+
+            readout = GeneratedReadout(def_seed=1, rec_seed=1)
+            readout.points = [
+                point._replace(
+                    tier=2,
+                    tags='["tiered","focus"]',
+                    motivation="metadata reason",
+                )
+                for point in readout.points
+            ]
+
+            ref = writer.write(readout)
+            back = reader.read(ref)
+
+            assert readouts_are_equal(readout, back)
+            for point in back.iter_points():
+                assert point.tier == 2
+                assert point.tags == '["tiered","focus"]'
+                assert point.motivation == "metadata reason"
+
+    def test_point_tuple_from_legacy_row_defaults_metadata(self):
+        """
+        Older point rows without tier/tags should still parse.
+        """
+        row = (
+            0,
+            0,
+            1,
+            0,
+            1,
+            0,
+            2,
+            0,
+            1,
+            0,
+            2,
+            10,
+            2,
+            "Point",
+            "Legacy",
+        )
+        point = point_tuple_from_row(row)
+        assert point.tier is None
+        assert point.tags == ""
+        assert point.motivation == ""

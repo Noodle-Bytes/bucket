@@ -46,20 +46,20 @@ export class JSONReadout implements Readout {
     get_source_key(): string | null {
         return this.record.source_key ?? null;
     }
-    private *iter_def_table(table: string, start: number=0, end: number | null=null) {
+    private *iter_def_table<T extends Record<string, unknown>>(table: string, start: number=0, end: number | null=null): Generator<T> {
         const keys = this.tables[table];
         const tableDef = this.definition[table];
         for (let idx=start; idx < (end ?? tableDef.length); idx++) {
             const values = tableDef[idx];
-            yield Object.fromEntries(keys.map((k,i) => [k, values[i]]))
+            yield Object.fromEntries(keys.map((k,i) => [k, values[i]])) as T;
         }
     }
-    private *iter_rec_table(table: string, start: number=0, end: number | null=null) {
+    private *iter_rec_table<T extends Record<string, unknown>>(table: string, start: number=0, end: number | null=null): Generator<T> {
         const keys = this.tables[table];
         const tableDef = this.record[table];
         for (let idx=start; idx < (end ?? tableDef.length); idx++) {
             const values = tableDef[idx];
-            yield Object.fromEntries(keys.map((k,i) => [k, values[i]]))
+            yield Object.fromEntries(keys.map((k,i) => [k, values[i]])) as T;
         }
     }
     *iter_points(
@@ -69,7 +69,14 @@ export class JSONReadout implements Readout {
     ): Generator<PointTuple> {
         const offsetStart = start + depth;
         const offsetEnd = end === null ? null : end + depth;
-        yield *this.iter_def_table("point", offsetStart, offsetEnd);
+        for (const point of this.iter_def_table("point", offsetStart, offsetEnd)) {
+            yield {
+                ...(point as PointTuple),
+                tier: normalizePointTier((point as PointTuple).tier),
+                tags: normalizePointTags((point as PointTuple).tags),
+                motivation: normalizePointMotivation((point as PointTuple).motivation),
+            };
+        }
     }
     *iter_bucket_goals(
         start: number=0,
@@ -509,6 +516,12 @@ function rowToPointTuple(row: (string | number)[]): PointTuple {
         name,
         description,
     ] = row;
+
+    const tier = row.length > 15 ? normalizePointTier(row[15]) : null;
+    const tags = row.length > 16 ? normalizePointTags(row[16]) : "";
+    const motivation =
+        row.length > 17 ? normalizePointMotivation(row[17]) : "";
+
     return {
         start: toNumber(start),
         depth: toNumber(depth),
@@ -525,7 +538,35 @@ function rowToPointTuple(row: (string | number)[]): PointTuple {
         target_buckets: toNumber(target_buckets),
         name: toString(name),
         description: toString(description),
+        tier,
+        tags,
+        motivation,
     };
+}
+
+function normalizePointTier(value: unknown): number | null {
+    if (value === null || value === undefined || value === "") {
+        return null;
+    }
+    const parsed = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizePointTags(value: unknown): string {
+    if (value === null || value === undefined) {
+        return "";
+    }
+    if (Array.isArray(value)) {
+        return JSON.stringify(value.map((tag) => String(tag)));
+    }
+    return String(value);
+}
+
+function normalizePointMotivation(value: unknown): string {
+    if (value === null || value === undefined) {
+        return "";
+    }
+    return String(value);
 }
 
 function parseTarEntries(buffer: Uint8Array): Record<string, Uint8Array> {

@@ -439,6 +439,15 @@ function showAboutDialog() {
  * - After the window finishes loading (see createWindow)
  */
 function createMenu() {
+  const openPreferences = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.send('open-preferences');
+  };
+
   const template = [
     {
       label: app.getName(),
@@ -481,6 +490,11 @@ function createMenu() {
               }
             }
           },
+        },
+        {
+          label: 'Preferences...',
+          accelerator: 'Command+,',
+          click: openPreferences,
         },
         { type: 'separator' },
         { role: 'close', label: 'Close Window' },

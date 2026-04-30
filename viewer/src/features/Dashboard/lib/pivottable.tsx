@@ -740,7 +740,7 @@ export function PointPivotView({ node }: PointPivotViewProps) {
                                               fixed: a === 0 ? ("left" as const) : undefined,
                                               width: 100,
                                               onCell: (record: RecordWithRatio & { __rowIndex?: number }) => ({
-                                                  rowSpan: (record.__rowIndex != null && rowSpans[record.__rowIndex]?.[a]) ?? 1,
+                                                  rowSpan: record.__rowIndex != null ? (rowSpans[record.__rowIndex]?.[a] ?? 1) : 1,
                                               }),
                                           }))
                                         : [

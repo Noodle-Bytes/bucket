@@ -6,7 +6,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
-import React from "react";
 import { CENTER_PADDING } from "./coveragedonut-constants";
 import { SunburstNode } from "./coveragedonut-utils";
 import { Theme as ThemeType } from "@/theme";

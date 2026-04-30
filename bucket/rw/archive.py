@@ -20,6 +20,7 @@ from .common import (
     Reader,
     Readout,
     Writer,
+    point_tuple_from_row,
 )
 
 
@@ -169,7 +170,7 @@ class ArchiveReadout(Readout):
             offset_start,
             offset_end,
         ):
-            yield PointTuple(*p)
+            yield point_tuple_from_row(p)
 
     def iter_point_hits(
         self, start: int = 0, end: int | None = None, depth: int = 0

@@ -19,6 +19,9 @@ type PointTuple = {
     target_buckets: number;
     name: string;
     description: string;
+    tier?: number | null;
+    tags?: string;
+    motivation?: string;
 };
 
 type BucketGoalTuple = {

@@ -17,6 +17,9 @@ function createReadout(overrides?: {
     source?: string | null;
     sourceKey?: string | null;
     bucketHits?: number[];
+    tier?: number | null;
+    tags?: string;
+    motivation?: string;
 }): Readout {
     const bucketHits = overrides?.bucketHits ?? [2, 1];
     return new InMemoryReadout({
@@ -41,6 +44,9 @@ function createReadout(overrides?: {
                 target_buckets: 2,
                 name: "Root",
                 description: "Root",
+                tier: overrides?.tier ?? 0,
+                tags: overrides?.tags ?? "[\"default\"]",
+                motivation: overrides?.motivation ?? "why",
             },
         ],
         bucketGoals: [
@@ -134,7 +140,14 @@ describe("mergeReadoutsStrict", () => {
 
 describe("export serializers", () => {
     test("round-trips json serialization through reader", async () => {
-        const readout = createReadout({ bucketHits: [5, 6], source: "json", sourceKey: "r0" });
+        const readout = createReadout({
+            bucketHits: [5, 6],
+            source: "json",
+            sourceKey: "r0",
+            tier: 2,
+            tags: "[\"abc\",\"xyz\"]",
+            motivation: "json motivation",
+        });
         const bytes = serializeReadoutsToJsonBytes([readout]);
         const restored = await readSingle(bytes);
 
@@ -142,13 +155,24 @@ describe("export serializers", () => {
         expect(restored.get_rec_sha()).toBe(readout.get_rec_sha());
         expect(restored.get_source()).toBe("json");
         expect(restored.get_source_key()).toBe("r0");
+        const restoredPoints = Array.from(restored.iter_points());
+        expect(restoredPoints[0].tier).toBe(2);
+        expect(restoredPoints[0].tags).toBe("[\"abc\",\"xyz\"]");
+        expect(restoredPoints[0].motivation).toBe("json motivation");
         expect(Array.from(restored.iter_bucket_hits(0, null)).map((value) => value.hits)).toEqual(
             [5, 6],
         );
     });
 
     test("round-trips archive serialization through reader", async () => {
-        const readout = createReadout({ bucketHits: [7, 8], source: "archive", sourceKey: "r1" });
+        const readout = createReadout({
+            bucketHits: [7, 8],
+            source: "archive",
+            sourceKey: "r1",
+            tier: 1,
+            tags: "[\"archive-tag\"]",
+            motivation: "archive motivation",
+        });
         const bytes = serializeReadoutsToArchiveBytes([readout]);
         const restored = await readSingle(bytes);
 
@@ -156,6 +180,10 @@ describe("export serializers", () => {
         expect(restored.get_rec_sha()).toBe(readout.get_rec_sha());
         expect(restored.get_source()).toBe("archive");
         expect(restored.get_source_key()).toBe("r1");
+        const restoredPoints = Array.from(restored.iter_points());
+        expect(restoredPoints[0].tier).toBe(1);
+        expect(restoredPoints[0].tags).toBe("[\"archive-tag\"]");
+        expect(restoredPoints[0].motivation).toBe("archive motivation");
         expect(Array.from(restored.iter_bucket_hits(0, null)).map((value) => value.hits)).toEqual(
             [7, 8],
         );

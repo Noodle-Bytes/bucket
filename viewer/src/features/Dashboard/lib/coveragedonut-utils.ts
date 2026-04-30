@@ -62,19 +62,18 @@ export function arcPath(
 }
 
 export function buildNode(node: PointNode): HierarchicalData {
-    const pointTarget = Number(node.data.point.target);
-    const pointHits = Number(node.data.point_hit.hits);
     const nodeTitle = String(node.title || '');
     const isCovergroup = Array.isArray(node.children) && node.children.length > 0;
-    const value = Math.max(pointTarget, 1);
-    const coverage = pointTarget > 0 ? pointHits / pointTarget : 0;
+    const pointTargetValue = Number((node as any)?.data?.point?.target);
+    const pointHitsValue = Number((node as any)?.data?.point_hit?.hits);
+    const hasPointMetrics = Number.isFinite(pointTargetValue) && Number.isFinite(pointHitsValue);
     const nodeData: HierarchicalData = {
         name: nodeTitle,
-        value: value,
-        coverage: coverage,
-        target: pointTarget,
-        hits: pointHits,
-        nodeKey: node.key,
+        value: 1,
+        coverage: 0,
+        target: 0,
+        hits: 0,
+        nodeKey: String(node.key),
         isCovergroup: isCovergroup,
     };
     if (isCovergroup) {
@@ -82,8 +81,20 @@ export function buildNode(node: PointNode): HierarchicalData {
             .filter((child): child is PointNode => !!child && typeof child === 'object' && 'data' in child)
             .map(child => buildNode(child));
         const childrenValue = children.reduce((sum, child) => sum + child.value, 0);
-        nodeData.value = Math.max(value, childrenValue);
+        const childrenTarget = children.reduce((sum, child) => sum + (child.target ?? 0), 0);
+        const childrenHits = children.reduce((sum, child) => sum + (child.hits ?? 0), 0);
+        const target = hasPointMetrics ? pointTargetValue : childrenTarget;
+        const hits = hasPointMetrics ? pointHitsValue : childrenHits;
+        nodeData.target = target;
+        nodeData.hits = hits;
+        nodeData.coverage = target > 0 ? hits / target : 0;
+        nodeData.value = Math.max(target, childrenValue, 1);
         nodeData.children = children;
+    } else if (hasPointMetrics) {
+        nodeData.target = pointTargetValue;
+        nodeData.hits = pointHitsValue;
+        nodeData.coverage = pointTargetValue > 0 ? pointHitsValue / pointTargetValue : 0;
+        nodeData.value = Math.max(pointTargetValue, 1);
     }
     return nodeData;
 }
