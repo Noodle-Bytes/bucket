@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
+import logging
 from pathlib import Path
 from typing import Iterable, overload
 
@@ -25,6 +26,8 @@ from .common import (
     Writer,
     point_tuple_from_row,
 )
+
+log = logging.getLogger(__name__)
 
 ###############################################################################
 # Table definitions
@@ -190,6 +193,7 @@ class SQLWriter(Writer):
 
     def __init__(self, engine):
         self.engine = engine
+        self._has_point_meta = inspect(engine).has_table(PointMetaRow.__tablename__)
 
     def write(self, readout: Readout):
         with Session(self.engine) as self.session:
@@ -201,7 +205,8 @@ class SQLWriter(Writer):
 
             for point in readout.iter_points():
                 self.session.add(PointRow.from_tuple(def_ref, point))
-                self.session.add(PointMetaRow.from_tuple(def_ref, point))
+                if self._has_point_meta:
+                    self.session.add(PointMetaRow.from_tuple(def_ref, point))
 
             for axis in readout.iter_axes():
                 self.session.add(AxisRow.from_tuple(def_ref, axis))
@@ -351,10 +356,16 @@ class SQLAccessor(Accessor):
         self.engine = create_engine(url)
         try:
             BaseRow.metadata.create_all(self.engine)
-        except OperationalError:
+        except OperationalError as exc:
             # Allow read-only access to legacy DBs where schema migration
-            # cannot be applied (e.g. file permissions).
-            pass
+            # cannot be applied (e.g. file permissions).  Log so that
+            # unexpected errors (corrupt DB, wrong SQLite version, etc.) are
+            # not silently ignored.
+            log.warning(
+                "Could not apply schema migrations to %s (read-only access): %s",
+                self.engine.url,
+                exc,
+            )
 
     @classmethod
     def File(cls, path: str | Path) -> "SQLAccessor":

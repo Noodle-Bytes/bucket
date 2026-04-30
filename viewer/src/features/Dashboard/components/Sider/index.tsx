@@ -220,7 +220,12 @@ export default function Sider({
                     display: "flex",
                     flexDirection: "column",
                     height: "100%",
-                }}>
+                    visibility: sidebarVisible ? "visible" : "hidden",
+                }}
+                aria-hidden={!sidebarVisible}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                {...(!sidebarVisible ? { inert: "" } as any : {})}
+            >
                 <div style={{ display: "flex", alignItems: "center" }}>
                     <Input
                         {...view.sider.search.props}

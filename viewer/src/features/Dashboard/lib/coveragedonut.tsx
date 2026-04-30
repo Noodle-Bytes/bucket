@@ -327,8 +327,25 @@ export function CoverageDonut({
         <Theme.Consumer>
             {(themeContextRaw) => {
                 const isRoot = node.key === CoverageTree.ROOT;
-                const roots = tree.getRoots();
                 if (isRoot) {
+                    const roots = tree.getRoots();
+
+                    if (roots.length === 0) {
+                        return (
+                            <div
+                                style={{
+                                    padding: '24px',
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    color: themeContextRaw.theme.theme.colors.desaturatedtxt.value,
+                                }}
+                            >
+                                No coverage data available
+                            </div>
+                        );
+                    }
+
                     if (roots.length === 1) {
                         return (
                             <CoverageDonutInner
@@ -390,26 +407,10 @@ export function CoverageDonut({
                         </div>
                     );
                 }
-                if (isRoot && roots.length === 0) {
-                    return (
-                        <div
-                            style={{
-                                padding: '24px',
-                                display: 'flex',
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                color: themeContextRaw.theme.theme.colors.desaturatedtxt.value,
-                            }}
-                        >
-                            No coverage data available
-                        </div>
-                    );
-                }
-                // Default: single donut view
-                const donutNode = isRoot && roots.length === 1 ? roots[0] : node;
+                // Non-root node: single donut view
                 return (
                     <CoverageDonutInner
-                        node={donutNode}
+                        node={node}
                         themeContext={themeContextRaw}
                         setSelectedTreeKeys={setSelectedTreeKeys}
                     />
