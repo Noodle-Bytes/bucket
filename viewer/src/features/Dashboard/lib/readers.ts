@@ -46,6 +46,9 @@ export class JSONReadout implements Readout {
     get_source_key(): string | null {
         return this.record.source_key ?? null;
     }
+    get_bucket_version(): string {
+        return "";
+    }
     private *iter_def_table<T extends Record<string, unknown>>(table: string, start: number=0, end: number | null=null): Generator<T> {
         const keys = this.tables[table];
         const tableDef = this.definition[table];
@@ -168,6 +171,7 @@ type ArchiveRecord = {
     bucket_hit_end: number;
     source: string | null;  // Stored as "" in CSV, converted to null when reading
     source_key: string | null;  // Stored as "" in CSV, converted to null when reading
+    bucket_version: string;  // Version of bucket that wrote this record ("" if unknown)
 };
 
 type ArchiveTableMap = Record<ArchiveTableName, ArchiveTable>;
@@ -257,6 +261,10 @@ export class ArchiveReadout implements Readout {
 
     get_source_key(): string | null {
         return this.record.source_key;
+    }
+
+    get_bucket_version(): string {
+        return this.record.bucket_version;
     }
 
     *iter_points(
@@ -495,6 +503,7 @@ function toArchiveRecord(row: (string | number)[]): ArchiveRecord {
         // Convert empty strings to null for source/source_key (CSV stores "" but we use null internally)
         source: source === "" ? null : toString(source),
         source_key: source_key === "" ? null : toString(source_key),
+        bucket_version: row.length > 8 ? toString(row[8]) : "",
     };
 }
 
@@ -616,6 +625,7 @@ function parseCsvTable(data: Uint8Array): { rows: (string | number)[][]; offsets
     const rows: (string | number)[][] = [];
     const offsets: number[] = [];
     const length = data.length;
+    const decoder = new TextDecoder();
     let idx = 0;
 
     while (idx < length) {
@@ -626,7 +636,7 @@ function parseCsvTable(data: Uint8Array): { rows: (string | number)[][]; offsets
 
         offsets.push(idx);
         const row: (string | number)[] = [];
-        let current = "";
+        let currentBytes: number[] = [];
         let inQuotes = false;
 
         while (idx < length) {
@@ -634,7 +644,7 @@ function parseCsvTable(data: Uint8Array): { rows: (string | number)[][]; offsets
             if (inQuotes) {
                 if (byte === 34) {
                     if (data[idx + 1] === 34) {
-                        current += '"';
+                        currentBytes.push(34);
                         idx += 2;
                         continue;
                     }
@@ -642,7 +652,7 @@ function parseCsvTable(data: Uint8Array): { rows: (string | number)[][]; offsets
                     idx += 1;
                     continue;
                 }
-                current += String.fromCharCode(byte);
+                currentBytes.push(byte);
                 idx += 1;
                 continue;
             }
@@ -654,8 +664,8 @@ function parseCsvTable(data: Uint8Array): { rows: (string | number)[][]; offsets
             }
 
             if (byte === 44) {
-                row.push(parseCsvValue(current));
-                current = "";
+                row.push(parseCsvValue(decoder.decode(new Uint8Array(currentBytes))));
+                currentBytes = [];
                 idx += 1;
                 continue;
             }
@@ -670,11 +680,11 @@ function parseCsvTable(data: Uint8Array): { rows: (string | number)[][]; offsets
                 break;
             }
 
-            current += String.fromCharCode(byte);
+            currentBytes.push(byte);
             idx += 1;
         }
 
-        row.push(parseCsvValue(current));
+        row.push(parseCsvValue(decoder.decode(new Uint8Array(currentBytes))));
         rows.push(row);
     }
 

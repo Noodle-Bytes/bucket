@@ -3,10 +3,20 @@
 
 import json
 from datetime import datetime
+from importlib.metadata import PackageNotFoundError as _PKGNotFound
+from importlib.metadata import version as _pkg_version
 from typing import Any, Iterable, NamedTuple, Protocol
 
 from ..common.chain import Link
 from ..link import CovDef, CovRun
+
+
+def _get_bucket_version() -> str:
+    try:
+        return _pkg_version("bucket")
+    except _PKGNotFound:
+        return "unknown"
+
 
 ###############################################################################
 # Coverage information in tuple form, which is used to interface between
@@ -221,6 +231,7 @@ class Readout(Protocol):
     def get_rec_sha(self) -> str: ...
     def get_source(self) -> str: ...
     def get_source_key(self) -> str: ...
+    def get_bucket_version(self) -> str: ...
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
     ) -> Iterable[PointTuple]: ...
@@ -623,6 +634,7 @@ class PuppetReadout(Readout):
         self.rec_sha = None
         self._source: str = ""
         self._source_key: str = ""
+        self.bucket_version: str = ""
 
     def get_def_sha(self) -> str:
         if self.def_sha is None:
@@ -655,6 +667,9 @@ class PuppetReadout(Readout):
 
     def get_source_key(self) -> str:
         return self._source_key
+
+    def get_bucket_version(self) -> str:
+        return self.bucket_version
 
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
@@ -703,6 +718,7 @@ class MergeReadout(Readout):
         self.master = master
         self.source = f"Merged_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         self.source_key = ""
+        self._bucket_version = _get_bucket_version()
 
         self.bucket_hits: list[int] = []
         for bucket_hit in master.iter_bucket_hits():
@@ -730,6 +746,9 @@ class MergeReadout(Readout):
 
     def get_source_key(self) -> str:
         return self.source_key
+
+    def get_bucket_version(self) -> str:
+        return self._bucket_version
 
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0

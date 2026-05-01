@@ -4,6 +4,7 @@
 import csv
 import tarfile
 import tempfile
+import warnings
 from pathlib import Path
 from typing import Iterable, NamedTuple, overload
 
@@ -20,8 +21,22 @@ from .common import (
     Reader,
     Readout,
     Writer,
+    _get_bucket_version,
     point_tuple_from_row,
 )
+
+
+def _parse_version(v: str) -> tuple[int, ...]:
+    """Parse a version string into a tuple of ints for comparison."""
+    parts = []
+    for p in v.split(".")[:3]:
+        try:
+            parts.append(int(p))
+        except ValueError:
+            parts.append(0)
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts)
 
 
 class ArchiveDefinitionTuple(NamedTuple):
@@ -47,6 +62,7 @@ class ArchiveRecordTuple(NamedTuple):
     bucket_hit_end: int
     source: str  # Stored as "" in CSV, always a string
     source_key: str  # Stored as "" in CSV, always a string
+    bucket_version: str = ""  # Version of bucket that wrote this record
 
 
 DEFINITION_PATH = "definition"
@@ -102,16 +118,21 @@ def _read(
         lines = f.readlines(byte_end - byte_offset - 1)[line_offset:line_end]
 
         for row in csv.reader(lines, quoting=csv.QUOTE_NONNUMERIC):
-            # For record rows (8 fields), keep empty strings as empty strings for source/source_key (indices 6, 7)
+            # For record rows (8 or 9 fields), keep empty strings as empty strings
+            # for source/source_key/bucket_version (indices 6, 7, 8).
             # CSV doesn't support None, so we store "" for empty values
             # For all other rows, convert empty strings to None
-            is_record_row = len(row) == 8  # ArchiveRecordTuple has 8 fields
+            is_record_row = len(row) in (8, 9)  # ArchiveRecordTuple has 8 or 9 fields
             processed_row = []
             for idx, x in enumerate(row):
                 if x == "":
-                    # Keep empty strings as empty strings for source/source_key in record rows
+                    # Keep empty strings for source, source_key, bucket_version in record rows
                     # Convert to None for other fields/rows
-                    if is_record_row and idx in (6, 7):  # source and source_key indices
+                    if is_record_row and idx in (
+                        6,
+                        7,
+                        8,
+                    ):  # source, source_key, bucket_version
                         processed_row.append("")
                     else:
                         processed_row.append(None)
@@ -146,6 +167,29 @@ class ArchiveReadout(Readout):
         )
         self.definition = ArchiveDefinitionTuple(*definition_row)
 
+        file_version = self.record.bucket_version or ""
+        if file_version:
+            installed = _get_bucket_version()
+            if installed != "unknown":
+                fv = _parse_version(file_version)
+                iv = _parse_version(installed)
+                if fv > iv:
+                    warnings.warn(
+                        f"Coverage file was generated with bucket v{file_version}, which is "
+                        f"newer than the installed version (v{installed}). "
+                        "Some data may not be read correctly.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                elif fv < iv:
+                    warnings.warn(
+                        f"Coverage file was generated with an older version of bucket "
+                        f"(v{file_version}); installed version is v{installed}. "
+                        "The reader is broadly backwards compatible.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+
     def get_def_sha(self) -> str:
         return self.definition.def_sha
 
@@ -157,6 +201,9 @@ class ArchiveReadout(Readout):
 
     def get_source_key(self) -> str:
         return self.record.source_key
+
+    def get_bucket_version(self) -> str:
+        return self.record.bucket_version or ""
 
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
@@ -325,6 +372,7 @@ class ArchiveWriter(Writer):
             # source and source_key are always strings (empty string if not set)
             source = readout.get_source()
             source_key = readout.get_source_key()
+            bucket_version = readout.get_bucket_version()
             record_offset, _ = _write(
                 work_path / RECORD_PATH,
                 [
@@ -337,6 +385,7 @@ class ArchiveWriter(Writer):
                         bucket_hit_end,
                         source,
                         source_key,
+                        bucket_version,
                     )
                 ],
             )

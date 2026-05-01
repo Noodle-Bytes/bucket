@@ -70,7 +70,28 @@ class CatStats(Coverpoint):
 
     # No name provided to demonstrate that class name will be used
     DESCRIPTION = "Some basic cat stats"
-    MOTIVATION = "Track the grand council of kitties and their daily mischief levels"
+    MOTIVATION = (
+        "Cats are the primary agents of domestic entropy and any simulation that omits "
+        "comprehensive felinometric coverage risks systemic under-sampling of the mischief "
+        "distribution. "
+        "The name axis is critical because named cats exhibit statistically higher "
+        "manipulation coefficients than unnamed strays: Clive alone accounts for 34% of "
+        "all unexplained gravity reversals in the test environment, while Derek is "
+        "responsible for the majority of phantom 3am wall-staring incidents that have "
+        "previously gone unmodelled. "
+        "Age is non-negotiable: a kitten at age 0 operates in pure chaos mode with no "
+        "concept of consequence, whereas a 17-year-old senior cat has refined its evil "
+        "to a surgical precision that demands elevated hit targets. "
+        "The evil_thoughts axis ties directly to downstream stimulus generation — a cat "
+        "sitting in the 'high (normal)' band will trigger the adversarial packet injector, "
+        "the cupboard-door rattler, and the 3am yowl subsystem simultaneously, creating "
+        "corner-case interactions that are invisible unless all three axes are crossed "
+        "at their extremes. "
+        "Omitting this coverpoint from any regression sweep has historically correlated "
+        "with a 200% increase in escaped bugs, three mysterious power outages, and one "
+        "occasion where the entire regression farm was found rearranged into a perfect "
+        "circle around an empty bowl."
+    )
     TIER = 1
     TAGS = ["basic", "stats"]
 
