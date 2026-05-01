@@ -8,6 +8,7 @@ type MaterializedReadoutData = {
     recSha: string;
     source: string | null;
     sourceKey: string | null;
+    bucketVersion: string;
     points: PointTuple[];
     bucketGoals: BucketGoalTuple[];
     axes: AxisTuple[];
@@ -70,6 +71,10 @@ export class InMemoryReadout implements Readout {
 
     get_source_key(): string | null {
         return this.data.sourceKey;
+    }
+
+    get_bucket_version(): string {
+        return this.data.bucketVersion;
     }
 
     *iter_points(
@@ -142,6 +147,7 @@ export function materializeReadout(readout: Readout): MaterializedReadoutData {
         recSha: readout.get_rec_sha(),
         source: readout.get_source(),
         sourceKey: readout.get_source_key(),
+        bucketVersion: readout.get_bucket_version(),
         points: Array.from(readout.iter_points()).map(clonePointTuple),
         bucketGoals: Array.from(readout.iter_bucket_goals(0, null)).map(cloneBucketGoalTuple),
         axes: Array.from(readout.iter_axes(0, null)).map(cloneAxisTuple),
@@ -273,6 +279,7 @@ export function mergeReadoutsStrict(readouts: Readout[]): Readout {
         recSha: master.recSha,
         source: getMergedSourceName(),
         sourceKey: "",
+        bucketVersion: master.bucketVersion,
         points: master.points,
         bucketGoals: master.bucketGoals,
         axes: master.axes,

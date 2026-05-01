@@ -21,6 +21,7 @@ import {
     Switch,
     Table,
     Typography,
+    Alert,
 } from "antd";
 import {
     CaretDownOutlined,
@@ -36,6 +37,7 @@ import {
     ReloadOutlined,
     SettingOutlined,
     TableOutlined,
+    WarningOutlined,
 } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 import Sider, { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "./components/Sider";
@@ -59,6 +61,7 @@ import { hexToRgba } from "@/utils/colors";
 import { buildBucketAntModalTheme } from "@/utils/bucketAntModalTheme";
 import type { CoverageRecord, CoverageSourceRef, ExportFormat } from "@/types/coverageSession";
 import { getDefaultExportFileName } from "@/services/exportSaver";
+import { checkVersionCompat } from "@/utils/versionCompat";
 
 declare const __APP_VERSION__: string;
 
@@ -80,6 +83,7 @@ type RootCoverageInfo = {
     source: string | null;
     defSha: string | null;
     recSha: string | null;
+    bucketVersion: string | null;
 };
 
 type TopLevelCoverageCounts = {
@@ -166,6 +170,7 @@ function getTopLevelCoverageInfo(
         source: getReadoutSource(readout),
         defSha: getReadoutValue(readout, "get_def_sha"),
         recSha: getReadoutValue(readout, "get_rec_sha"),
+        bucketVersion: readout.get_bucket_version?.() || null,
     };
 }
 
@@ -225,13 +230,40 @@ function CoverageInfoField({
 
 function TopLevelCoverageInfoPanel({ info }: { info: RootCoverageInfo }) {
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const compat = checkVersionCompat(info.bucketVersion, __APP_VERSION__);
 
     return (
         <Theme.Consumer>
             {({ theme }) => {
                 const colors = theme.theme.colors;
+                const versionNotice = compat.status === "file_newer" ? (
+                    <Alert
+                        type="warning"
+                        icon={<WarningOutlined />}
+                        showIcon
+                        style={{ margin: "0 8px 6px", fontSize: 12 }}
+                        message={`This coverage file was generated with bucket v${compat.fileVersion}, which is newer than this viewer (v${compat.viewerVersion}). Some information may not display correctly.`}
+                    />
+                ) : compat.status === "file_older" ? (
+                    <Alert
+                        type="info"
+                        showIcon
+                        style={{ margin: "0 8px 6px", fontSize: 12 }}
+                        message={`This coverage file was generated with an older version of bucket (v${compat.fileVersion}). The viewer is broadly backwards compatible.`}
+                    />
+                ) : compat.status === "unknown" ? (
+                    <Alert
+                        type="warning"
+                        icon={<WarningOutlined />}
+                        showIcon
+                        style={{ margin: "0 8px 6px", fontSize: 12 }}
+                        message="This coverage file was generated with a version of bucket that did not embed a version number. It is likely an older file — some compatibility issues may be possible, though the viewer is broadly backwards compatible."
+                    />
+                ) : null;
                 return (
-                    <section
+                    <>
+                        {versionNotice}
+                        <section
                         style={{
                             margin: "6px 10px 8px",
                             border: `1px solid ${colors.lowlightbg.value}`,
@@ -294,9 +326,15 @@ function TopLevelCoverageInfoPanel({ info }: { info: RootCoverageInfo }) {
                                     mono
                                     colors={colors}
                                 />
+                                <CoverageInfoField
+                                    label="Bucket Version"
+                                    value={info.bucketVersion}
+                                    colors={colors}
+                                />
                             </div>
                         )}
                     </section>
+                    </>
                 );
             }}
         </Theme.Consumer>

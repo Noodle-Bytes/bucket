@@ -15,6 +15,7 @@ from .common import (
     PointTuple,
     PuppetReadout,
     Reader,
+    _get_bucket_version,
 )
 
 
@@ -40,6 +41,7 @@ class PointReader(Reader):
         chain = point._chain_def()
         readout.def_sha = chain.end.sha.hexdigest()
         readout.rec_sha = self._rec_sha
+        readout.bucket_version = _get_bucket_version()
 
         # Get source and source_key: PointReader params take precedence, then Covertop attributes, then empty string
         # Both PointReader and Covertop store as strings (empty string if not set)

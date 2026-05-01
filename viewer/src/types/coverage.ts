@@ -67,6 +67,7 @@ type Readout = {
     get_rec_sha: () => string;
     get_source: () => string | null;
     get_source_key: () => string | null;
+    get_bucket_version: () => string;
     iter_points: (
         start?: number,
         end?: number | null,
