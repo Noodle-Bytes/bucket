@@ -7,15 +7,22 @@ import CoverageTree, { PointNode } from "./coveragetree";
 import {
     Alert,
     Button,
+    Checkbox,
     Collapse,
     Descriptions,
+    Divider,
+    Dropdown,
+    Input,
+    Segmented,
     Select,
     Space,
     Table,
     TableProps,
     Tag,
+    Tooltip,
     Typography,
 } from "antd";
+import type { MenuProps } from "antd";
 import { view } from "../theme";
 import { TreeKey } from "./tree";
 import { Theme as ThemeType } from "@/theme";
@@ -27,10 +34,23 @@ import {
     CaretRightOutlined,
     CaretDownOutlined,
     CloseOutlined,
+    ExclamationCircleFilled,
+    FilterFilled,
+    FilterOutlined,
+    InfoCircleFilled,
 } from "@ant-design/icons";
 import { hexToRgba, getCoverageColor } from "@/utils/colors";
 import { confirmThemed } from "@/utils/themedStaticModal";
-import { CSSProperties, MouseEvent, useEffect, useMemo, useState } from "react";
+import {
+    CSSProperties,
+    Dispatch,
+    MouseEvent,
+    SetStateAction,
+    useCallback,
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
 import {
     LARGE_TABLE_SCROLL_Y,
     LargeModeOverrideState,
@@ -82,6 +102,39 @@ type SummaryRecord = {
     buckets_full_ratio: number;
 };
 
+/** Hover text for summary table Goal vs Buckets headers (distinct meanings). */
+const SUMMARY_COLUMN_HELP = {
+    goalGroup:
+        "Goal-level rollup for this coverpoint: overall hit budget, recorded hits, and progress. These are not bucket counts.",
+    goalTarget:
+        "Total hits required for this coverpoint’s goal (aggregated target across buckets).",
+    goalHits:
+        "Total hits scored toward that goal (sum across buckets; each bucket’s hits are capped at its target).",
+    goalHitPct: "Goal Hits ÷ Goal Target — progress toward the coverpoint’s overall hit objective.",
+
+    bucketsGroup:
+        "Bucket-level rollup: counts buckets (coverage grid cells), not raw hits. Compares with Goal columns beside it.",
+    bucketsTarget:
+        "Buckets that count toward coverage — legal buckets with a positive hit target.",
+    bucketsHit: "Buckets with at least one hit (partial progress counts).",
+    bucketsFull: "Buckets that reached their per-bucket target (fully satisfied).",
+    bucketsHitPct:
+        "Hit buckets ÷ Target buckets — share of buckets that have any hits.",
+    bucketsFullPct:
+        "Full buckets ÷ Target buckets — share of buckets that are fully satisfied.",
+} as const;
+
+/** Show tag filter search when many distinct tags would clutter the checklist. */
+const SUMMARY_TAG_FILTER_SEARCH_THRESHOLD = 12;
+
+function summaryTableHeaderTitle(label: string, tooltip: string) {
+    return (
+        <Tooltip title={tooltip}>
+            <span>{label}</span>
+        </Tooltip>
+    );
+}
+
 type RecordWithRatio = {
     [key: string]: string | number | boolean | undefined;
     hit_ratio?: number;
@@ -108,6 +161,158 @@ type PointTableModel = {
     buildMs: number;
 };
 
+/** Summary table: tag filter — OR vs AND across selected tags */
+type SummaryTagMatchMode = "any" | "all";
+
+function SummaryTagFilterDropdown({
+    colors,
+    tagFilterOptions,
+    selectedTags,
+    setSelectedTags,
+    tagMatchMode,
+    setTagMatchMode,
+    confirm,
+    clearFilters,
+}: {
+    colors: ThemeType["theme"]["colors"];
+    tagFilterOptions: { label: string; value: string }[];
+    selectedTags: string[];
+    setSelectedTags: Dispatch<SetStateAction<string[]>>;
+    tagMatchMode: SummaryTagMatchMode;
+    setTagMatchMode: Dispatch<SetStateAction<SummaryTagMatchMode>>;
+    confirm: () => void;
+    clearFilters?: () => void;
+}) {
+    const [tagSearch, setTagSearch] = useState("");
+    const showSearch = tagFilterOptions.length >= SUMMARY_TAG_FILTER_SEARCH_THRESHOLD;
+
+    useEffect(() => {
+        setTagSearch("");
+    }, [tagFilterOptions]);
+
+    const needle = tagSearch.trim().toLowerCase();
+    const filteredTagOptions = useMemo(() => {
+        if (!showSearch || !needle) {
+            return tagFilterOptions;
+        }
+        return tagFilterOptions.filter(
+            (o) =>
+                o.label.toLowerCase().includes(needle)
+                || o.value.toLowerCase().includes(needle),
+        );
+    }, [tagFilterOptions, needle, showSearch]);
+
+    return (
+        <div
+            className="metadata-filter-toolbar"
+            style={{ padding: 8, minWidth: 240, maxWidth: 340 }}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}>
+            <Typography.Text
+                style={{
+                    display: "block",
+                    fontSize: 12,
+                    marginBottom: 6,
+                    color: colors.primarytxt.value,
+                }}>
+                Match selected tags
+            </Typography.Text>
+            <Segmented<SummaryTagMatchMode>
+                size="small"
+                value={tagMatchMode}
+                onChange={setTagMatchMode}
+                options={[
+                    { label: "Any", value: "any" },
+                    { label: "All", value: "all" },
+                ]}
+                style={{ marginBottom: 8 }}
+            />
+            <Typography.Text
+                style={{
+                    display: "block",
+                    fontSize: 11,
+                    lineHeight: 1.35,
+                    marginBottom: 8,
+                    color: colors.desaturatedtxt.value,
+                }}>
+                {tagMatchMode === "any"
+                    ? "Any — optional tags union (OR): keep rows that include at least one selection."
+                    : "All — tags intersection (AND): keep rows that include every selection."}
+            </Typography.Text>
+            {showSearch ? (
+                <Input
+                    allowClear
+                    size="small"
+                    placeholder="Search tags…"
+                    value={tagSearch}
+                    onChange={(e) => setTagSearch(e.target.value)}
+                    style={{ marginBottom: 8 }}
+                />
+            ) : null}
+            <div style={{ maxHeight: 220, overflowY: "auto", marginBottom: 8 }}>
+                {tagFilterOptions.length === 0 ? (
+                    <Typography.Text
+                        style={{
+                            display: "block",
+                            padding: "4px 12px",
+                            color: colors.desaturatedtxt.value,
+                            fontSize: 12,
+                        }}>
+                        No tags in view
+                    </Typography.Text>
+                ) : filteredTagOptions.length === 0 ? (
+                    <Typography.Text
+                        style={{
+                            display: "block",
+                            padding: "4px 12px",
+                            color: colors.desaturatedtxt.value,
+                            fontSize: 12,
+                        }}>
+                        No tags match search
+                    </Typography.Text>
+                ) : (
+                    filteredTagOptions.map(({ label, value }) => (
+                        <div key={value} style={{ padding: "4px 12px" }}>
+                            <Checkbox
+                                checked={selectedTags.includes(value)}
+                                onChange={(e) => {
+                                    if (e.target.checked) {
+                                        setSelectedTags((prev) =>
+                                            [...prev, value].sort((a, b) => natCompare(a, b)),
+                                        );
+                                    } else {
+                                        setSelectedTags((prev) =>
+                                            prev.filter((t) => t !== value),
+                                        );
+                                    }
+                                }}>
+                                <span style={{ color: colors.primarytxt.value }}>{label}</span>
+                            </Checkbox>
+                        </div>
+                    ))
+                )}
+            </div>
+            <Divider style={{ margin: "8px 0" }} />
+            <Space style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
+                <Button
+                    type="link"
+                    size="small"
+                    onClick={() => {
+                        clearFilters?.();
+                        setSelectedTags([]);
+                        setTagMatchMode("any");
+                        setTagSearch("");
+                    }}>
+                    Reset
+                </Button>
+                <Button type="primary" size="small" onClick={() => confirm()}>
+                    OK
+                </Button>
+            </Space>
+        </div>
+    );
+}
+
 type HitClassFilter = "all" | "full" | "partial" | "empty" | "illegal" | "ignore";
 type LargeSortOption =
     | "bucket_asc"
@@ -120,6 +325,29 @@ type AxisSortMode = "none" | "user_asc" | "user_desc" | "alpha_asc" | "alpha_des
 type AxisSortState = {
     axisName: string | null;
     mode: AxisSortMode;
+};
+
+type GoalSortKey = "goal_name" | "target" | "hits" | "hit_ratio";
+
+type GoalSortState = {
+    columnKey: GoalSortKey | null;
+    order: "ascend" | "descend" | null;
+};
+
+const AXIS_MODE_LABELS: Record<Exclude<AxisSortMode, "none">, string> = {
+    user_asc: "User order (ascending)",
+    user_desc: "User order (descending)",
+    alpha_asc: "Alphabetical (A–Z)",
+    alpha_desc: "Alphabetical (Z–A)",
+};
+
+type PointTableSortActions = {
+    cycleAxisSort: (axisName: string) => void;
+    applyAxisSort: (axisName: string, mode: Exclude<AxisSortMode, "none">) => void;
+    clearAxisSort: () => void;
+    cycleGoalSort: (key: GoalSortKey) => void;
+    applyGoalSort: (key: GoalSortKey, order: "ascend" | "descend") => void;
+    clearGoalSort: () => void;
 };
 
 export type PointGridProps = {
@@ -214,20 +442,6 @@ function getColumnNumCompare<T extends object>(columnKey: string) {
         );
 }
 
-function getAxisSortOrder(mode: AxisSortMode): "ascend" | "descend" | null {
-    switch (mode) {
-        case "user_asc":
-        case "alpha_asc":
-            return "ascend";
-        case "user_desc":
-        case "alpha_desc":
-            return "descend";
-        case "none":
-        default:
-            return null;
-    }
-}
-
 function getNextAxisSortMode(current: AxisSortMode): AxisSortMode {
     switch (current) {
         case "none":
@@ -243,6 +457,127 @@ function getNextAxisSortMode(current: AxisSortMode): AxisSortMode {
         default:
             return "user_asc";
     }
+}
+
+function axisTitleTooltip(axisName: string, axisSortState: AxisSortState): string {
+    if (axisSortState.axisName !== axisName) {
+        return `Next: ${AXIS_MODE_LABELS.user_asc}`;
+    }
+    const nextMode = getNextAxisSortMode(axisSortState.mode);
+    if (nextMode === "none") {
+        return `Next: ${AXIS_MODE_LABELS.user_asc}`;
+    }
+    return `Next: ${AXIS_MODE_LABELS[nextMode]}`;
+}
+
+function goalTitleTooltip(columnKey: GoalSortKey, goalSortState: GoalSortState): string {
+    if (goalSortState.columnKey !== columnKey) {
+        return "Next: sort ascending";
+    }
+    if (goalSortState.order === "ascend") {
+        return "Next: sort descending";
+    }
+    if (goalSortState.order === "descend") {
+        return "Next: clear sort";
+    }
+    return "Next: sort ascending";
+}
+
+type SortableColumnHeaderProps = {
+    theme: ThemeType;
+    label: string;
+    titleTooltip: string;
+    sortActive: boolean;
+    menuItems: MenuProps["items"];
+    onCycleTitle: () => void;
+};
+
+function SortableColumnHeader({
+    theme,
+    label,
+    titleTooltip,
+    sortActive,
+    menuItems,
+    onCycleTitle,
+}: SortableColumnHeaderProps) {
+    const accent = theme.theme.colors.accentbg.value;
+    const muted = theme.theme.colors.desaturatedtxt.value;
+    const text = theme.theme.colors.primarytxt.value;
+
+    return (
+        <div
+            style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+                width: "100%",
+                minWidth: 0,
+            }}>
+            <Tooltip title={titleTooltip}>
+                <span
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onCycleTitle();
+                        }
+                    }}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onCycleTitle();
+                    }}
+                    style={{
+                        flex: 1,
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        cursor: "pointer",
+                        color: text,
+                    }}>
+                    {label}
+                </span>
+            </Tooltip>
+            <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
+                <Button
+                    type="text"
+                    size="small"
+                    onClick={(e) => e.stopPropagation()}
+                    icon={
+                        <CaretDownOutlined
+                            style={{
+                                fontSize: 10,
+                                color: sortActive ? accent : muted,
+                            }}
+                        />
+                    }
+                    aria-label="Sort options"
+                    style={{ flexShrink: 0, paddingInline: 4, height: 22 }}
+                />
+            </Dropdown>
+        </div>
+    );
+}
+
+function sortFullDataByGoal(
+    rows: CoverageRecord[],
+    columnKey: GoalSortKey,
+    order: "ascend" | "descend",
+): CoverageRecord[] {
+    const cmp =
+        columnKey === "goal_name"
+            ? getColumnMixedCompare<CoverageRecord>("goal_name")
+            : getColumnNumCompare<CoverageRecord>(columnKey);
+    return rows
+        .map((row, idx) => ({ row, idx }))
+        .sort((a, b) => {
+            const r = cmp(a.row, b.row);
+            if (r !== 0) {
+                return order === "ascend" ? r : -r;
+            }
+            return a.idx - b.idx;
+        })
+        .map((entry) => entry.row);
 }
 
 function buildPointTableModel(node: PointNode): PointTableModel {
@@ -376,12 +711,22 @@ function getFullColumns(
     model: PointTableModel,
     axisValueStart: number,
     axisSortState: AxisSortState,
+    goalSortState: GoalSortState,
+    sortActions: PointTableSortActions,
 ): TableProps<CoverageRecord>["columns"] {
+    const axisModes = ["user_asc", "user_desc", "alpha_asc", "alpha_desc"] as const;
+
     return [
         {
-            title: "Bucket",
+            title: (
+                <Tooltip title="Unique bucket identifier">
+                    <span>ID</span>
+                </Tooltip>
+            ),
             dataIndex: "key",
             key: "key",
+            width: 1,
+            onCell: () => ({ style: { whiteSpace: "nowrap" } }),
         },
         {
             title: "Axes",
@@ -390,23 +735,34 @@ function getFullColumns(
                     axis.value_start - axisValueStart,
                     axis.value_end - axisValueStart,
                 );
-                const axisSortMode =
-                    axisSortState.axisName === axis.name ? axisSortState.mode : "none";
+                const isActiveAxis =
+                    axisSortState.axisName === axis.name && axisSortState.mode !== "none";
+                const axisMenuItems: MenuProps["items"] = [
+                    ...axisModes.map((mode) => ({
+                        key: mode,
+                        label: AXIS_MODE_LABELS[mode],
+                        onClick: () => sortActions.applyAxisSort(axis.name, mode),
+                    })),
+                    { type: "divider" as const },
+                    {
+                        key: "clear",
+                        label: "Clear sort",
+                        onClick: () => sortActions.clearAxisSort(),
+                    },
+                ];
                 return {
-                    title: axis.name,
+                    title: (
+                        <SortableColumnHeader
+                            theme={theme}
+                            label={axis.name}
+                            titleTooltip={axisTitleTooltip(axis.name, axisSortState)}
+                            sortActive={isActiveAxis}
+                            menuItems={axisMenuItems}
+                            onCycleTitle={() => sortActions.cycleAxisSort(axis.name)}
+                        />
+                    ),
                     dataIndex: axis.name,
                     key: axis.name,
-                    sorter: true,
-                    sortDirections: ["ascend", "descend", "ascend"],
-                    showSorterTooltip: {
-                        title:
-                            "User order, reverse user order, alphabetical, reverse alphabetical",
-                        target: "full-header",
-                    },
-                    sortOrder:
-                        axisSortState.axisName === axis.name
-                            ? getAxisSortOrder(axisSortMode)
-                            : null,
                     filters: axisValueSlice.map((axisValue) => ({
                         text: axisValue.value,
                         value: axisValue.value,
@@ -421,7 +777,37 @@ function getFullColumns(
             title: "Goal",
             children: [
                 {
-                    title: "Name",
+                    title: (
+                        <SortableColumnHeader
+                            theme={theme}
+                            label="Name"
+                            titleTooltip={goalTitleTooltip("goal_name", goalSortState)}
+                            sortActive={
+                                goalSortState.columnKey === "goal_name"
+                                && goalSortState.order != null
+                            }
+                            menuItems={[
+                                {
+                                    key: "asc",
+                                    label: "Sort ascending",
+                                    onClick: () => sortActions.applyGoalSort("goal_name", "ascend"),
+                                },
+                                {
+                                    key: "desc",
+                                    label: "Sort descending",
+                                    onClick: () =>
+                                        sortActions.applyGoalSort("goal_name", "descend"),
+                                },
+                                { type: "divider" },
+                                {
+                                    key: "clear",
+                                    label: "Clear sort",
+                                    onClick: () => sortActions.clearGoalSort(),
+                                },
+                            ]}
+                            onCycleTitle={() => sortActions.cycleGoalSort("goal_name")}
+                        />
+                    ),
                     dataIndex: "goal_name",
                     key: "goal_name",
                     filters: model.goals.map((goal) => ({
@@ -431,22 +817,107 @@ function getFullColumns(
                     filterMode: "tree",
                     filterSearch: true,
                     onFilter: (value, record) => record.goal_name == value,
-                    sorter: getColumnMixedCompare<CoverageRecord>("goal_name"),
                 },
                 {
-                    title: "Target",
+                    title: (
+                        <SortableColumnHeader
+                            theme={theme}
+                            label="Target"
+                            titleTooltip={goalTitleTooltip("target", goalSortState)}
+                            sortActive={
+                                goalSortState.columnKey === "target"
+                                && goalSortState.order != null
+                            }
+                            menuItems={[
+                                {
+                                    key: "asc",
+                                    label: "Sort ascending",
+                                    onClick: () => sortActions.applyGoalSort("target", "ascend"),
+                                },
+                                {
+                                    key: "desc",
+                                    label: "Sort descending",
+                                    onClick: () => sortActions.applyGoalSort("target", "descend"),
+                                },
+                                { type: "divider" },
+                                {
+                                    key: "clear",
+                                    label: "Clear sort",
+                                    onClick: () => sortActions.clearGoalSort(),
+                                },
+                            ]}
+                            onCycleTitle={() => sortActions.cycleGoalSort("target")}
+                        />
+                    ),
                     dataIndex: "target",
                     key: "target",
-                    sorter: getColumnNumCompare<CoverageRecord>("target"),
                 },
                 {
-                    title: "Hits",
+                    title: (
+                        <SortableColumnHeader
+                            theme={theme}
+                            label="Hits"
+                            titleTooltip={goalTitleTooltip("hits", goalSortState)}
+                            sortActive={
+                                goalSortState.columnKey === "hits"
+                                && goalSortState.order != null
+                            }
+                            menuItems={[
+                                {
+                                    key: "asc",
+                                    label: "Sort ascending",
+                                    onClick: () => sortActions.applyGoalSort("hits", "ascend"),
+                                },
+                                {
+                                    key: "desc",
+                                    label: "Sort descending",
+                                    onClick: () => sortActions.applyGoalSort("hits", "descend"),
+                                },
+                                { type: "divider" },
+                                {
+                                    key: "clear",
+                                    label: "Clear sort",
+                                    onClick: () => sortActions.clearGoalSort(),
+                                },
+                            ]}
+                            onCycleTitle={() => sortActions.cycleGoalSort("hits")}
+                        />
+                    ),
                     dataIndex: "hits",
                     key: "hits",
-                    sorter: getColumnNumCompare<CoverageRecord>("hits"),
                 },
                 {
-                    title: "Hit %",
+                    title: (
+                        <SortableColumnHeader
+                            theme={theme}
+                            label="Hit %"
+                            titleTooltip={goalTitleTooltip("hit_ratio", goalSortState)}
+                            sortActive={
+                                goalSortState.columnKey === "hit_ratio"
+                                && goalSortState.order != null
+                            }
+                            menuItems={[
+                                {
+                                    key: "asc",
+                                    label: "Sort ascending",
+                                    onClick: () => sortActions.applyGoalSort("hit_ratio", "ascend"),
+                                },
+                                {
+                                    key: "desc",
+                                    label: "Sort descending",
+                                    onClick: () =>
+                                        sortActions.applyGoalSort("hit_ratio", "descend"),
+                                },
+                                { type: "divider" },
+                                {
+                                    key: "clear",
+                                    label: "Clear sort",
+                                    onClick: () => sortActions.clearGoalSort(),
+                                },
+                            ]}
+                            onCycleTitle={() => sortActions.cycleGoalSort("hit_ratio")}
+                        />
+                    ),
                     dataIndex: "hit_ratio",
                     key: "hit_ratio",
                     filters: [
@@ -479,7 +950,6 @@ function getFullColumns(
                     filterMode: "tree",
                     filterSearch: true,
                     ...getCoverageColumnConfig(theme, "hit_ratio"),
-                    sorter: getColumnNumCompare<CoverageRecord>("hit_ratio"),
                 },
             ],
         },
@@ -492,10 +962,15 @@ function getLargeColumns(
 ): TableProps<LargeCoverageRecord>["columns"] {
     return [
         {
-            title: "Bucket",
+            title: (
+                <Tooltip title="Unique bucket identifier">
+                  <span>ID</span>
+                </Tooltip>
+              ),
             dataIndex: "key",
             key: "key",
-            width: 100,
+            width: 1,
+            onCell: () => ({ style: { whiteSpace: "nowrap" } })
         },
         {
             title: "Axes",
@@ -553,6 +1028,10 @@ export function PointGrid({ node }: PointGridProps) {
         axisName: null,
         mode: "none",
     });
+    const [goalSortState, setGoalSortState] = useState<GoalSortState>({
+        columnKey: null,
+        order: null,
+    });
     const pointTags = useMemo(() => parsePointTags(node.data.point.tags), [node.data.point.tags]);
     const pointTier = normalizePointTier(node.data.point.tier);
     const pointDescription = String(node.data.point.description ?? "").trim();
@@ -569,6 +1048,7 @@ export function PointGrid({ node }: PointGridProps) {
         setLargeSort("bucket_asc");
         setIsLargeBannerDismissed(false);
         setAxisSortState({ axisName: null, mode: "none" });
+        setGoalSortState({ columnKey: null, order: null });
     }, [node.key]);
 
     useEffect(() => {
@@ -682,9 +1162,84 @@ export function PointGrid({ node }: PointGridProps) {
         return rows;
     }, [isLargeMode, model]);
 
+    const clearAxisSort = useCallback(() => {
+        setAxisSortState({ axisName: null, mode: "none" });
+    }, []);
+
+    const clearGoalSort = useCallback(() => {
+        setGoalSortState({ columnKey: null, order: null });
+    }, []);
+
+    const applyAxisSort = useCallback((axisName: string, mode: Exclude<AxisSortMode, "none">) => {
+        setGoalSortState({ columnKey: null, order: null });
+        setAxisSortState({ axisName, mode });
+    }, []);
+
+    const cycleAxisSort = useCallback((axisName: string) => {
+        setGoalSortState({ columnKey: null, order: null });
+        setAxisSortState((current) => {
+            if (current.axisName !== axisName || current.mode === "none") {
+                return { axisName, mode: "user_asc" };
+            }
+            return { axisName, mode: getNextAxisSortMode(current.mode) };
+        });
+    }, []);
+
+    const applyGoalSort = useCallback((key: GoalSortKey, order: "ascend" | "descend") => {
+        setAxisSortState({ axisName: null, mode: "none" });
+        setGoalSortState({ columnKey: key, order });
+    }, []);
+
+    const cycleGoalSort = useCallback((key: GoalSortKey) => {
+        setAxisSortState({ axisName: null, mode: "none" });
+        setGoalSortState((current) => {
+            if (current.columnKey !== key) {
+                return { columnKey: key, order: "ascend" };
+            }
+            if (current.order === "ascend") {
+                return { columnKey: key, order: "descend" };
+            }
+            if (current.order === "descend") {
+                return { columnKey: null, order: null };
+            }
+            return { columnKey: key, order: "ascend" };
+        });
+    }, []);
+
+    const pointTableSortActions = useMemo<PointTableSortActions>(
+        () => ({
+            cycleAxisSort,
+            applyAxisSort,
+            clearAxisSort,
+            cycleGoalSort,
+            applyGoalSort,
+            clearGoalSort,
+        }),
+        [
+            cycleAxisSort,
+            applyAxisSort,
+            clearAxisSort,
+            cycleGoalSort,
+            applyGoalSort,
+            clearGoalSort,
+        ],
+    );
+
     const sortedFullDataSource = useMemo<CoverageRecord[]>(() => {
+        if (fullDataSource.length <= 1) {
+            return fullDataSource;
+        }
+
+        if (goalSortState.columnKey && goalSortState.order) {
+            return sortFullDataByGoal(
+                fullDataSource,
+                goalSortState.columnKey,
+                goalSortState.order,
+            );
+        }
+
         const { axisName, mode } = axisSortState;
-        if (!axisName || mode === "none" || fullDataSource.length <= 1) {
+        if (!axisName || mode === "none") {
             return fullDataSource;
         }
 
@@ -727,50 +1282,14 @@ export function PointGrid({ node }: PointGridProps) {
             .map((entry) => entry.row);
 
         return sorted;
-    }, [axisSortState, fullDataSource, model.axes, model.axisValues, node.data.point.axis_value_start]);
-
-    const onFullTableChange: TableProps<CoverageRecord>["onChange"] = (
-        _pagination,
-        _filters,
-        sorter,
-        extra,
-    ) => {
-        if (extra.action !== "sort") {
-            return;
-        }
-        const sorterResult = Array.isArray(sorter) ? sorter[0] : sorter;
-        if (!sorterResult.order) {
-            return;
-        }
-        const columnKey = sorterResult.columnKey;
-        if (typeof columnKey !== "string") {
-            return;
-        }
-        if (!model.axes.some((axis) => axis.name === columnKey)) {
-            return;
-        }
-        setAxisSortState((current) => {
-            // Ignore duplicate sorter events that can be emitted without a user-mode transition.
-            if (
-                current.axisName === columnKey
-                && sorterResult.order === getAxisSortOrder(current.mode)
-            ) {
-                return current;
-            }
-
-            if (current.axisName !== columnKey || current.mode === "none") {
-                return {
-                    axisName: columnKey,
-                    mode: "user_asc",
-                };
-            }
-
-            return {
-                axisName: columnKey,
-                mode: getNextAxisSortMode(current.mode),
-            };
-        });
-    };
+    }, [
+        axisSortState,
+        goalSortState,
+        fullDataSource,
+        model.axes,
+        model.axisValues,
+        node.data.point.axis_value_start,
+    ]);
 
     useEffect(() => {
         if (!import.meta.env.DEV) {
@@ -980,16 +1499,36 @@ export function PointGrid({ node }: PointGridProps) {
 
                 const banner = isLargeDataset && !isLargeBannerDismissed ? (
                     <Alert
+                        className="bucket-large-dataset-alert"
                         style={{
                             marginBottom: 10,
-                            paddingInline: 10,
-                            border: `1px solid ${theme.theme.colors.lowlightbg.value}`,
+                            paddingInline: 12,
+                            paddingBlock: 10,
+                            color: theme.theme.colors.saturatedtxt.value,
+                            border: `1px solid ${hexToRgba(theme.theme.colors.saturatedtxt.value, 0.22)}`,
                             backgroundColor: hexToRgba(
-                                theme.theme.colors.tertiarybg.value,
-                                0.92,
+                                theme.theme.colors.secondarybg.value,
+                                0.97,
                             ),
                         }}
                         showIcon
+                        icon={
+                            isLargeMode ? (
+                                <ExclamationCircleFilled
+                                    style={{
+                                        color: theme.theme.colors.accentbg.value,
+                                        fontSize: 18,
+                                    }}
+                                />
+                            ) : (
+                                <InfoCircleFilled
+                                    style={{
+                                        color: theme.theme.colors.accentbg.value,
+                                        fontSize: 18,
+                                    }}
+                                />
+                            )
+                        }
                         closable
                         closeIcon={
                             <CloseOutlined
@@ -1000,12 +1539,14 @@ export function PointGrid({ node }: PointGridProps) {
                             />
                         }
                         onClose={() => setIsLargeBannerDismissed(true)}
-                        type={isLargeMode ? "warning" : "info"}
+                        type="info"
                         message={
                             <Typography.Text
                                 style={{
                                     color: theme.theme.colors.saturatedtxt.value,
                                     fontWeight: 600,
+                                    fontSize: 14,
+                                    lineHeight: 1.45,
                                 }}>
                                 {isLargeMode
                                     ? `Large dataset mode active (${model.rowCount.toLocaleString()} rows).`
@@ -1015,7 +1556,10 @@ export function PointGrid({ node }: PointGridProps) {
                         description={
                             <Typography.Text
                                 style={{
-                                    color: theme.theme.colors.primarytxt.value,
+                                    color: theme.theme.colors.saturatedtxt.value,
+                                    fontSize: 13,
+                                    lineHeight: 1.5,
+                                    opacity: 0.92,
                                 }}>
                                 {isLargeMode
                                     ? `Optimized rendering is enabled above ${POINT_FULL_FEATURE_ROW_LIMIT.toLocaleString()} rows.`
@@ -1125,9 +1669,10 @@ export function PointGrid({ node }: PointGridProps) {
                                 model,
                                 node.data.point.axis_value_start,
                                 axisSortState,
+                                goalSortState,
+                                pointTableSortActions,
                             )}
                             dataSource={sortedFullDataSource}
-                            onChange={onFullTableChange}
                         />
                     </>
                 );
@@ -1162,8 +1707,8 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
         createInitialExpandedSet(tree, node),
     );
     const [selectedTiers, setSelectedTiers] = useState<number[]>([]);
-    const [includedTags, setIncludedTags] = useState<string[]>([]);
-    const [excludedTags, setExcludedTags] = useState<string[]>([]);
+    const [selectedTags, setSelectedTags] = useState<string[]>([]);
+    const [tagMatchMode, setTagMatchMode] = useState<SummaryTagMatchMode>("any");
 
     useEffect(() => {
         setExpandedCovergroups(createInitialExpandedSet(tree, node));
@@ -1171,8 +1716,8 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
 
     useEffect(() => {
         setSelectedTiers([]);
-        setIncludedTags([]);
-        setExcludedTags([]);
+        setSelectedTags([]);
+        setTagMatchMode("any");
     }, [tree, node.key]);
 
     const toggleCovergroup = (key: TreeKey, e: MouseEvent) => {
@@ -1269,22 +1814,28 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
     );
 
     const dataSource = useMemo<SummaryRecord[]>(() => {
-        const hasFilters =
-            selectedTiers.length > 0
-            || includedTags.length > 0
-            || excludedTags.length > 0;
+        const hasFilters = selectedTiers.length > 0 || selectedTags.length > 0;
 
         if (!hasFilters) {
             return visibleRows;
         }
 
         const tierSet = new Set(selectedTiers);
-        const includeSet = new Set(includedTags);
-        const excludeSet = new Set(excludedTags);
+        const selectedTagSet = new Set(selectedTags);
         const parentByKey = new Map<TreeKey, TreeKey | null>();
         for (const row of visibleRows) {
             parentByKey.set(row.key, row.parentKey);
         }
+
+        const tagMatch = (tags: string[]): boolean => {
+            if (selectedTagSet.size === 0) {
+                return true;
+            }
+            if (tagMatchMode === "any") {
+                return tags.some((tag) => selectedTagSet.has(tag));
+            }
+            return selectedTags.every((t) => tags.includes(t));
+        };
 
         const keepKeys = new Set<TreeKey>();
         for (const row of visibleRows) {
@@ -1295,12 +1846,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
             const tierMatch =
                 tierSet.size === 0
                 || (row.tier !== null && tierSet.has(row.tier));
-            const includeMatch =
-                includeSet.size === 0
-                || row.tags.some((tag) => includeSet.has(tag));
-            const excludeMatch = row.tags.every((tag) => !excludeSet.has(tag));
-
-            if (!tierMatch || !includeMatch || !excludeMatch) {
+            if (!tierMatch || !tagMatch(row.tags)) {
                 continue;
             }
 
@@ -1315,9 +1861,14 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
         }
 
         return visibleRows.filter((row) => keepKeys.has(row.key));
-    }, [visibleRows, selectedTiers, includedTags, excludedTags]);
+    }, [visibleRows, selectedTiers, selectedTags, tagMatchMode]);
 
-    const getColumns = (theme: ThemeType): TableProps<SummaryRecord>["columns"] => [
+    return (
+        <Theme.Consumer>
+            {({ theme }) => {
+                const colors = theme.theme.colors;
+
+                const summaryColumns: TableProps<SummaryRecord>["columns"] = [
         {
             title: "Name",
             dataIndex: "name",
@@ -1391,7 +1942,6 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                 onClick: () => setSelectedTreeKeys([record.key]),
                 style: { cursor: "pointer" },
             }),
-            sorter: getColumnMixedCompare<SummaryRecord>("name"),
         },
         {
             title: "Description",
@@ -1409,25 +1959,89 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     paddingLeft: record.isCovergroup ? "12px" : "8px",
                 },
             }),
-            sorter: getColumnMixedCompare<SummaryRecord>("desc"),
         },
         {
             title: "Tier",
             dataIndex: "tier",
             key: "tier",
             render: (tier: number | null) => (tier === null ? "-" : String(tier)),
-            sorter: (a: SummaryRecord, b: SummaryRecord) => {
-                if (a.tier === null && b.tier === null) {
-                    return 0;
-                }
-                if (a.tier === null) {
-                    return 1;
-                }
-                if (b.tier === null) {
-                    return -1;
-                }
-                return a.tier - b.tier;
-            },
+            filterDropdown: ({ confirm, clearFilters }) => (
+                <div
+                    className="metadata-filter-toolbar"
+                    style={{ padding: 8, minWidth: 168 }}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}>
+                    <div style={{ maxHeight: 280, overflowY: "auto" }}>
+                        {tierFilterOptions.length === 0 ? (
+                            <Typography.Text
+                                style={{
+                                    display: "block",
+                                    padding: "8px 12px",
+                                    color: colors.desaturatedtxt.value,
+                                    fontSize: 12,
+                                }}>
+                                No tiers in view
+                            </Typography.Text>
+                        ) : (
+                            tierFilterOptions.map(({ label, value }) => (
+                                <div key={value} style={{ padding: "4px 12px" }}>
+                                    <Checkbox
+                                        checked={selectedTiers.includes(value)}
+                                        onChange={(e) => {
+                                            if (e.target.checked) {
+                                                setSelectedTiers(
+                                                    [...selectedTiers, value].sort((a, b) => a - b),
+                                                );
+                                            } else {
+                                                setSelectedTiers(
+                                                    selectedTiers.filter((t) => t !== value),
+                                                );
+                                            }
+                                        }}>
+                                        <span style={{ color: colors.primarytxt.value }}>
+                                            {label}
+                                        </span>
+                                    </Checkbox>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    <Divider style={{ margin: "8px 0" }} />
+                    <Space style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
+                        <Button
+                            type="link"
+                            size="small"
+                            onClick={() => {
+                                clearFilters?.();
+                                setSelectedTiers([]);
+                            }}>
+                            Reset
+                        </Button>
+                        <Button type="primary" size="small" onClick={() => confirm()}>
+                            OK
+                        </Button>
+                    </Space>
+                </div>
+            ),
+            filterIcon: (
+                <Tooltip title="Filter by tier">
+                    {selectedTiers.length ? (
+                        <FilterFilled
+                            style={{
+                                color: colors.accentbg.value,
+                                fontSize: 14,
+                            }}
+                        />
+                    ) : (
+                        <FilterOutlined
+                            style={{
+                                color: colors.desaturatedtxt.value,
+                                fontSize: 14,
+                            }}
+                        />
+                    )}
+                </Tooltip>
+            ),
             onCell: (record: SummaryRecord) => ({
                 style: {
                     backgroundColor: record.isCovergroup
@@ -1441,7 +2055,37 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
             dataIndex: "tags_text",
             key: "tags_text",
             render: (tags: string) => (tags === "" ? "-" : tags),
-            sorter: getColumnMixedCompare<SummaryRecord>("tags_text"),
+            filterDropdown: ({ confirm, clearFilters }) => (
+                <SummaryTagFilterDropdown
+                    colors={colors}
+                    tagFilterOptions={tagFilterOptions}
+                    selectedTags={selectedTags}
+                    setSelectedTags={setSelectedTags}
+                    tagMatchMode={tagMatchMode}
+                    setTagMatchMode={setTagMatchMode}
+                    confirm={confirm}
+                    clearFilters={clearFilters}
+                />
+            ),
+            filterIcon: (
+                <Tooltip title="Filter by tags (Any / All)">
+                    {selectedTags.length ? (
+                        <FilterFilled
+                            style={{
+                                color: colors.accentbg.value,
+                                fontSize: 14,
+                            }}
+                        />
+                    ) : (
+                        <FilterOutlined
+                            style={{
+                                color: colors.desaturatedtxt.value,
+                                fontSize: 14,
+                            }}
+                        />
+                    )}
+                </Tooltip>
+            ),
             onCell: (record: SummaryRecord) => ({
                 style: {
                     backgroundColor: record.isCovergroup
@@ -1451,13 +2095,12 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
             }),
         },
         {
-            title: "Goal",
+            title: summaryTableHeaderTitle("Goal", SUMMARY_COLUMN_HELP.goalGroup),
             children: [
                 {
-                    title: "Target",
+                    title: summaryTableHeaderTitle("Target", SUMMARY_COLUMN_HELP.goalTarget),
                     dataIndex: "target",
                     key: "target",
-                    sorter: getColumnNumCompare<SummaryRecord>("target"),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup
@@ -1467,10 +2110,9 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     }),
                 },
                 {
-                    title: "Hits",
+                    title: summaryTableHeaderTitle("Hits", SUMMARY_COLUMN_HELP.goalHits),
                     dataIndex: "hits",
                     key: "hits",
-                    sorter: getColumnNumCompare<SummaryRecord>("hits"),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup
@@ -1480,11 +2122,10 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     }),
                 },
                 {
-                    title: "Hit %",
+                    title: summaryTableHeaderTitle("Hit %", SUMMARY_COLUMN_HELP.goalHitPct),
                     dataIndex: "hit_ratio",
                     key: "hit_ratio",
                     ...getCoverageColumnConfig(theme, "hit_ratio"),
-                    sorter: getColumnNumCompare<SummaryRecord>("hit_ratio"),
                     onCell: (record: SummaryRecord) => {
                         const coverageConfig = getCoverageColumnConfig(theme, "hit_ratio");
                         const coverageStyle = coverageConfig.onCell
@@ -1508,13 +2149,15 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
             ],
         },
         {
-            title: "Buckets",
+            title: summaryTableHeaderTitle("Buckets", SUMMARY_COLUMN_HELP.bucketsGroup),
             children: [
                 {
-                    title: "Target",
+                    title: summaryTableHeaderTitle(
+                        "Target",
+                        SUMMARY_COLUMN_HELP.bucketsTarget,
+                    ),
                     dataIndex: "target_buckets",
                     key: "target_buckets",
-                    sorter: getColumnNumCompare<SummaryRecord>("target_buckets"),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup
@@ -1524,10 +2167,9 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     }),
                 },
                 {
-                    title: "Hit",
+                    title: summaryTableHeaderTitle("Hit", SUMMARY_COLUMN_HELP.bucketsHit),
                     dataIndex: "hit_buckets",
                     key: "hit_buckets",
-                    sorter: getColumnNumCompare<SummaryRecord>("hit_buckets"),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup
@@ -1537,10 +2179,9 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     }),
                 },
                 {
-                    title: "Full",
+                    title: summaryTableHeaderTitle("Full", SUMMARY_COLUMN_HELP.bucketsFull),
                     dataIndex: "full_buckets",
                     key: "full_buckets",
-                    sorter: getColumnNumCompare<SummaryRecord>("full_buckets"),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup
@@ -1550,11 +2191,10 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     }),
                 },
                 {
-                    title: "Hit %",
+                    title: summaryTableHeaderTitle("Hit %", SUMMARY_COLUMN_HELP.bucketsHitPct),
                     dataIndex: "buckets_hit_ratio",
                     key: "buckets_hit_ratio",
                     ...getCoverageColumnConfig(theme, "buckets_hit_ratio"),
-                    sorter: getColumnNumCompare<SummaryRecord>("buckets_hit_ratio"),
                     onCell: (record: SummaryRecord) => {
                         const coverageConfig = getCoverageColumnConfig(
                             theme,
@@ -1579,11 +2219,10 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                     },
                 },
                 {
-                    title: "Full %",
+                    title: summaryTableHeaderTitle("Full %", SUMMARY_COLUMN_HELP.bucketsFullPct),
                     dataIndex: "buckets_full_ratio",
                     key: "buckets_full_ratio",
                     ...getCoverageColumnConfig(theme, "buckets_full_ratio"),
-                    sorter: getColumnNumCompare<SummaryRecord>("buckets_full_ratio"),
                     onCell: (record: SummaryRecord) => {
                         const coverageConfig = getCoverageColumnConfig(
                             theme,
@@ -1609,121 +2248,85 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                 },
             ],
         },
-    ];
+                ];
 
-    return (
-        <Theme.Consumer>
-            {({ theme }) => {
-                const filterToolbarStyle = {
-                    marginTop: 8,
-                    marginBottom: 12,
-                    padding: "10px 12px",
-                    border: `1px solid ${theme.theme.colors.secondarybg.value}`,
-                    backgroundColor: hexToRgba(theme.theme.colors.tertiarybg.value, 0.72),
-                    display: "flex",
-                    width: "100%",
-                    boxSizing: "border-box",
-                    alignItems: "center",
-                    rowGap: 8,
-                    "--metadata-select-bg": theme.theme.colors.secondarybg.value,
-                    "--metadata-select-border": theme.theme.colors.lowlightbg.value,
-                    "--metadata-select-text": theme.theme.colors.saturatedtxt.value,
-                    "--metadata-select-placeholder": theme.theme.colors.saturatedtxt.value,
-                    "--metadata-select-hover-border": theme.theme.colors.accentbg.value,
-                    "--metadata-select-dropdown-bg": theme.theme.colors.tertiarybg.value,
-                    "--metadata-select-option-hover-bg": theme.theme.colors.lowlightbg.value,
-                    "--metadata-select-option-selected-bg": theme.theme.colors.highlightbg.value,
-                } as CSSProperties;
-                const metadataDropdownStyle = {
-                    backgroundColor: theme.theme.colors.tertiarybg.value,
-                    color: theme.theme.colors.saturatedtxt.value,
-                    "--metadata-select-text": theme.theme.colors.saturatedtxt.value,
-                    "--metadata-select-dropdown-bg": theme.theme.colors.tertiarybg.value,
-                    "--metadata-select-option-hover-bg": theme.theme.colors.lowlightbg.value,
-                    "--metadata-select-option-selected-bg": theme.theme.colors.highlightbg.value,
-                } as CSSProperties;
+                const hasMetadataFilters =
+                    selectedTiers.length > 0 || selectedTags.length > 0;
+                const clearMetadataFilters = () => {
+                    setSelectedTiers([]);
+                    setSelectedTags([]);
+                    setTagMatchMode("any");
+                };
 
                 return (
                     <>
-                    <Space wrap className="metadata-filter-toolbar" style={filterToolbarStyle}>
-                        <Typography.Text
-                            strong
-                            style={{
-                                color: theme.theme.colors.saturatedtxt.value,
-                                fontSize: 13,
-                            }}>
-                            Metadata filters:
-                        </Typography.Text>
-                        <Select
-                            mode="multiple"
-                            size="middle"
-                            allowClear
-                            className="metadata-filter-select"
-                            popupClassName="metadata-filter-dropdown"
-                            dropdownStyle={metadataDropdownStyle}
-                            placeholder="Tier"
-                            value={selectedTiers}
-                            onChange={(values) => setSelectedTiers((values as number[]).map(Number))}
-                            options={tierFilterOptions}
-                            style={{ minWidth: 140 }}
-                            aria-label="Filter by tier"
-                        />
-                        <Select
-                            mode="multiple"
-                            size="middle"
-                            allowClear
-                            showSearch
-                            className="metadata-filter-select"
-                            popupClassName="metadata-filter-dropdown"
-                            dropdownStyle={metadataDropdownStyle}
-                            placeholder="Include tags (any)"
-                            value={includedTags}
-                            onChange={(values) => setIncludedTags((values as string[]).map(String))}
-                            options={tagFilterOptions}
-                            style={{ minWidth: 220 }}
-                            aria-label="Include tags filter"
-                        />
-                        <Select
-                            mode="multiple"
-                            size="middle"
-                            allowClear
-                            showSearch
-                            className="metadata-filter-select"
-                            popupClassName="metadata-filter-dropdown"
-                            dropdownStyle={metadataDropdownStyle}
-                            placeholder="Exclude tags"
-                            value={excludedTags}
-                            onChange={(values) => setExcludedTags((values as string[]).map(String))}
-                            options={tagFilterOptions}
-                            style={{ minWidth: 220 }}
-                            aria-label="Exclude tags filter"
-                        />
-                        {(selectedTiers.length > 0
-                            || includedTags.length > 0
-                            || excludedTags.length > 0) && (
-                            <Button
-                                size="small"
-                                onClick={() => {
-                                    setSelectedTiers([]);
-                                    setIncludedTags([]);
-                                    setExcludedTags([]);
-                                }}>
-                                Clear filters
-                            </Button>
-                        )}
-                        <Typography.Text
-                            style={{
-                                color: theme.theme.colors.primarytxt.value,
-                                fontSize: 13,
-                                fontWeight: 500,
-                            }}>
-                            Showing {dataSource.length.toLocaleString()} rows
-                        </Typography.Text>
-                    </Space>
-                    <Table<SummaryRecord>
+                        <Table<SummaryRecord>
                         {...(view.body.content.table.props as unknown as TableProps<SummaryRecord>)}
+                        locale={{
+                            emptyText:
+                                hasMetadataFilters && dataSource.length === 0 ? (
+                                    <div
+                                        style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            gap: 10,
+                                            flexWrap: "wrap",
+                                        }}>
+                                        <Typography.Text
+                                            style={{
+                                                color: colors.primarytxt.value,
+                                            }}>
+                                            No rows match the current filters (0 matches).
+                                        </Typography.Text>
+                                        <Button
+                                            type="link"
+                                            size="small"
+                                            style={{ padding: 0 }}
+                                            onClick={clearMetadataFilters}>
+                                            Clear all filters
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <Typography.Text
+                                        style={{
+                                            color: colors.primarytxt.value,
+                                        }}>
+                                        No rows to display in this summary.
+                                    </Typography.Text>
+                                ),
+                        }}
                         key={node.key}
-                        columns={getColumns(theme)}
+                        columns={summaryColumns}
+                        title={() => (
+                            <div
+                                style={{
+                                    display: "flex",
+                                    justifyContent: "flex-end",
+                                    alignItems: "center",
+                                    gap: 12,
+                                    flexWrap: "wrap",
+                                    marginBottom: 4,
+                                }}>
+                                {hasMetadataFilters ? (
+                                    <Button
+                                        type="link"
+                                        size="small"
+                                        style={{ padding: 0 }}
+                                        onClick={clearMetadataFilters}>
+                                        Clear filters
+                                    </Button>
+                                ) : null}
+                                <Typography.Text
+                                    style={{
+                                        color: colors.primarytxt.value,
+                                        fontSize: 13,
+                                        fontWeight: 500,
+                                    }}>
+                                    Showing {dataSource.length.toLocaleString()} rows
+                                </Typography.Text>
+                            </div>
+                        )}
                         dataSource={dataSource}
                         onRow={(record: SummaryRecord) => ({
                             style: {
