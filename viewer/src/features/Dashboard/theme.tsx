@@ -68,7 +68,15 @@ const sider = {
 };
 
 const body = {
-    props: {} as LayoutProps,
+    props: {
+        style: {
+            display: "flex",
+            flexDirection: "column",
+            flex: "1 1 auto",
+            minHeight: 0,
+            overflow: "hidden",
+        },
+    } as LayoutProps,
     header: {
         props: {
             style: {
@@ -105,8 +113,11 @@ const body = {
         props: {
             style: {
                 margin: 0,
-                minHeight: 280,
-                overflow: "auto", // Use auto instead of scroll - scrollbars hidden via CSS
+                minHeight: 0,
+                flex: "1 1 auto",
+                display: "flex",
+                flexDirection: "column",
+                overflow: "auto",
             },
         } as ComponentPropsWithoutRef<"div">,
         table: {

@@ -322,8 +322,22 @@ function TopLevelCoverageInfoPanel({
         if (typeof window === "undefined") {
             return;
         }
-        // Donut view listens for resize to recompute available space.
-        window.dispatchEvent(new Event("resize"));
+        let cancelled = false;
+        const signalResize = () => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    if (!cancelled) {
+                        window.dispatchEvent(new Event("resize"));
+                    }
+                });
+            });
+        };
+        signalResize();
+        const t = window.setTimeout(signalResize, 50);
+        return () => {
+            cancelled = true;
+            window.clearTimeout(t);
+        };
     }, [isCollapsed, compat.status, versionAlertDismissed]);
 
     return (
@@ -469,10 +483,30 @@ function withTopLevelInfoPanel({
     }
 
     return (
-        <>
-            <TopLevelCoverageInfoPanel info={info} treeSelectionKey={treeSelectionKey} />
-            {content}
-        </>
+        <div
+            style={{
+                display: "flex",
+                flexDirection: "column",
+                flex: "1 1 auto",
+                minHeight: 0,
+                width: "100%",
+            }}>
+            <div style={{ flexShrink: 0, width: "100%" }}>
+                <TopLevelCoverageInfoPanel info={info} treeSelectionKey={treeSelectionKey} />
+            </div>
+            <div
+                style={{
+                    flex: "1 1 auto",
+                    minHeight: 0,
+                    overflow: "auto",
+                    width: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "stretch",
+                }}>
+                {content}
+            </div>
+        </div>
     );
 }
 

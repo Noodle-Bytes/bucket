@@ -15,6 +15,8 @@ import {
     buildNode,
     flattenData,
     SunburstNode,
+    calculateRingRadii,
+    computeSunburstVisualMidpoint,
 } from "./coveragedonut-utils";
 import { getCoverageColor } from "@/utils/colors";
 import { CHART_MARGIN } from "./coveragedonut-constants";
@@ -26,14 +28,6 @@ export type CoverageDonutProps = {
     setSelectedTreeKeys?: (keys: TreeKey[]) => void;
 };
 
-function calculateRingRadii(depth: number, maxDepth: number, startInnerRadius: number, maxRadius: number) {
-    if (maxDepth === 0) return null;
-    const ringThickness = (maxRadius - startInnerRadius) / maxDepth;
-    const innerRadius = startInnerRadius + ringThickness * (depth - 1);
-    const outerRadius = innerRadius + ringThickness;
-    return { innerRadius, outerRadius };
-}
-
 function CoverageDonutInner({
     node,
     themeContext,
@@ -42,7 +36,7 @@ function CoverageDonutInner({
     node: PointNode;
     themeContext: {
         theme: ThemeType;
-        setTheme: (theme: any) => void;
+        setTheme: (theme: ThemeType | null) => void;
     };
     setSelectedTreeKeys?: (keys: TreeKey[]) => void;
 }) {
@@ -63,51 +57,113 @@ function CoverageDonutInner({
     });
     useEffect(() => {
         setMounted(true);
-        const updateSize = () => {
-            if (containerRef.current) {
-                const rect = containerRef.current.getBoundingClientRect();
-                const padding = 40;
-                const viewportBottomPadding = 24;
-                const availableViewportHeight = Math.max(
-                    220,
-                    window.innerHeight - rect.top - viewportBottomPadding,
-                );
-                const availableViewportWidth = Math.max(220, rect.width - padding);
-                setContainerSize({
-                    width: availableViewportWidth,
-                    height: Math.max(220, Math.min(rect.height - padding, availableViewportHeight)),
-                });
-            } else {
-                setContainerSize({
-                    width: window.innerWidth * 0.8,
-                    height: window.innerHeight * 0.8,
-                });
-            }
-        };
-        updateSize();
-        const timeout1 = setTimeout(updateSize, 0);
-        const timeout2 = setTimeout(updateSize, 100);
-        const resizeObserver =
-            typeof ResizeObserver !== "undefined" && containerRef.current
-                ? new ResizeObserver(() => updateSize())
-                : null;
-        if (resizeObserver && containerRef.current) {
-            resizeObserver.observe(containerRef.current);
+    }, []);
+
+    useEffect(() => {
+        if (!mounted) {
+            return;
         }
-        window.addEventListener('resize', updateSize);
+
+        const measure = () => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    const el = containerRef.current;
+                    if (!el) {
+                        setContainerSize({
+                            width: window.innerWidth * 0.8,
+                            height: window.innerHeight * 0.8,
+                        });
+                        return;
+                    }
+                    const rect = el.getBoundingClientRect();
+                    const padding = 40;
+                    const viewportBottomPadding = 24;
+                    const availableViewportWidth = Math.max(220, rect.width - padding);
+                    const viewportHeightCap = Math.max(
+                        180,
+                        window.innerHeight - rect.top - viewportBottomPadding - padding,
+                    );
+                    const parentHeightCap =
+                        rect.height > 2 ? Math.max(180, rect.height - padding) : viewportHeightCap;
+                    const heightBudget = Math.max(220, Math.min(viewportHeightCap, parentHeightCap));
+
+                    setContainerSize({
+                        width: availableViewportWidth,
+                        height: heightBudget,
+                    });
+                });
+            });
+        };
+
+        measure();
+        const timeout1 = setTimeout(measure, 0);
+        const timeout2 = setTimeout(measure, 120);
+
+        const resizeObserver =
+            typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+        const el = containerRef.current;
+        if (resizeObserver && el) {
+            resizeObserver.observe(el);
+            if (el.parentElement) {
+                resizeObserver.observe(el.parentElement);
+            }
+        }
+
+        window.addEventListener("resize", measure);
         return () => {
-            window.removeEventListener('resize', updateSize);
+            window.removeEventListener("resize", measure);
             clearTimeout(timeout1);
             clearTimeout(timeout2);
             resizeObserver?.disconnect();
         };
-    }, []);
+    }, [mounted]);
 
     // Build hierarchical data from node
     const hierarchicalData = useMemo(
         () => buildNode(node),
         [node]
     );
+    const flatData = useMemo(() => {
+        return flattenData(hierarchicalData, 0, 0, hierarchicalData.value);
+    }, [hierarchicalData]);
+    const maxDepth = useMemo(() => {
+        return Math.max(...flatData.map(n => n.depth).filter(d => d > 0), 0);
+    }, [flatData]);
+    const dimensions = useMemo(() => {
+        const size = Math.max(180, Math.min(containerSize.width, containerSize.height));
+        const center = size / 2;
+        const centerCircleRadius = Math.max(60, size * 0.18);
+        const maxRadius = center - CHART_MARGIN;
+        const textScaleFactor = 1;
+        return { size, center, centerCircleRadius, maxRadius, textScaleFactor };
+    }, [containerSize]);
+
+    const contentMid = useMemo(() => {
+        const startInner = dimensions.centerCircleRadius + 2;
+        return computeSunburstVisualMidpoint(
+            flatData,
+            maxDepth,
+            startInner,
+            dimensions.maxRadius,
+            dimensions.centerCircleRadius,
+        );
+    }, [
+        flatData,
+        maxDepth,
+        dimensions.centerCircleRadius,
+        dimensions.maxRadius,
+    ]);
+
+    const chartGroupTransform = `translate(${dimensions.center - contentMid.midX},${dimensions.center - contentMid.midY})`;
+    const handleNodeClick = (node: SunburstNode) => {
+        if (node.nodeKey && setSelectedTreeKeys) {
+            setSelectedTreeKeys([node.nodeKey]);
+        }
+    };
+    if (!mounted) {
+        return null;
+    }
+
     if (!hierarchicalData) {
         return (
             <div
@@ -123,28 +179,7 @@ function CoverageDonutInner({
             </div>
         );
     }
-    const flatData = useMemo(() => {
-        return flattenData(hierarchicalData, 0, 0, hierarchicalData.value);
-    }, [hierarchicalData]);
-    const maxDepth = useMemo(() => {
-        return Math.max(...flatData.map(n => n.depth).filter(d => d > 0), 0);
-    }, [flatData]);
-    const dimensions = useMemo(() => {
-        const size = Math.max(180, Math.min(containerSize.width, containerSize.height));
-        const center = size / 2;
-        const centerCircleRadius = Math.max(60, size * 0.18);
-        const maxRadius = center - CHART_MARGIN;
-        const textScaleFactor = 1;
-        return { size, center, centerCircleRadius, maxRadius, textScaleFactor };
-    }, [containerSize]);
-    const handleNodeClick = (node: SunburstNode) => {
-        if (node.nodeKey && setSelectedTreeKeys) {
-            setSelectedTreeKeys([node.nodeKey]);
-        }
-    };
-    if (!mounted) {
-        return null;
-    }
+
     const startInnerRadius = dimensions.centerCircleRadius + 2;
 
     if (isGridMode) {
@@ -177,7 +212,7 @@ function CoverageDonutInner({
                     viewBox={`0 0 ${dimensions.size} ${dimensions.size}`}
                     style={{ display: 'block', margin: '0 auto', overflow: 'visible' }}
                 >
-                    <g transform={`translate(${dimensions.center},${dimensions.center})`}>
+                    <g transform={chartGroupTransform}>
                         {flatData.filter(n => n.depth > 0).map((n, idx) => {
                             const ring = calculateRingRadii(
                                 n.depth,
@@ -221,16 +256,17 @@ function CoverageDonutInner({
         <div
             ref={containerRef}
             style={{
-                width: '100%',
-                height: '100%',
-                minHeight: 220,
+                flex: "1 1 auto",
+                width: "100%",
+                minHeight: 0,
+                height: "100%",
                 padding: 24,
-                display: 'flex',
+                display: "flex",
                 flexDirection: "column",
-                alignItems: 'center',
-                justifyContent: 'center',
-                position: 'relative',
-                boxSizing: 'border-box',
+                alignItems: "center",
+                justifyContent: "center",
+                position: "relative",
+                boxSizing: "border-box",
             }}
         >
             <svg
@@ -239,7 +275,7 @@ function CoverageDonutInner({
                 viewBox={`0 0 ${dimensions.size} ${dimensions.size}`}
                 style={{ display: 'block', margin: '0 auto', overflow: 'visible' }}
             >
-                <g transform={`translate(${dimensions.center},${dimensions.center})`}>
+                <g transform={chartGroupTransform}>
                     {flatData.filter(n => n.depth > 0).map((n, idx) => {
                         const ring = calculateRingRadii(
                             n.depth,
