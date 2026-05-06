@@ -98,8 +98,9 @@ function expandBBoxAnnularSector(
 }
 
 /**
- * Centroid of the visible donut (center hub + arc wedges) in group-local coords.
- * Used to translate the chart so asymmetric wedges get even vertical padding in the square SVG.
+ * Bounding-box midpoint of the visible donut (center hub + arc wedges) in group-local coords.
+ * Not a geometric centroid — only the axis-aligned center of the union bbox.
+ * Used to translate the chart so asymmetric wedges get even padding in the square SVG.
  */
 export function computeSunburstVisualMidpoint(
     flatData: SunburstNode[],

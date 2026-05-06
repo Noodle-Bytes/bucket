@@ -56,6 +56,7 @@ import {
     useState,
 } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
+import { BUCKET_DONUT_LAYOUT_EVENT } from "./lib/coveragedonut-constants";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
 import { PointPivotView } from "./lib/pivottable";
 import { CoverageDonut } from "./lib/coveragedonut";
@@ -323,19 +324,25 @@ function TopLevelCoverageInfoPanel({
             return;
         }
         let cancelled = false;
-        const signalResize = () => {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
+        let rafOuter = 0;
+        let rafInner = 0;
+        const bumpDonutLayout = () => {
+            cancelAnimationFrame(rafOuter);
+            cancelAnimationFrame(rafInner);
+            rafOuter = requestAnimationFrame(() => {
+                rafInner = requestAnimationFrame(() => {
                     if (!cancelled) {
-                        window.dispatchEvent(new Event("resize"));
+                        window.dispatchEvent(new CustomEvent(BUCKET_DONUT_LAYOUT_EVENT));
                     }
                 });
             });
         };
-        signalResize();
-        const t = window.setTimeout(signalResize, 50);
+        bumpDonutLayout();
+        const t = window.setTimeout(bumpDonutLayout, 50);
         return () => {
             cancelled = true;
+            cancelAnimationFrame(rafOuter);
+            cancelAnimationFrame(rafInner);
             window.clearTimeout(t);
         };
     }, [isCollapsed, compat.status, versionAlertDismissed]);

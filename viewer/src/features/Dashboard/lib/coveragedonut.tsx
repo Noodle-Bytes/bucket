@@ -19,7 +19,7 @@ import {
     computeSunburstVisualMidpoint,
 } from "./coveragedonut-utils";
 import { getCoverageColor } from "@/utils/colors";
-import { CHART_MARGIN } from "./coveragedonut-constants";
+import { BUCKET_DONUT_LAYOUT_EVENT, CHART_MARGIN } from "./coveragedonut-constants";
 import { CenterInfo } from "./coveragedonut-centerinfo";
 
 export type CoverageDonutProps = {
@@ -64,9 +64,18 @@ function CoverageDonutInner({
             return;
         }
 
+        let cancelled = false;
+        let rafOuter = 0;
+        let rafInner = 0;
+
         const measure = () => {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
+            cancelAnimationFrame(rafOuter);
+            cancelAnimationFrame(rafInner);
+            rafOuter = requestAnimationFrame(() => {
+                rafInner = requestAnimationFrame(() => {
+                    if (cancelled) {
+                        return;
+                    }
                     const el = containerRef.current;
                     if (!el) {
                         setContainerSize({
@@ -109,9 +118,16 @@ function CoverageDonutInner({
             }
         }
 
+        const onLayoutBump = () => measure();
+
         window.addEventListener("resize", measure);
+        window.addEventListener(BUCKET_DONUT_LAYOUT_EVENT, onLayoutBump);
         return () => {
+            cancelled = true;
+            cancelAnimationFrame(rafOuter);
+            cancelAnimationFrame(rafInner);
             window.removeEventListener("resize", measure);
+            window.removeEventListener(BUCKET_DONUT_LAYOUT_EVENT, onLayoutBump);
             clearTimeout(timeout1);
             clearTimeout(timeout2);
             resizeObserver?.disconnect();
@@ -162,22 +178,6 @@ function CoverageDonutInner({
     };
     if (!mounted) {
         return null;
-    }
-
-    if (!hierarchicalData) {
-        return (
-            <div
-                style={{
-                    padding: '24px',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    color: theme.colors.desaturatedtxt.value,
-                }}
-            >
-                No coverage data available
-            </div>
-        );
     }
 
     const startInnerRadius = dimensions.centerCircleRadius + 2;
