@@ -114,6 +114,10 @@
   background-color: var(--metadata-select-option-selected-bg) !important;
 }
 
+.point-metadata-collapse.ant-collapse {
+  margin-block-end: 0 !important;
+}
+
 /* Point metadata panel accessibility in dark themes */
 .point-metadata-collapse .ant-collapse-item > .ant-collapse-header {
   background-color: var(--point-metadata-header-bg) !important;
@@ -126,6 +130,20 @@
 .point-metadata-collapse .ant-collapse-expand-icon,
 .point-metadata-collapse .ant-collapse-arrow {
   color: var(--point-metadata-header-text) !important;
+}
+
+.point-metadata-collapse.ant-collapse-ghost > .ant-collapse-item {
+  margin-block-end: 0 !important;
+}
+
+.point-metadata-collapse.ant-collapse-ghost
+  > .ant-collapse-item:last-child
+  > .ant-collapse-content {
+  border-block-start: none !important;
+}
+
+.point-metadata-collapse .ant-collapse-content > .ant-collapse-content-box {
+  padding: 4px 10px 12px !important;
 }
 
 /* Keep metadata rows compact and left-aligned */

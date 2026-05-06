@@ -40,6 +40,7 @@ import {
     InfoCircleFilled,
 } from "@ant-design/icons";
 import { hexToRgba, getCoverageColor } from "@/utils/colors";
+import { coverageInfoChromeOuterBox } from "./coverageInfoChrome";
 import { confirmThemed } from "@/utils/themedStaticModal";
 import {
     CSSProperties,
@@ -1348,17 +1349,13 @@ export function PointGrid({ node }: PointGridProps) {
             {({ theme }) => {
                 const pointMetadata = (
                     <div
-                        style={{
-                            marginBottom: 8,
-                            border: `1px solid ${theme.theme.colors.secondarybg.value}`,
-                            backgroundColor: hexToRgba(theme.theme.colors.tertiarybg.value, 0.82),
-                            "--point-metadata-header-bg": hexToRgba(
-                                theme.theme.colors.secondarybg.value,
-                                0.92,
-                            ),
-                            "--point-metadata-header-text": theme.theme.colors.saturatedtxt.value,
-                            "--point-metadata-header-subtext": theme.theme.colors.primarytxt.value,
-                        } as CSSProperties}>
+                        style={coverageInfoChromeOuterBox({
+                            accentbg: theme.theme.colors.accentbg,
+                            primarybg: theme.theme.colors.primarybg,
+                            secondarybg: theme.theme.colors.secondarybg,
+                            saturatedtxt: theme.theme.colors.saturatedtxt,
+                            primarytxt: theme.theme.colors.primarytxt,
+                        })}>
                         <Collapse
                             size="small"
                             ghost
@@ -2283,27 +2280,28 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                         }}
                         key={node.key}
                         columns={summaryColumns}
-                        title={() => (
-                            <div
-                                style={{
-                                    display: "flex",
-                                    justifyContent: "flex-end",
-                                    alignItems: "center",
-                                    gap: 12,
-                                    flexWrap: "wrap",
-                                    marginBottom: 4,
-                                }}>
-                                {hasMetadataFilters ? (
-                                    <Button
-                                        type="link"
-                                        size="small"
-                                        style={{ padding: 0 }}
-                                        onClick={clearMetadataFilters}>
-                                        Clear filters
-                                    </Button>
-                                ) : null}
-                            </div>
-                        )}
+                        title={
+                            hasMetadataFilters
+                                ? () => (
+                                      <div
+                                          style={{
+                                              display: "flex",
+                                              justifyContent: "flex-end",
+                                              alignItems: "center",
+                                              gap: 12,
+                                              flexWrap: "wrap",
+                                          }}>
+                                          <Button
+                                              type="link"
+                                              size="small"
+                                              style={{ padding: 0 }}
+                                              onClick={clearMetadataFilters}>
+                                              Clear filters
+                                          </Button>
+                                      </div>
+                                  )
+                                : undefined
+                        }
                         dataSource={dataSource}
                         onRow={(record: SummaryRecord) => ({
                             style: {

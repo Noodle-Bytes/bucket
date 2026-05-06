@@ -10,6 +10,7 @@ import {
     Breadcrumb,
     Button,
     Checkbox,
+    Collapse,
     ConfigProvider,
     Flex,
     Input,
@@ -25,8 +26,6 @@ import {
 } from "antd";
 import {
     ArrowLeftOutlined,
-    CaretDownOutlined,
-    CaretRightOutlined,
     ClearOutlined,
     DownOutlined,
     EditOutlined,
@@ -58,6 +57,7 @@ import {
 } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
 import { BUCKET_DONUT_LAYOUT_EVENT } from "./lib/coveragedonut-constants";
+import { coverageInfoChromeOuterBox } from "./lib/coverageInfoChrome";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
 import { PointPivotView } from "./lib/pivottable";
 import { CoverageDonut } from "./lib/coveragedonut";
@@ -273,7 +273,7 @@ function BucketVersionCompatAlert({
                 )
             }
             style={{
-                margin: "0 8px 10px",
+                margin: "0 0 10px",
                 paddingInline: 14,
                 paddingBlock: 11,
                 fontSize: 13,
@@ -307,7 +307,7 @@ function TopLevelCoverageInfoPanel({
     /** Selected coverage tree node — warning resets when the user clicks another record. */
     treeSelectionKey: TreeKey;
 }) {
-    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [coveragePanelKeys, setCoveragePanelKeys] = useState<string[]>(["coverage-info"]);
     const [versionAlertDismissed, setVersionAlertDismissed] = useState(false);
 
     useEffect(() => {
@@ -346,7 +346,7 @@ function TopLevelCoverageInfoPanel({
             cancelAnimationFrame(rafInner);
             window.clearTimeout(t);
         };
-    }, [isCollapsed, compat.status, versionAlertDismissed]);
+    }, [coveragePanelKeys, compat.status, versionAlertDismissed]);
 
     return (
         <Theme.Consumer>
@@ -377,90 +377,100 @@ function TopLevelCoverageInfoPanel({
                         text="This file doesn’t say which bucket release created it. The viewer is broadly backwards compatible."
                     />
                 ) : null;
+                const chromeColors = {
+                    accentbg: colors.accentbg,
+                    primarybg: colors.primarybg,
+                    secondarybg: colors.secondarybg,
+                    saturatedtxt: colors.saturatedtxt,
+                    primarytxt: colors.primarytxt,
+                };
+
                 return (
                     <>
                         {versionNotice}
-                        <section
-                        style={{
-                            margin: "6px 10px 8px",
-                            border: `1px solid ${colors.lowlightbg.value}`,
-                            backgroundColor: colors.secondarybg.value,
-                        }}>
-                        <button
-                            type="button"
-                            aria-expanded={!isCollapsed}
-                            onClick={() => setIsCollapsed((current) => !current)}
-                            style={{
-                                width: "100%",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                                border: 0,
-                                padding: "5px 8px",
-                                color: colors.primarytxt.value,
-                                background: "transparent",
-                                cursor: "pointer",
-                                fontSize: 12,
-                                fontWeight: 600,
-                                textAlign: "left",
-                            }}>
-                            {isCollapsed ? <CaretRightOutlined /> : <CaretDownOutlined />}
-                            Coverage Info
-                        </button>
-                        {!isCollapsed && (
-                            <div
-                                style={{
-                                    display: "grid",
-                                    gridTemplateColumns: "max-content minmax(0, 1fr) max-content minmax(0, 1fr)",
-                                    gap: "4px 14px",
-                                    padding: "0 8px 8px 24px",
-                                }}>
-                                <CoverageInfoField label="Name" value={info.name} colors={colors} />
-                                <CoverageInfoField
-                                    label="Source"
-                                    value={info.source}
-                                    colors={colors}
-                                />
-                                <CoverageInfoField
-                                    label="Coverpoints"
-                                    value={info.coverpoints.toLocaleString()}
-                                    colors={colors}
-                                />
-                                <CoverageInfoField
-                                    label="Covergroups"
-                                    value={info.covergroups.toLocaleString()}
-                                    colors={colors}
-                                />
-                                <CoverageInfoField
-                                    label="Overall Coverage"
-                                    value={info.overallCoverageText}
-                                    colors={colors}
-                                />
-                                <CoverageInfoField
-                                    label="Hits / Target"
-                                    value={info.hitsVsTargetText}
-                                    colors={colors}
-                                />
-                                <CoverageInfoField
-                                    label="Definition SHA"
-                                    value={info.defSha}
-                                    mono
-                                    colors={colors}
-                                />
-                                <CoverageInfoField
-                                    label="Record SHA"
-                                    value={info.recSha}
-                                    mono
-                                    colors={colors}
-                                />
-                                <CoverageInfoField
-                                    label="Bucket Version"
-                                    value={info.bucketVersion}
-                                    colors={colors}
-                                />
-                            </div>
-                        )}
-                    </section>
+                        <div style={coverageInfoChromeOuterBox(chromeColors)}>
+                            <Collapse
+                                size="small"
+                                ghost
+                                className="point-metadata-collapse"
+                                activeKey={coveragePanelKeys}
+                                onChange={(key) =>
+                                    setCoveragePanelKeys(Array.isArray(key) ? key : [key])
+                                }
+                                items={[
+                                    {
+                                        key: "coverage-info",
+                                        label: (
+                                            <Typography.Text
+                                                style={{
+                                                    fontSize: 13,
+                                                    fontWeight: 700,
+                                                    color: colors.saturatedtxt.value,
+                                                }}>
+                                                Coverage Info
+                                            </Typography.Text>
+                                        ),
+                                        children: (
+                                            <div
+                                                style={{
+                                                    display: "grid",
+                                                    gridTemplateColumns:
+                                                        "max-content minmax(0, 1fr) max-content minmax(0, 1fr)",
+                                                    gap: "6px 16px",
+                                                }}>
+                                                <CoverageInfoField
+                                                    label="Name"
+                                                    value={info.name}
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Source"
+                                                    value={info.source}
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Coverpoints"
+                                                    value={info.coverpoints.toLocaleString()}
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Covergroups"
+                                                    value={info.covergroups.toLocaleString()}
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Overall Coverage"
+                                                    value={info.overallCoverageText}
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Hits / Target"
+                                                    value={info.hitsVsTargetText}
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Definition SHA"
+                                                    value={info.defSha}
+                                                    mono
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Record SHA"
+                                                    value={info.recSha}
+                                                    mono
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Bucket Version"
+                                                    value={info.bucketVersion}
+                                                    colors={colors}
+                                                />
+                                            </div>
+                                        ),
+                                    },
+                                ]}
+                            />
+                        </div>
                     </>
                 );
             }}
@@ -499,7 +509,7 @@ function withTopLevelInfoPanel({
                 minHeight: 0,
                 width: "100%",
             }}>
-            <div style={{ flexShrink: 0, width: "100%" }}>
+            <div style={{ flexShrink: 0, width: "100%", minWidth: 0 }}>
                 <TopLevelCoverageInfoPanel info={info} treeSelectionKey={treeSelectionKey} />
             </div>
             <div

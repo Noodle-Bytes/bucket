@@ -20,6 +20,7 @@ import {
 } from "./coveragedonut-utils";
 import { getCoverageColor } from "@/utils/colors";
 import { BUCKET_DONUT_LAYOUT_EVENT, CHART_MARGIN } from "./coveragedonut-constants";
+import { COVERAGE_INFO_SURFACE_RADIUS } from "./coverageInfoChrome";
 import { CenterInfo } from "./coveragedonut-centerinfo";
 
 export type CoverageDonutProps = {
@@ -85,15 +86,15 @@ function CoverageDonutInner({
                         return;
                     }
                     const rect = el.getBoundingClientRect();
-                    const padding = 40;
+                    const layoutInset = 0;
                     const viewportBottomPadding = 24;
-                    const availableViewportWidth = Math.max(220, rect.width - padding);
+                    const availableViewportWidth = Math.max(220, rect.width - layoutInset);
                     const viewportHeightCap = Math.max(
                         180,
-                        window.innerHeight - rect.top - viewportBottomPadding - padding,
+                        window.innerHeight - rect.top - viewportBottomPadding - layoutInset,
                     );
                     const parentHeightCap =
-                        rect.height > 2 ? Math.max(180, rect.height - padding) : viewportHeightCap;
+                        rect.height > 2 ? Math.max(180, rect.height - layoutInset) : viewportHeightCap;
                     const heightBudget = Math.max(220, Math.min(viewportHeightCap, parentHeightCap));
 
                     setContainerSize({
@@ -197,7 +198,7 @@ function CoverageDonutInner({
                     position: 'relative',
                     cursor: 'pointer',
                     outline: isGridHovered ? `2px solid ${theme.colors.accentbg.value}` : 'none',
-                    borderRadius: 12,
+                    borderRadius: COVERAGE_INFO_SURFACE_RADIUS,
                     transition: 'outline 0.15s',
                 }}
                 tabIndex={0}
@@ -260,7 +261,7 @@ function CoverageDonutInner({
                 width: "100%",
                 minHeight: 0,
                 height: "100%",
-                padding: 24,
+                padding: 0,
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
@@ -352,7 +353,7 @@ export function CoverageDonut({
                         return (
                             <div
                                 style={{
-                                    padding: '24px',
+                                    padding: '24px 0',
                                     display: 'flex',
                                     justifyContent: 'center',
                                     alignItems: 'center',
@@ -384,7 +385,7 @@ export function CoverageDonut({
                                 width: '100%',
                                 alignItems: 'start',
                                 justifyItems: 'center',
-                                padding: '24px 0',
+                                padding: '12px 0',
                                 background: 'none',
                             }}
                         >
