@@ -118,9 +118,9 @@ const SUMMARY_COLUMN_HELP = {
     bucketsTarget:
         "How many valid buckets there are (legal buckets with a positive hit requirement)",
     bucketsHit: "Buckets with at least one hit",
-    bucketsFull: "Buckets that have reached their goal.",
-    bucketsHitPct: "Percentage of bukcets with 1+ hits",
-    bucketsFullPct: "Percentage of bucket that are saturated",
+    bucketsFull: "Buckets that have reached their goal",
+    bucketsHitPct: "Percentage of buckets with 1+ hits",
+    bucketsFullPct: "Percentage of buckets that are saturated",
 } as const;
 
 /** Show tag filter search when many distinct tags would clutter the checklist. */

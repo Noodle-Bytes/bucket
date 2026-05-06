@@ -715,24 +715,29 @@ function treeKeysEqual(a: TreeKey[], b: TreeKey[]): boolean {
     return a.every((key, index) => key === b[index]);
 }
 
-function viewNavigationSnapshotsEqual(a: ViewNavigationSnapshot, b: ViewNavigationSnapshot): boolean {
-    if (!treeKeysEqual(a.selectedTreeKeys, b.selectedTreeKeys)) {
-        return false;
-    }
-    const ak = a.treeKeyContentKey;
-    const bk = b.treeKeyContentKey;
-    const aEntries = Object.keys(ak);
-    const bEntries = Object.keys(bk);
+function treeKeyContentMapsEqual(
+    a: ViewNavigationSnapshot["treeKeyContentKey"],
+    b: ViewNavigationSnapshot["treeKeyContentKey"],
+): boolean {
+    const aEntries = Object.keys(a);
+    const bEntries = Object.keys(b);
     if (aEntries.length !== bEntries.length) {
         return false;
     }
     for (const key of aEntries) {
         const tk = key as TreeKey;
-        if (ak[tk] !== bk[tk]) {
+        if (a[tk] !== b[tk]) {
             return false;
         }
     }
     return true;
+}
+
+function viewNavigationSnapshotsEqual(a: ViewNavigationSnapshot, b: ViewNavigationSnapshot): boolean {
+    if (!treeKeysEqual(a.selectedTreeKeys, b.selectedTreeKeys)) {
+        return false;
+    }
+    return treeKeyContentMapsEqual(a.treeKeyContentKey, b.treeKeyContentKey);
 }
 
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {
@@ -948,12 +953,18 @@ export default function Dashboard({
         if (treeKeysEqual(prevKeys, newSelectedKeys)) {
             return;
         }
-        const snap: ViewNavigationSnapshot = {
-            selectedTreeKeys: [...prevKeys],
-            treeKeyContentKey: { ...treeKeyContentKeyRef.current },
-        };
         const past = navigationPastRef.current;
         const last = past[past.length - 1];
+        const currentMap = treeKeyContentKeyRef.current;
+        /** Reuse prior snapshot map when unchanged — avoids O(n) clone × history depth */
+        const mapSnapshot =
+            last && treeKeyContentMapsEqual(last.treeKeyContentKey, currentMap)
+                ? last.treeKeyContentKey
+                : { ...currentMap };
+        const snap: ViewNavigationSnapshot = {
+            selectedTreeKeys: [...prevKeys],
+            treeKeyContentKey: mapSnapshot,
+        };
         if (last && viewNavigationSnapshotsEqual(last, snap)) {
             return;
         }
