@@ -1919,7 +1919,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                         }}
                     />
                 );
-                return (
+                const label = (
                     <a
                         style={{
                             paddingLeft: `${indent}px`,
@@ -1937,27 +1937,14 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                         {text}
                     </a>
                 );
+                if (!record.desc.trim()) {
+                    return label;
+                }
+                return <Tooltip title={record.desc}>{label}</Tooltip>;
             },
             onCell: (record) => ({
                 onClick: () => setSelectedTreeKeys([record.key]),
                 style: { cursor: "pointer" },
-            }),
-        },
-        {
-            title: "Description",
-            dataIndex: "desc",
-            key: "desc",
-            onCell: (record: SummaryRecord) => ({
-                style: {
-                    backgroundColor: record.isCovergroup
-                        ? hexToRgba(theme.theme.colors.accentbg.value, 0.2)
-                        : "transparent",
-                    borderLeft: record.isCovergroup
-                        ? `4px solid ${theme.theme.colors.accentbg.value}`
-                        : "none",
-                    fontWeight: record.isCovergroup ? 500 : 400,
-                    paddingLeft: record.isCovergroup ? "12px" : "8px",
-                },
             }),
         },
         {
@@ -2317,14 +2304,6 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                                         Clear filters
                                     </Button>
                                 ) : null}
-                                <Typography.Text
-                                    style={{
-                                        color: colors.primarytxt.value,
-                                        fontSize: 13,
-                                        fontWeight: 500,
-                                    }}>
-                                    Showing {dataSource.length.toLocaleString()} rows
-                                </Typography.Text>
                             </div>
                         )}
                         dataSource={dataSource}
@@ -2333,9 +2312,9 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                                 backgroundColor: record.isCovergroup
                                     ? hexToRgba(theme.theme.colors.accentbg.value, 0.12)
                                     : "transparent",
-                                borderLeft: record.isCovergroup
-                                    ? `3px solid ${theme.theme.colors.accentbg.value}`
-                                    : "3px solid transparent",
+                                boxShadow: record.isCovergroup
+                                    ? `inset 3px 0 0 0 ${theme.theme.colors.accentbg.value}`
+                                    : "none",
                             },
                         })}
                     />

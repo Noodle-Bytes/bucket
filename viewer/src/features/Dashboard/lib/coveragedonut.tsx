@@ -61,16 +61,21 @@ function CoverageDonutInner({
         }
         return { width: 800, height: 600 };
     });
-
     useEffect(() => {
         setMounted(true);
         const updateSize = () => {
             if (containerRef.current) {
                 const rect = containerRef.current.getBoundingClientRect();
                 const padding = 40;
+                const viewportBottomPadding = 24;
+                const availableViewportHeight = Math.max(
+                    220,
+                    window.innerHeight - rect.top - viewportBottomPadding,
+                );
+                const availableViewportWidth = Math.max(220, rect.width - padding);
                 setContainerSize({
-                    width: Math.max(260, rect.width - padding),
-                    height: Math.max(260, rect.height - padding),
+                    width: availableViewportWidth,
+                    height: Math.max(220, Math.min(rect.height - padding, availableViewportHeight)),
                 });
             } else {
                 setContainerSize({
@@ -82,11 +87,19 @@ function CoverageDonutInner({
         updateSize();
         const timeout1 = setTimeout(updateSize, 0);
         const timeout2 = setTimeout(updateSize, 100);
+        const resizeObserver =
+            typeof ResizeObserver !== "undefined" && containerRef.current
+                ? new ResizeObserver(() => updateSize())
+                : null;
+        if (resizeObserver && containerRef.current) {
+            resizeObserver.observe(containerRef.current);
+        }
         window.addEventListener('resize', updateSize);
         return () => {
             window.removeEventListener('resize', updateSize);
             clearTimeout(timeout1);
             clearTimeout(timeout2);
+            resizeObserver?.disconnect();
         };
     }, []);
 
@@ -110,30 +123,14 @@ function CoverageDonutInner({
             </div>
         );
     }
-    // Calculate totals
-    const totals = useMemo(() => {
-        let hits = 0;
-        let target = 0;
-        function walk(node: typeof hierarchicalData) {
-            if (typeof node.target === 'number' && typeof node.hits === 'number') {
-                hits += node.hits;
-                target += node.target;
-            }
-            if (node.children) node.children.forEach(walk);
-        }
-        walk(hierarchicalData);
-        return { hits, target };
-    }, [hierarchicalData]);
-    const overallCoverage = totals.target > 0 ? totals.hits / totals.target : 0;
     const flatData = useMemo(() => {
         return flattenData(hierarchicalData, 0, 0, hierarchicalData.value);
     }, [hierarchicalData]);
     const maxDepth = useMemo(() => {
         return Math.max(...flatData.map(n => n.depth).filter(d => d > 0), 0);
     }, [flatData]);
-    // Chart dimensions (dummy for now)
     const dimensions = useMemo(() => {
-        const size = Math.min(containerSize.width, containerSize.height);
+        const size = Math.max(180, Math.min(containerSize.width, containerSize.height));
         const center = size / 2;
         const centerCircleRadius = Math.max(60, size * 0.18);
         const maxRadius = center - CHART_MARGIN;
@@ -226,10 +223,10 @@ function CoverageDonutInner({
             style={{
                 width: '100%',
                 height: '100%',
-                minHeight: 480,
+                minHeight: 220,
                 padding: 24,
                 display: 'flex',
-                flexDirection: 'column',
+                flexDirection: "column",
                 alignItems: 'center',
                 justifyContent: 'center',
                 position: 'relative',
@@ -299,21 +296,6 @@ function CoverageDonutInner({
                     )}
                 </g>
             </svg>
-            <div
-                style={{
-                    marginTop: 18,
-                    textAlign: 'center',
-                    color: theme.colors.desaturatedtxt.value,
-                    fontSize: 15,
-                    fontWeight: 400,
-                }}
-            >
-                <div>
-                    <b>Overall Coverage:</b> {(overallCoverage * 100).toFixed(1)}%
-                </div>
-                <div>Target: {totals.target.toLocaleString()}</div>
-                <div>Hits: {totals.hits.toLocaleString()}</div>
-            </div>
         </div>
     );
 }

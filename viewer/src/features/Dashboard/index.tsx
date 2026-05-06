@@ -82,6 +82,8 @@ type RootCoverageInfo = {
     name: string;
     coverpoints: number;
     covergroups: number;
+    hitsVsTargetText: string;
+    overallCoverageText: string;
     source: string | null;
     defSha: string | null;
     recSha: string | null;
@@ -164,11 +166,16 @@ function getTopLevelCoverageInfo(
     counts: TopLevelCoverageCounts,
 ): RootCoverageInfo {
     const readout = node.data.readout as Readout;
+    const target = Number(node.data.point?.target ?? 0);
+    const hits = Number(node.data.point_hit?.hits ?? 0);
+    const overallCoverage = target > 0 ? hits / target : 0;
 
     return {
         name: node.data.point?.name ?? String(node.title),
         coverpoints: counts.coverpoints,
         covergroups: counts.covergroups,
+        hitsVsTargetText: `${hits.toLocaleString()} / ${target.toLocaleString()}`,
+        overallCoverageText: `${(overallCoverage * 100).toFixed(1)}%`,
         source: getReadoutSource(readout),
         defSha: getReadoutValue(readout, "get_def_sha"),
         recSha: getReadoutValue(readout, "get_rec_sha"),
@@ -311,6 +318,14 @@ function TopLevelCoverageInfoPanel({
         setVersionAlertDismissed(true);
     }, []);
 
+    useEffect(() => {
+        if (typeof window === "undefined") {
+            return;
+        }
+        // Donut view listens for resize to recompute available space.
+        window.dispatchEvent(new Event("resize"));
+    }, [isCollapsed, compat.status, versionAlertDismissed]);
+
     return (
         <Theme.Consumer>
             {({ theme }) => {
@@ -392,6 +407,16 @@ function TopLevelCoverageInfoPanel({
                                 <CoverageInfoField
                                     label="Covergroups"
                                     value={info.covergroups.toLocaleString()}
+                                    colors={colors}
+                                />
+                                <CoverageInfoField
+                                    label="Overall Coverage"
+                                    value={info.overallCoverageText}
+                                    colors={colors}
+                                />
+                                <CoverageInfoField
+                                    label="Hits / Target"
+                                    value={info.hitsVsTargetText}
                                     colors={colors}
                                 />
                                 <CoverageInfoField
