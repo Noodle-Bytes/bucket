@@ -24,6 +24,7 @@ import {
     Alert,
 } from "antd";
 import {
+    ArrowLeftOutlined,
     CaretDownOutlined,
     CaretRightOutlined,
     ClearOutlined,
@@ -690,6 +691,51 @@ function stripExportExtension(fileName: string): string {
     return fileName.replace(/\.(bktgz|json)$/i, "");
 }
 
+const MAX_VIEW_NAVIGATION_HISTORY = 50;
+
+type ViewNavigationSnapshot = {
+    selectedTreeKeys: TreeKey[];
+    treeKeyContentKey: { [key: TreeKey]: string | number };
+};
+
+function treeKeysEqual(a: TreeKey[], b: TreeKey[]): boolean {
+    if (a.length !== b.length) {
+        return false;
+    }
+    return a.every((key, index) => key === b[index]);
+}
+
+function viewNavigationSnapshotsEqual(a: ViewNavigationSnapshot, b: ViewNavigationSnapshot): boolean {
+    if (!treeKeysEqual(a.selectedTreeKeys, b.selectedTreeKeys)) {
+        return false;
+    }
+    const ak = a.treeKeyContentKey;
+    const bk = b.treeKeyContentKey;
+    const aEntries = Object.keys(ak);
+    const bEntries = Object.keys(bk);
+    if (aEntries.length !== bEntries.length) {
+        return false;
+    }
+    for (const key of aEntries) {
+        const tk = key as TreeKey;
+        if (ak[tk] !== bk[tk]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) {
+        return false;
+    }
+    const tag = target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+        return true;
+    }
+    return target.isContentEditable;
+}
+
 export type DashboardProps = {
     tree: Tree;
     records: CoverageRecord[];
@@ -745,6 +791,15 @@ export default function Dashboard({
     const [exportMergeBeforeWrite, setExportMergeBeforeWrite] = useState(false);
     const [exportFileName, setExportFileName] = useState("");
     const [exportBusy, setExportBusy] = useState(false);
+
+    const navigationPastRef = useRef<ViewNavigationSnapshot[]>([]);
+    const [viewNavigationPastLength, setViewNavigationPastLength] = useState(0);
+    const expandedTreeKeysRef = useRef(expandedTreeKeys);
+    const selectedTreeKeysRef = useRef(selectedTreeKeys);
+    const treeKeyContentKeyRef = useRef(treeKeyContentKey);
+    expandedTreeKeysRef.current = expandedTreeKeys;
+    selectedTreeKeysRef.current = selectedTreeKeys;
+    treeKeyContentKeyRef.current = treeKeyContentKey;
 
     const isEmpty = tree.getRoots().length === 0;
 
@@ -860,6 +915,8 @@ export default function Dashboard({
 
     useEffect(() => {
         if (isEmpty) {
+            navigationPastRef.current = [];
+            setViewNavigationPastLength(0);
             if (selectedTreeKeys.length > 0) {
                 setSelectedTreeKeys([]);
                 setExpandedTreeKeys([]);
@@ -868,23 +925,94 @@ export default function Dashboard({
         } else if (selectedTreeKeys.length > 0) {
             const viewKey = selectedTreeKeys[0];
             if (viewKey !== Tree.ROOT && !tree.getNodeByKey(viewKey)) {
+                navigationPastRef.current = [];
+                setViewNavigationPastLength(0);
                 setSelectedTreeKeys([]);
                 setExpandedTreeKeys([]);
             }
         }
     }, [tree, selectedTreeKeys, isEmpty]);
 
-    const onSelect = useCallback((newSelectedKeys: TreeKey[]) => {
-        const newExpandedKeys = new Set<TreeKey>(expandedTreeKeys);
-        for (const newSelectedKey of newSelectedKeys) {
+    const pushViewNavigationSnapshotIfNeeded = useCallback((newSelectedKeys: TreeKey[]) => {
+        const prevKeys = selectedTreeKeysRef.current;
+        if (treeKeysEqual(prevKeys, newSelectedKeys)) {
+            return;
+        }
+        const snap: ViewNavigationSnapshot = {
+            selectedTreeKeys: [...prevKeys],
+            treeKeyContentKey: { ...treeKeyContentKeyRef.current },
+        };
+        const past = navigationPastRef.current;
+        const last = past[past.length - 1];
+        if (last && viewNavigationSnapshotsEqual(last, snap)) {
+            return;
+        }
+        const next = [...past, snap];
+        navigationPastRef.current =
+            next.length > MAX_VIEW_NAVIGATION_HISTORY
+                ? next.slice(-MAX_VIEW_NAVIGATION_HISTORY)
+                : next;
+        setViewNavigationPastLength(navigationPastRef.current.length);
+    }, []);
+
+    const handleViewNavigateBack = useCallback(() => {
+        const past = navigationPastRef.current;
+        if (past.length === 0) {
+            return;
+        }
+        const snapshot = past[past.length - 1];
+        navigationPastRef.current = past.slice(0, -1);
+        setViewNavigationPastLength(navigationPastRef.current.length);
+
+        const restoredKeys = snapshot.selectedTreeKeys;
+        const newExpandedKeys = new Set<TreeKey>(expandedTreeKeysRef.current);
+        for (const newSelectedKey of restoredKeys) {
             for (const ancestor of tree.getAncestorsByKey(newSelectedKey)) {
                 newExpandedKeys.add(ancestor.key);
             }
         }
         setExpandedTreeKeys(Array.from(newExpandedKeys));
-        setSelectedTreeKeys(newSelectedKeys);
+        setSelectedTreeKeys(restoredKeys);
+        setTreeKeyContentKey({ ...snapshot.treeKeyContentKey });
         setAutoExpandTreeParent(false);
-    }, [expandedTreeKeys, tree]);
+    }, [tree]);
+
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (!event.metaKey && !event.ctrlKey) {
+                return;
+            }
+            if (event.key !== "[") {
+                return;
+            }
+            if (isEditableKeyboardTarget(event.target)) {
+                return;
+            }
+            if (isEmpty || navigationPastRef.current.length === 0) {
+                return;
+            }
+            event.preventDefault();
+            handleViewNavigateBack();
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [handleViewNavigateBack, isEmpty]);
+
+    const onSelect = useCallback(
+        (newSelectedKeys: TreeKey[]) => {
+            pushViewNavigationSnapshotIfNeeded(newSelectedKeys);
+            const newExpandedKeys = new Set<TreeKey>(expandedTreeKeys);
+            for (const newSelectedKey of newSelectedKeys) {
+                for (const ancestor of tree.getAncestorsByKey(newSelectedKey)) {
+                    newExpandedKeys.add(ancestor.key);
+                }
+            }
+            setExpandedTreeKeys(Array.from(newExpandedKeys));
+            setSelectedTreeKeys(newSelectedKeys);
+            setAutoExpandTreeParent(false);
+        },
+        [expandedTreeKeys, pushViewNavigationSnapshotIfNeeded, tree],
+    );
 
     const viewKey = selectedTreeKeys[0] ?? Tree.ROOT;
     const contentViews = tree.getViewsByKey(viewKey);
@@ -1126,6 +1254,10 @@ export default function Dashboard({
                                                         breadcrumbAvailableWidth,
                                                         () => onSelect([]),
                                                     );
+                                                    const backDisabled =
+                                                        isEmpty || viewNavigationPastLength === 0;
+                                                    const headerIconColor =
+                                                        theme.theme.colors.primarytxt.value;
                                                     return (
                                                         <Flex
                                                             align="center"
@@ -1155,6 +1287,28 @@ export default function Dashboard({
                                                                         ? "Hide sidebar"
                                                                         : "Show sidebar"
                                                                 }
+                                                                style={{
+                                                                    width: 24,
+                                                                    minWidth: 24,
+                                                                    paddingInline: 0,
+                                                                    display: "inline-flex",
+                                                                    justifyContent: "center",
+                                                                }}
+                                                            />
+                                                            <Button
+                                                                size="small"
+                                                                type="text"
+                                                                icon={<ArrowLeftOutlined />}
+                                                                onClick={handleViewNavigateBack}
+                                                                disabled={backDisabled}
+                                                                title="Back (Ctrl or ⌘ + [)"
+                                                                aria-label="Back to previous view"
+                                                                styles={{
+                                                                    icon: {
+                                                                        color: headerIconColor,
+                                                                        opacity: backDisabled ? 0.42 : 1,
+                                                                    },
+                                                                }}
                                                                 style={{
                                                                     width: 24,
                                                                     minWidth: 24,
@@ -1309,6 +1463,7 @@ export default function Dashboard({
                                                             icon={<ClearOutlined />}
                                                             onClick={() => setClearModalOpen(true)}
                                                             size="small"
+                                                            type="primary"
                                                             danger>
                                                             Clear
                                                         </Button>
@@ -1755,6 +1910,7 @@ export default function Dashboard({
                                                 style={{
                                                     color: context.theme.theme.colors.saturatedtxt.value,
                                                     fontSize: 11,
+                                                    pointerEvents: "none",
                                                 }}
                                             />
                                         }
