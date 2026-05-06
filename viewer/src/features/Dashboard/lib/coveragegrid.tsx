@@ -2252,22 +2252,49 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
 
                 const hasMetadataFilters =
                     selectedTiers.length > 0 || selectedTags.length > 0;
+                const clearMetadataFilters = () => {
+                    setSelectedTiers([]);
+                    setSelectedTags([]);
+                    setTagMatchMode("any");
+                };
 
                 return (
                     <>
                         <Table<SummaryRecord>
                         {...(view.body.content.table.props as unknown as TableProps<SummaryRecord>)}
                         locale={{
-                            emptyText: (
-                                <Typography.Text
-                                    style={{
-                                        color: colors.primarytxt.value,
-                                    }}>
-                                    {hasMetadataFilters && dataSource.length === 0
-                                        ? "No rows match the current filters (0 matches). Clear tier/tag filters or adjust selections."
-                                        : "No rows to display in this summary."}
-                                </Typography.Text>
-                            ),
+                            emptyText:
+                                hasMetadataFilters && dataSource.length === 0 ? (
+                                    <div
+                                        style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            gap: 10,
+                                            flexWrap: "wrap",
+                                        }}>
+                                        <Typography.Text
+                                            style={{
+                                                color: colors.primarytxt.value,
+                                            }}>
+                                            No rows match the current filters (0 matches).
+                                        </Typography.Text>
+                                        <Button
+                                            type="link"
+                                            size="small"
+                                            style={{ padding: 0 }}
+                                            onClick={clearMetadataFilters}>
+                                            Clear all filters
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <Typography.Text
+                                        style={{
+                                            color: colors.primarytxt.value,
+                                        }}>
+                                        No rows to display in this summary.
+                                    </Typography.Text>
+                                ),
                         }}
                         key={node.key}
                         columns={summaryColumns}
@@ -2286,11 +2313,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                                         type="link"
                                         size="small"
                                         style={{ padding: 0 }}
-                                        onClick={() => {
-                                            setSelectedTiers([]);
-                                            setSelectedTags([]);
-                                            setTagMatchMode("any");
-                                        }}>
+                                        onClick={clearMetadataFilters}>
                                         Clear filters
                                     </Button>
                                 ) : null}
