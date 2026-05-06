@@ -138,3 +138,11 @@
 .point-metadata-descriptions .ant-descriptions-item-label {
   vertical-align: top;
 }
+
+/* Themed alerts: readable text on custom background (avoid Ant warning/info body colors). */
+.bucket-large-dataset-alert.ant-alert-info .ant-alert-message,
+.bucket-large-dataset-alert.ant-alert-info .ant-alert-description,
+.bucket-version-compat-alert.ant-alert-info .ant-alert-message,
+.bucket-version-compat-alert.ant-alert-info .ant-alert-description {
+  color: inherit !important;
+}

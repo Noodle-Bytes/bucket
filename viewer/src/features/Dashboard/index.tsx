@@ -37,7 +37,9 @@ import {
     ReloadOutlined,
     SettingOutlined,
     TableOutlined,
-    WarningOutlined,
+    CloseOutlined,
+    ExclamationCircleFilled,
+    InfoCircleFilled,
 } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 import Sider, { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "./components/Sider";
@@ -228,36 +230,114 @@ function CoverageInfoField({
     );
 }
 
-function TopLevelCoverageInfoPanel({ info }: { info: RootCoverageInfo }) {
+function BucketVersionCompatAlert({
+    colors,
+    caution,
+    text,
+    onDismiss,
+}: {
+    colors: ThemeType["theme"]["colors"];
+    caution: boolean;
+    text: string;
+    onDismiss: () => void;
+}) {
+    const accent = colors.accentbg.value;
+    const tintStrength = caution ? 0.26 : 0.16;
+
+    return (
+        <Alert
+            className="bucket-version-compat-alert"
+            type="info"
+            showIcon
+            closable
+            closeIcon={
+                <CloseOutlined style={{ color: colors.saturatedtxt.value, fontSize: 12 }} />
+            }
+            onClose={onDismiss}
+            icon={
+                caution ? (
+                    <ExclamationCircleFilled
+                        style={{ color: accent, fontSize: 18 }}
+                    />
+                ) : (
+                    <InfoCircleFilled style={{ color: accent, fontSize: 18 }} />
+                )
+            }
+            style={{
+                margin: "0 8px 10px",
+                paddingInline: 14,
+                paddingBlock: 11,
+                fontSize: 13,
+                lineHeight: 1.55,
+                color: colors.saturatedtxt.value,
+                border: `1px solid ${hexToRgba(accent, caution ? 0.62 : 0.42)}`,
+                borderLeft: `5px solid ${accent}`,
+                backgroundColor: hexToRgba(accent, tintStrength),
+                boxShadow: `0 0 0 1px ${hexToRgba(colors.saturatedtxt.value, 0.06)} inset`,
+            }}
+            message={
+                <Typography.Text
+                    style={{
+                        color: colors.saturatedtxt.value,
+                        fontSize: 13,
+                        lineHeight: 1.55,
+                        fontWeight: caution ? 600 : 500,
+                    }}>
+                    {text}
+                </Typography.Text>
+            }
+        />
+    );
+}
+
+function TopLevelCoverageInfoPanel({
+    info,
+    treeSelectionKey,
+}: {
+    info: RootCoverageInfo;
+    /** Selected coverage tree node — warning resets when the user clicks another record. */
+    treeSelectionKey: TreeKey;
+}) {
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const [versionAlertDismissed, setVersionAlertDismissed] = useState(false);
+
+    useEffect(() => {
+        setVersionAlertDismissed(false);
+    }, [treeSelectionKey]);
+
     const compat = checkVersionCompat(info.bucketVersion, __APP_VERSION__);
+
+    const dismissVersionAlert = useCallback(() => {
+        setVersionAlertDismissed(true);
+    }, []);
 
     return (
         <Theme.Consumer>
             {({ theme }) => {
                 const colors = theme.theme.colors;
-                const versionNotice = compat.status === "file_newer" ? (
-                    <Alert
-                        type="warning"
-                        icon={<WarningOutlined />}
-                        showIcon
-                        style={{ margin: "0 8px 6px", fontSize: 12 }}
-                        message={`This coverage file was generated with bucket v${compat.fileVersion}, which is newer than this viewer (v${compat.viewerVersion}). Some information may not display correctly.`}
+                const showVersionAlert =
+                    compat.status !== "match" && !versionAlertDismissed;
+
+                const versionNotice = !showVersionAlert ? null : compat.status === "file_newer" ? (
+                    <BucketVersionCompatAlert
+                        colors={colors}
+                        caution
+                        onDismiss={dismissVersionAlert}
+                        text={`This file was created with bucket ${compat.fileVersion}, which is newer than this viewer (${compat.viewerVersion}).`}
                     />
                 ) : compat.status === "file_older" ? (
-                    <Alert
-                        type="info"
-                        showIcon
-                        style={{ margin: "0 8px 6px", fontSize: 12 }}
-                        message={`This coverage file was generated with an older version of bucket (v${compat.fileVersion}). The viewer is broadly backwards compatible.`}
+                    <BucketVersionCompatAlert
+                        colors={colors}
+                        caution={false}
+                        onDismiss={dismissVersionAlert}
+                        text={`This file was created with an older bucket (${compat.fileVersion}). The viewer is broadly backwards compatible.`}
                     />
                 ) : compat.status === "unknown" ? (
-                    <Alert
-                        type="warning"
-                        icon={<WarningOutlined />}
-                        showIcon
-                        style={{ margin: "0 8px 6px", fontSize: 12 }}
-                        message="This coverage file was generated with a version of bucket that did not embed a version number. It is likely an older file — some compatibility issues may be possible, though the viewer is broadly backwards compatible."
+                    <BucketVersionCompatAlert
+                        colors={colors}
+                        caution
+                        onDismiss={dismissVersionAlert}
+                        text="This file doesn’t say which bucket release created it. The viewer is broadly backwards compatible."
                     />
                 ) : null;
                 return (
@@ -353,9 +433,11 @@ function getTopLevelInfoNode(tree: Tree, viewKey: TreeKey): TreeNode | null {
 function withTopLevelInfoPanel({
     content,
     info,
+    treeSelectionKey,
 }: {
     content: ReactNode;
     info: RootCoverageInfo | null;
+    treeSelectionKey: TreeKey;
 }) {
     if (!info) {
         return content;
@@ -363,7 +445,7 @@ function withTopLevelInfoPanel({
 
     return (
         <>
-            <TopLevelCoverageInfoPanel info={info} />
+            <TopLevelCoverageInfoPanel info={info} treeSelectionKey={treeSelectionKey} />
             {content}
         </>
     );
@@ -798,6 +880,7 @@ export default function Dashboard({
                 return withTopLevelInfoPanel({
                     content: <PointPivotView node={currentNode} />,
                     info: topLevelCoverageInfo,
+                    treeSelectionKey: viewKey,
                 });
             case "Summary": {
                 if (summaryViewMode === "donut") {
@@ -811,6 +894,7 @@ export default function Dashboard({
                     return withTopLevelInfoPanel({
                         content: donut,
                         info: topLevelCoverageInfo,
+                        treeSelectionKey: viewKey,
                     });
                 }
                 const summary = (
@@ -823,12 +907,14 @@ export default function Dashboard({
                 return withTopLevelInfoPanel({
                     content: summary,
                     info: topLevelCoverageInfo,
+                    treeSelectionKey: viewKey,
                 });
             }
             case "Point":
                 return withTopLevelInfoPanel({
                     content: <PointGrid node={currentNode} />,
                     info: topLevelCoverageInfo,
+                    treeSelectionKey: viewKey,
                 });
             default:
                 throw new Error("Invalid view!?");
