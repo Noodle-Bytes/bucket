@@ -10,6 +10,7 @@ import {
     Breadcrumb,
     Button,
     Checkbox,
+    Collapse,
     ConfigProvider,
     Flex,
     Input,
@@ -24,8 +25,7 @@ import {
     Alert,
 } from "antd";
 import {
-    CaretDownOutlined,
-    CaretRightOutlined,
+    ArrowLeftOutlined,
     ClearOutlined,
     DownOutlined,
     EditOutlined,
@@ -57,6 +57,7 @@ import {
 } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
 import { BUCKET_DONUT_LAYOUT_EVENT } from "./lib/coveragedonut-constants";
+import { coverageInfoChromeOuterBox } from "./lib/coverageInfoChrome";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
 import { PointPivotView } from "./lib/pivottable";
 import { CoverageDonut } from "./lib/coveragedonut";
@@ -272,7 +273,7 @@ function BucketVersionCompatAlert({
                 )
             }
             style={{
-                margin: "0 8px 10px",
+                margin: "0 0 10px",
                 paddingInline: 14,
                 paddingBlock: 11,
                 fontSize: 13,
@@ -306,7 +307,7 @@ function TopLevelCoverageInfoPanel({
     /** Selected coverage tree node — warning resets when the user clicks another record. */
     treeSelectionKey: TreeKey;
 }) {
-    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [coveragePanelKeys, setCoveragePanelKeys] = useState<string[]>(["coverage-info"]);
     const [versionAlertDismissed, setVersionAlertDismissed] = useState(false);
 
     useEffect(() => {
@@ -345,7 +346,7 @@ function TopLevelCoverageInfoPanel({
             cancelAnimationFrame(rafInner);
             window.clearTimeout(t);
         };
-    }, [isCollapsed, compat.status, versionAlertDismissed]);
+    }, [coveragePanelKeys, compat.status, versionAlertDismissed]);
 
     return (
         <Theme.Consumer>
@@ -376,90 +377,100 @@ function TopLevelCoverageInfoPanel({
                         text="This file doesn’t say which bucket release created it. The viewer is broadly backwards compatible."
                     />
                 ) : null;
+                const chromeColors = {
+                    accentbg: colors.accentbg,
+                    primarybg: colors.primarybg,
+                    secondarybg: colors.secondarybg,
+                    saturatedtxt: colors.saturatedtxt,
+                    primarytxt: colors.primarytxt,
+                };
+
                 return (
                     <>
                         {versionNotice}
-                        <section
-                        style={{
-                            margin: "6px 10px 8px",
-                            border: `1px solid ${colors.lowlightbg.value}`,
-                            backgroundColor: colors.secondarybg.value,
-                        }}>
-                        <button
-                            type="button"
-                            aria-expanded={!isCollapsed}
-                            onClick={() => setIsCollapsed((current) => !current)}
-                            style={{
-                                width: "100%",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                                border: 0,
-                                padding: "5px 8px",
-                                color: colors.primarytxt.value,
-                                background: "transparent",
-                                cursor: "pointer",
-                                fontSize: 12,
-                                fontWeight: 600,
-                                textAlign: "left",
-                            }}>
-                            {isCollapsed ? <CaretRightOutlined /> : <CaretDownOutlined />}
-                            Coverage Info
-                        </button>
-                        {!isCollapsed && (
-                            <div
-                                style={{
-                                    display: "grid",
-                                    gridTemplateColumns: "max-content minmax(0, 1fr) max-content minmax(0, 1fr)",
-                                    gap: "4px 14px",
-                                    padding: "0 8px 8px 24px",
-                                }}>
-                                <CoverageInfoField label="Name" value={info.name} colors={colors} />
-                                <CoverageInfoField
-                                    label="Source"
-                                    value={info.source}
-                                    colors={colors}
-                                />
-                                <CoverageInfoField
-                                    label="Coverpoints"
-                                    value={info.coverpoints.toLocaleString()}
-                                    colors={colors}
-                                />
-                                <CoverageInfoField
-                                    label="Covergroups"
-                                    value={info.covergroups.toLocaleString()}
-                                    colors={colors}
-                                />
-                                <CoverageInfoField
-                                    label="Overall Coverage"
-                                    value={info.overallCoverageText}
-                                    colors={colors}
-                                />
-                                <CoverageInfoField
-                                    label="Hits / Target"
-                                    value={info.hitsVsTargetText}
-                                    colors={colors}
-                                />
-                                <CoverageInfoField
-                                    label="Definition SHA"
-                                    value={info.defSha}
-                                    mono
-                                    colors={colors}
-                                />
-                                <CoverageInfoField
-                                    label="Record SHA"
-                                    value={info.recSha}
-                                    mono
-                                    colors={colors}
-                                />
-                                <CoverageInfoField
-                                    label="Bucket Version"
-                                    value={info.bucketVersion}
-                                    colors={colors}
-                                />
-                            </div>
-                        )}
-                    </section>
+                        <div style={coverageInfoChromeOuterBox(chromeColors)}>
+                            <Collapse
+                                size="small"
+                                ghost
+                                className="point-metadata-collapse"
+                                activeKey={coveragePanelKeys}
+                                onChange={(key) =>
+                                    setCoveragePanelKeys(Array.isArray(key) ? key : [key])
+                                }
+                                items={[
+                                    {
+                                        key: "coverage-info",
+                                        label: (
+                                            <Typography.Text
+                                                style={{
+                                                    fontSize: 13,
+                                                    fontWeight: 700,
+                                                    color: colors.saturatedtxt.value,
+                                                }}>
+                                                Coverage Info
+                                            </Typography.Text>
+                                        ),
+                                        children: (
+                                            <div
+                                                style={{
+                                                    display: "grid",
+                                                    gridTemplateColumns:
+                                                        "max-content minmax(0, 1fr) max-content minmax(0, 1fr)",
+                                                    gap: "6px 16px",
+                                                }}>
+                                                <CoverageInfoField
+                                                    label="Name"
+                                                    value={info.name}
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Source"
+                                                    value={info.source}
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Coverpoints"
+                                                    value={info.coverpoints.toLocaleString()}
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Covergroups"
+                                                    value={info.covergroups.toLocaleString()}
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Overall Coverage"
+                                                    value={info.overallCoverageText}
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Hits / Target"
+                                                    value={info.hitsVsTargetText}
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Definition SHA"
+                                                    value={info.defSha}
+                                                    mono
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Record SHA"
+                                                    value={info.recSha}
+                                                    mono
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Bucket Version"
+                                                    value={info.bucketVersion}
+                                                    colors={colors}
+                                                />
+                                            </div>
+                                        ),
+                                    },
+                                ]}
+                            />
+                        </div>
                     </>
                 );
             }}
@@ -498,7 +509,7 @@ function withTopLevelInfoPanel({
                 minHeight: 0,
                 width: "100%",
             }}>
-            <div style={{ flexShrink: 0, width: "100%" }}>
+            <div style={{ flexShrink: 0, width: "100%", minWidth: 0 }}>
                 <TopLevelCoverageInfoPanel info={info} treeSelectionKey={treeSelectionKey} />
             </div>
             <div
@@ -690,6 +701,56 @@ function stripExportExtension(fileName: string): string {
     return fileName.replace(/\.(bktgz|json)$/i, "");
 }
 
+const MAX_VIEW_NAVIGATION_HISTORY = 50;
+
+type ViewNavigationSnapshot = {
+    selectedTreeKeys: TreeKey[];
+    treeKeyContentKey: { [key: TreeKey]: string | number };
+};
+
+function treeKeysEqual(a: TreeKey[], b: TreeKey[]): boolean {
+    if (a.length !== b.length) {
+        return false;
+    }
+    return a.every((key, index) => key === b[index]);
+}
+
+function treeKeyContentMapsEqual(
+    a: ViewNavigationSnapshot["treeKeyContentKey"],
+    b: ViewNavigationSnapshot["treeKeyContentKey"],
+): boolean {
+    const aEntries = Object.keys(a);
+    const bEntries = Object.keys(b);
+    if (aEntries.length !== bEntries.length) {
+        return false;
+    }
+    for (const key of aEntries) {
+        const tk = key as TreeKey;
+        if (a[tk] !== b[tk]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function viewNavigationSnapshotsEqual(a: ViewNavigationSnapshot, b: ViewNavigationSnapshot): boolean {
+    if (!treeKeysEqual(a.selectedTreeKeys, b.selectedTreeKeys)) {
+        return false;
+    }
+    return treeKeyContentMapsEqual(a.treeKeyContentKey, b.treeKeyContentKey);
+}
+
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) {
+        return false;
+    }
+    const tag = target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+        return true;
+    }
+    return target.isContentEditable;
+}
+
 export type DashboardProps = {
     tree: Tree;
     records: CoverageRecord[];
@@ -745,6 +806,15 @@ export default function Dashboard({
     const [exportMergeBeforeWrite, setExportMergeBeforeWrite] = useState(false);
     const [exportFileName, setExportFileName] = useState("");
     const [exportBusy, setExportBusy] = useState(false);
+
+    const navigationPastRef = useRef<ViewNavigationSnapshot[]>([]);
+    const [viewNavigationPastLength, setViewNavigationPastLength] = useState(0);
+    const expandedTreeKeysRef = useRef(expandedTreeKeys);
+    const selectedTreeKeysRef = useRef(selectedTreeKeys);
+    const treeKeyContentKeyRef = useRef(treeKeyContentKey);
+    expandedTreeKeysRef.current = expandedTreeKeys;
+    selectedTreeKeysRef.current = selectedTreeKeys;
+    treeKeyContentKeyRef.current = treeKeyContentKey;
 
     const isEmpty = tree.getRoots().length === 0;
 
@@ -860,6 +930,8 @@ export default function Dashboard({
 
     useEffect(() => {
         if (isEmpty) {
+            navigationPastRef.current = [];
+            setViewNavigationPastLength(0);
             if (selectedTreeKeys.length > 0) {
                 setSelectedTreeKeys([]);
                 setExpandedTreeKeys([]);
@@ -868,23 +940,100 @@ export default function Dashboard({
         } else if (selectedTreeKeys.length > 0) {
             const viewKey = selectedTreeKeys[0];
             if (viewKey !== Tree.ROOT && !tree.getNodeByKey(viewKey)) {
+                navigationPastRef.current = [];
+                setViewNavigationPastLength(0);
                 setSelectedTreeKeys([]);
                 setExpandedTreeKeys([]);
             }
         }
     }, [tree, selectedTreeKeys, isEmpty]);
 
-    const onSelect = useCallback((newSelectedKeys: TreeKey[]) => {
-        const newExpandedKeys = new Set<TreeKey>(expandedTreeKeys);
-        for (const newSelectedKey of newSelectedKeys) {
+    const pushViewNavigationSnapshotIfNeeded = useCallback((newSelectedKeys: TreeKey[]) => {
+        const prevKeys = selectedTreeKeysRef.current;
+        if (treeKeysEqual(prevKeys, newSelectedKeys)) {
+            return;
+        }
+        const past = navigationPastRef.current;
+        const last = past[past.length - 1];
+        const currentMap = treeKeyContentKeyRef.current;
+        /** Reuse prior snapshot map when unchanged — avoids O(n) clone × history depth */
+        const mapSnapshot =
+            last && treeKeyContentMapsEqual(last.treeKeyContentKey, currentMap)
+                ? last.treeKeyContentKey
+                : { ...currentMap };
+        const snap: ViewNavigationSnapshot = {
+            selectedTreeKeys: [...prevKeys],
+            treeKeyContentKey: mapSnapshot,
+        };
+        if (last && viewNavigationSnapshotsEqual(last, snap)) {
+            return;
+        }
+        const next = [...past, snap];
+        navigationPastRef.current =
+            next.length > MAX_VIEW_NAVIGATION_HISTORY
+                ? next.slice(-MAX_VIEW_NAVIGATION_HISTORY)
+                : next;
+        setViewNavigationPastLength(navigationPastRef.current.length);
+    }, []);
+
+    const handleViewNavigateBack = useCallback(() => {
+        const past = navigationPastRef.current;
+        if (past.length === 0) {
+            return;
+        }
+        const snapshot = past[past.length - 1];
+        navigationPastRef.current = past.slice(0, -1);
+        setViewNavigationPastLength(navigationPastRef.current.length);
+
+        const restoredKeys = snapshot.selectedTreeKeys;
+        const newExpandedKeys = new Set<TreeKey>(expandedTreeKeysRef.current);
+        for (const newSelectedKey of restoredKeys) {
             for (const ancestor of tree.getAncestorsByKey(newSelectedKey)) {
                 newExpandedKeys.add(ancestor.key);
             }
         }
         setExpandedTreeKeys(Array.from(newExpandedKeys));
-        setSelectedTreeKeys(newSelectedKeys);
+        setSelectedTreeKeys(restoredKeys);
+        setTreeKeyContentKey({ ...snapshot.treeKeyContentKey });
         setAutoExpandTreeParent(false);
-    }, [expandedTreeKeys, tree]);
+    }, [tree]);
+
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (!event.metaKey && !event.ctrlKey) {
+                return;
+            }
+            if (event.key !== "[") {
+                return;
+            }
+            if (isEditableKeyboardTarget(event.target)) {
+                return;
+            }
+            if (isEmpty || navigationPastRef.current.length === 0) {
+                return;
+            }
+            event.preventDefault();
+            handleViewNavigateBack();
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [handleViewNavigateBack, isEmpty]);
+
+    const onSelect = useCallback(
+        (newSelectedKeys: TreeKey[]) => {
+            pushViewNavigationSnapshotIfNeeded(newSelectedKeys);
+            const newExpandedKeys = new Set<TreeKey>(expandedTreeKeys);
+            for (const newSelectedKey of newSelectedKeys) {
+                for (const ancestor of tree.getAncestorsByKey(newSelectedKey)) {
+                    newExpandedKeys.add(ancestor.key);
+                }
+            }
+            setExpandedTreeKeys(Array.from(newExpandedKeys));
+            setSelectedTreeKeys(newSelectedKeys);
+            setAutoExpandTreeParent(false);
+        },
+        [expandedTreeKeys, pushViewNavigationSnapshotIfNeeded, tree],
+    );
 
     const viewKey = selectedTreeKeys[0] ?? Tree.ROOT;
     const contentViews = tree.getViewsByKey(viewKey);
@@ -1126,6 +1275,10 @@ export default function Dashboard({
                                                         breadcrumbAvailableWidth,
                                                         () => onSelect([]),
                                                     );
+                                                    const backDisabled =
+                                                        isEmpty || viewNavigationPastLength === 0;
+                                                    const headerIconColor =
+                                                        theme.theme.colors.primarytxt.value;
                                                     return (
                                                         <Flex
                                                             align="center"
@@ -1155,6 +1308,28 @@ export default function Dashboard({
                                                                         ? "Hide sidebar"
                                                                         : "Show sidebar"
                                                                 }
+                                                                style={{
+                                                                    width: 24,
+                                                                    minWidth: 24,
+                                                                    paddingInline: 0,
+                                                                    display: "inline-flex",
+                                                                    justifyContent: "center",
+                                                                }}
+                                                            />
+                                                            <Button
+                                                                size="small"
+                                                                type="text"
+                                                                icon={<ArrowLeftOutlined />}
+                                                                onClick={handleViewNavigateBack}
+                                                                disabled={backDisabled}
+                                                                title="Back (Ctrl or ⌘ + [)"
+                                                                aria-label="Back to previous view"
+                                                                styles={{
+                                                                    icon: {
+                                                                        color: headerIconColor,
+                                                                        opacity: backDisabled ? 0.42 : 1,
+                                                                    },
+                                                                }}
                                                                 style={{
                                                                     width: 24,
                                                                     minWidth: 24,
@@ -1309,6 +1484,7 @@ export default function Dashboard({
                                                             icon={<ClearOutlined />}
                                                             onClick={() => setClearModalOpen(true)}
                                                             size="small"
+                                                            type="primary"
                                                             danger>
                                                             Clear
                                                         </Button>
@@ -1755,6 +1931,7 @@ export default function Dashboard({
                                                 style={{
                                                     color: context.theme.theme.colors.saturatedtxt.value,
                                                     fontSize: 11,
+                                                    pointerEvents: "none",
                                                 }}
                                             />
                                         }

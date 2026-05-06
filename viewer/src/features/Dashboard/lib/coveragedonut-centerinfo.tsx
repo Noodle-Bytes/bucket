@@ -8,6 +8,7 @@
 
 import { CENTER_PADDING } from "./coveragedonut-constants";
 import { SunburstNode } from "./coveragedonut-utils";
+import { coverageInfoDonutCenterCircleAttrs } from "./coverageInfoChrome";
 import { Theme as ThemeType } from "@/theme";
 
 export function CenterInfo({
@@ -23,16 +24,17 @@ export function CenterInfo({
 }) {
     if (!hoveredNode) return null;
     const centerSize = centerRadius * 2;
+    const centerCircle = coverageInfoDonutCenterCircleAttrs(theme.colors);
     return (
         <g>
             <circle
                 cx={0}
                 cy={0}
                 r={centerRadius}
-                fill={theme.colors.secondarybg.value}
-                fillOpacity={0.95}
-                stroke={theme.colors.secondarybg.value}
-                strokeWidth={2}
+                fill={centerCircle.fill}
+                fillOpacity={1}
+                stroke={centerCircle.stroke}
+                strokeWidth={centerCircle.strokeWidth}
             />
             <foreignObject
                 x={-centerRadius}
@@ -56,10 +58,11 @@ export function CenterInfo({
                 >
                     <div
                         style={{
-                            fontSize: `${12 * textScaleFactor}px`,
-                            color: theme.colors.desaturatedtxt.value,
+                            fontSize: `${11 * textScaleFactor}px`,
+                            color: theme.colors.primarytxt.value,
                             textTransform: 'uppercase',
-                            fontWeight: 'bold',
+                            fontWeight: 600,
+                            letterSpacing: '0.05em',
                             marginBottom: `${10 * textScaleFactor}px`,
                             lineHeight: '1.3',
                             flexShrink: 0,
