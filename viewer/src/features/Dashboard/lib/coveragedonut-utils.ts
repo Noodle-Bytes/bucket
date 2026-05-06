@@ -40,6 +40,112 @@ export function polarToCartesian(radius: number, angle: number): { x: number; y:
     };
 }
 
+/** Ring geometry for sunburst arcs (depth ≥ 1). */
+export function calculateRingRadii(
+    depth: number,
+    maxDepth: number,
+    startInnerRadius: number,
+    maxRadius: number,
+): { innerRadius: number; outerRadius: number } | null {
+    if (maxDepth === 0) {
+        return null;
+    }
+    const ringThickness = (maxRadius - startInnerRadius) / maxDepth;
+    const innerRadius = startInnerRadius + ringThickness * (depth - 1);
+    const outerRadius = innerRadius + ringThickness;
+    return { innerRadius, outerRadius };
+}
+
+/** Angles where \(x\) or \(y\) hits extrema on a circle (matches polarToCartesian). */
+const QUADRANT_ANGLES = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
+
+function expandBBoxPoint(
+    bb: { minX: number; maxX: number; minY: number; maxY: number },
+    x: number,
+    y: number,
+) {
+    bb.minX = Math.min(bb.minX, x);
+    bb.maxX = Math.max(bb.maxX, x);
+    bb.minY = Math.min(bb.minY, y);
+    bb.maxY = Math.max(bb.maxY, y);
+}
+
+function expandBBoxAnnularSector(
+    bb: { minX: number; maxX: number; minY: number; maxY: number },
+    innerRadius: number,
+    outerRadius: number,
+    startAngle: number,
+    endAngle: number,
+) {
+    const lo = Math.min(startAngle, endAngle);
+    const hi = Math.max(startAngle, endAngle);
+
+    const tryAngle = (theta: number) => {
+        if (theta < lo || theta > hi) {
+            return;
+        }
+        const inner = polarToCartesian(innerRadius, theta);
+        const outer = polarToCartesian(outerRadius, theta);
+        expandBBoxPoint(bb, inner.x, inner.y);
+        expandBBoxPoint(bb, outer.x, outer.y);
+    };
+
+    tryAngle(lo);
+    tryAngle(hi);
+    for (const a of QUADRANT_ANGLES) {
+        tryAngle(a);
+    }
+}
+
+/**
+ * Bounding-box midpoint of the visible donut (center hub + arc wedges) in group-local coords.
+ * Not a geometric centroid — only the axis-aligned center of the union bbox.
+ * Used to translate the chart so asymmetric wedges get even padding in the square SVG.
+ */
+export function computeSunburstVisualMidpoint(
+    flatData: SunburstNode[],
+    maxDepth: number,
+    startInnerRadius: number,
+    maxRadius: number,
+    centerCircleRadius: number,
+): { midX: number; midY: number } {
+    const bb = {
+        minX: Infinity,
+        maxX: -Infinity,
+        minY: Infinity,
+        maxY: -Infinity,
+    };
+
+    expandBBoxPoint(bb, -centerCircleRadius, -centerCircleRadius);
+    expandBBoxPoint(bb, centerCircleRadius, centerCircleRadius);
+
+    for (const n of flatData) {
+        if (n.depth <= 0) {
+            continue;
+        }
+        const ring = calculateRingRadii(n.depth, maxDepth, startInnerRadius, maxRadius);
+        if (!ring) {
+            continue;
+        }
+        expandBBoxAnnularSector(bb, ring.innerRadius, ring.outerRadius, n.startAngle, n.endAngle);
+    }
+
+    if (!Number.isFinite(bb.minX)) {
+        return { midX: 0, midY: 0 };
+    }
+
+    const pad = 2;
+    bb.minX -= pad;
+    bb.maxX += pad;
+    bb.minY -= pad;
+    bb.maxY += pad;
+
+    return {
+        midX: (bb.minX + bb.maxX) / 2,
+        midY: (bb.minY + bb.maxY) / 2,
+    };
+}
+
 export function arcPath(
     innerRadius: number,
     outerRadius: number,
@@ -64,8 +170,8 @@ export function arcPath(
 export function buildNode(node: PointNode): HierarchicalData {
     const nodeTitle = String(node.title || '');
     const isCovergroup = Array.isArray(node.children) && node.children.length > 0;
-    const pointTargetValue = Number((node as any)?.data?.point?.target);
-    const pointHitsValue = Number((node as any)?.data?.point_hit?.hits);
+    const pointTargetValue = Number(node.data.point?.target);
+    const pointHitsValue = Number(node.data.point_hit?.hits);
     const hasPointMetrics = Number.isFinite(pointTargetValue) && Number.isFinite(pointHitsValue);
     const nodeData: HierarchicalData = {
         name: nodeTitle,

@@ -56,6 +56,7 @@ import {
     useState,
 } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
+import { BUCKET_DONUT_LAYOUT_EVENT } from "./lib/coveragedonut-constants";
 import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
 import { PointPivotView } from "./lib/pivottable";
 import { CoverageDonut } from "./lib/coveragedonut";
@@ -82,6 +83,8 @@ type RootCoverageInfo = {
     name: string;
     coverpoints: number;
     covergroups: number;
+    hitsVsTargetText: string;
+    overallCoverageText: string;
     source: string | null;
     defSha: string | null;
     recSha: string | null;
@@ -164,11 +167,16 @@ function getTopLevelCoverageInfo(
     counts: TopLevelCoverageCounts,
 ): RootCoverageInfo {
     const readout = node.data.readout as Readout;
+    const target = Number(node.data.point?.target ?? 0);
+    const hits = Number(node.data.point_hit?.hits ?? 0);
+    const overallCoverage = target > 0 ? hits / target : 0;
 
     return {
         name: node.data.point?.name ?? String(node.title),
         coverpoints: counts.coverpoints,
         covergroups: counts.covergroups,
+        hitsVsTargetText: `${hits.toLocaleString()} / ${target.toLocaleString()}`,
+        overallCoverageText: `${(overallCoverage * 100).toFixed(1)}%`,
         source: getReadoutSource(readout),
         defSha: getReadoutValue(readout, "get_def_sha"),
         recSha: getReadoutValue(readout, "get_rec_sha"),
@@ -311,6 +319,34 @@ function TopLevelCoverageInfoPanel({
         setVersionAlertDismissed(true);
     }, []);
 
+    useEffect(() => {
+        if (typeof window === "undefined") {
+            return;
+        }
+        let cancelled = false;
+        let rafOuter = 0;
+        let rafInner = 0;
+        const bumpDonutLayout = () => {
+            cancelAnimationFrame(rafOuter);
+            cancelAnimationFrame(rafInner);
+            rafOuter = requestAnimationFrame(() => {
+                rafInner = requestAnimationFrame(() => {
+                    if (!cancelled) {
+                        window.dispatchEvent(new CustomEvent(BUCKET_DONUT_LAYOUT_EVENT));
+                    }
+                });
+            });
+        };
+        bumpDonutLayout();
+        const t = window.setTimeout(bumpDonutLayout, 50);
+        return () => {
+            cancelled = true;
+            cancelAnimationFrame(rafOuter);
+            cancelAnimationFrame(rafInner);
+            window.clearTimeout(t);
+        };
+    }, [isCollapsed, compat.status, versionAlertDismissed]);
+
     return (
         <Theme.Consumer>
             {({ theme }) => {
@@ -395,6 +431,16 @@ function TopLevelCoverageInfoPanel({
                                     colors={colors}
                                 />
                                 <CoverageInfoField
+                                    label="Overall Coverage"
+                                    value={info.overallCoverageText}
+                                    colors={colors}
+                                />
+                                <CoverageInfoField
+                                    label="Hits / Target"
+                                    value={info.hitsVsTargetText}
+                                    colors={colors}
+                                />
+                                <CoverageInfoField
                                     label="Definition SHA"
                                     value={info.defSha}
                                     mono
@@ -444,10 +490,30 @@ function withTopLevelInfoPanel({
     }
 
     return (
-        <>
-            <TopLevelCoverageInfoPanel info={info} treeSelectionKey={treeSelectionKey} />
-            {content}
-        </>
+        <div
+            style={{
+                display: "flex",
+                flexDirection: "column",
+                flex: "1 1 auto",
+                minHeight: 0,
+                width: "100%",
+            }}>
+            <div style={{ flexShrink: 0, width: "100%" }}>
+                <TopLevelCoverageInfoPanel info={info} treeSelectionKey={treeSelectionKey} />
+            </div>
+            <div
+                style={{
+                    flex: "1 1 auto",
+                    minHeight: 0,
+                    overflow: "auto",
+                    width: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "stretch",
+                }}>
+                {content}
+            </div>
+        </div>
     );
 }
 
