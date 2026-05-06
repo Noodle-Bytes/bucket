@@ -102,26 +102,24 @@ type SummaryRecord = {
     buckets_full_ratio: number;
 };
 
-/** Hover text for summary table Goal vs Buckets headers (distinct meanings). */
+/** Hover text for summary table Total Hits vs Buckets headers (distinct meanings). */
 const SUMMARY_COLUMN_HELP = {
     goalGroup:
-        "Goal-level rollup for this coverpoint: overall hit budget, recorded hits, and progress. These are not bucket counts.",
+        "Total number of hits per coverpoint across all buckets",
     goalTarget:
-        "Total hits required for this coverpoint’s goal (aggregated target across buckets).",
+        "Total hits required for this coverpoint (the sum of every bucket’s goal).",
     goalHits:
-        "Total hits scored toward that goal (sum across buckets; each bucket’s hits are capped at its target).",
-    goalHitPct: "Goal Hits ÷ Goal Target — progress toward the coverpoint’s overall hit objective.",
+        "Total hits seen by this coverpoint, summed across all buckets. (Capped at each bucket's goal).",
+    goalHitPct: "Percentage of hits compared to total goal for this coverpoint",
 
     bucketsGroup:
-        "Bucket-level rollup: counts buckets (coverage grid cells), not raw hits. Compares with Goal columns beside it.",
+        "Counts valid buckets hit",
     bucketsTarget:
-        "Buckets that count toward coverage — legal buckets with a positive hit target.",
-    bucketsHit: "Buckets with at least one hit (partial progress counts).",
-    bucketsFull: "Buckets that reached their per-bucket target (fully satisfied).",
-    bucketsHitPct:
-        "Hit buckets ÷ Target buckets — share of buckets that have any hits.",
-    bucketsFullPct:
-        "Full buckets ÷ Target buckets — share of buckets that are fully satisfied.",
+        "How many valid buckets there are (legal buckets with a positive hit requirement)",
+    bucketsHit: "Buckets with at least one hit",
+    bucketsFull: "Buckets that have reached their goal.",
+    bucketsHitPct: "Percentage of bukcets with 1+ hits",
+    bucketsFullPct: "Percentage of bucket that are saturated",
 } as const;
 
 /** Show tag filter search when many distinct tags would clutter the checklist. */
@@ -774,7 +772,7 @@ function getFullColumns(
             }),
         },
         {
-            title: "Goal",
+            title: "Total Hits",
             children: [
                 {
                     title: (
@@ -822,7 +820,7 @@ function getFullColumns(
                     title: (
                         <SortableColumnHeader
                             theme={theme}
-                            label="Target"
+                            label="Hits needed"
                             titleTooltip={goalTitleTooltip("target", goalSortState)}
                             sortActive={
                                 goalSortState.columnKey === "target"
@@ -983,7 +981,7 @@ function getLargeColumns(
             })),
         },
         {
-            title: "Goal",
+            title: "Total Hits",
             children: [
                 {
                     title: "Name",
@@ -992,7 +990,7 @@ function getLargeColumns(
                     width: 180,
                 },
                 {
-                    title: "Target",
+                    title: "Hits needed",
                     dataIndex: "target",
                     key: "target",
                     width: 90,
@@ -1083,7 +1081,7 @@ export function PointGrid({ node }: PointGridProps) {
 
     const largeGoalOptions = useMemo(
         () => [
-            { label: "All goals", value: "all" },
+            { label: "All", value: "all" },
             ...model.goals.map((goal) => ({
                 label: `${goal.name} - ${goal.description}`,
                 value: goal.name,
@@ -2082,10 +2080,13 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
             }),
         },
         {
-            title: summaryTableHeaderTitle("Goal", SUMMARY_COLUMN_HELP.goalGroup),
+            title: summaryTableHeaderTitle("Total Hits", SUMMARY_COLUMN_HELP.goalGroup),
             children: [
                 {
-                    title: summaryTableHeaderTitle("Target", SUMMARY_COLUMN_HELP.goalTarget),
+                    title: summaryTableHeaderTitle(
+                        "Target",
+                        SUMMARY_COLUMN_HELP.goalTarget,
+                    ),
                     dataIndex: "target",
                     key: "target",
                     onCell: (record: SummaryRecord) => ({
@@ -2139,10 +2140,7 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
             title: summaryTableHeaderTitle("Buckets", SUMMARY_COLUMN_HELP.bucketsGroup),
             children: [
                 {
-                    title: summaryTableHeaderTitle(
-                        "Target",
-                        SUMMARY_COLUMN_HELP.bucketsTarget,
-                    ),
+                    title: summaryTableHeaderTitle("Valid", SUMMARY_COLUMN_HELP.bucketsTarget),
                     dataIndex: "target_buckets",
                     key: "target_buckets",
                     onCell: (record: SummaryRecord) => ({
