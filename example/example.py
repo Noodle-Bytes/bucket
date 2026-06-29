@@ -3,9 +3,8 @@
 
 import logging
 import random
+import subprocess
 from pathlib import Path
-
-from git.repo import Repo
 
 from bucket import CoverageContext
 from bucket.rw import (
@@ -90,7 +89,11 @@ def run_testbench(
     # This is stored alongside recorded coverage and is used to determine if
     # coverage is valid to merge.
     # Note repo path set explicitely here as otherwise it will use the cwd.
-    context_hash = Repo(Path(__file__).parent.parent).head.object.hexsha
+    context_hash = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"],
+        cwd=Path(__file__).parent.parent,
+        text=True,
+    ).strip()
 
     # Create a reader
     point_reader = PointReader(context_hash)

@@ -12,6 +12,9 @@
     "test": "vitest run --coverage",
     "generate-pwa-assets": "pwa-assets-generator"
   },
+  "overrides": {
+    "path-to-regexp": "^8.4.2"
+  },
   "dependencies": {
     "@ant-design/pro-components": "^2.6.48",
     "@stitches/react": "^1.2.8",
