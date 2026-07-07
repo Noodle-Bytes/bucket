@@ -1178,7 +1178,7 @@ export function PointGrid({ node, compare }: PointGridProps) {
     const [largeCompareCategoryFilter, setLargeCompareCategoryFilter] =
         useState<LargeCompareCategoryFilter>("all");
     const [largeSort, setLargeSort] = useState<LargeSortOption>("bucket_asc");
-    const [largeScrollY, setLargeScrollY] = useState<number>(LARGE_TABLE_SCROLL_Y);
+    const [tableScrollY, setTableScrollY] = useState<number>(LARGE_TABLE_SCROLL_Y);
     const [axisSortState, setAxisSortState] = useState<AxisSortState>({
         axisName: null,
         mode: "none",
@@ -1221,7 +1221,7 @@ export function PointGrid({ node, compare }: PointGridProps) {
             const viewportHeight = window.innerHeight || LARGE_TABLE_SCROLL_Y;
             const reservedHeight = 260;
             const next = Math.max(LARGE_TABLE_SCROLL_Y, viewportHeight - reservedHeight);
-            setLargeScrollY(next);
+            setTableScrollY(next);
         };
 
         updateScrollY();
@@ -1919,7 +1919,7 @@ export function PointGrid({ node, compare }: PointGridProps) {
                                 virtual
                                 scroll={{
                                     x: largeScrollX,
-                                    y: largeScrollY,
+                                    y: tableScrollY,
                                 }}
                             />
                         </>
@@ -1938,6 +1938,9 @@ export function PointGrid({ node, compare }: PointGridProps) {
                     ) ?? []),
                     ...(compare ? getCompareColumns() ?? [] : []),
                 ];
+                const fullScrollX = compare
+                    ? 90 + model.axisModels.length * 160 + 244
+                    : "max-content";
 
                 return (
                     <>
@@ -1953,6 +1956,11 @@ export function PointGrid({ node, compare }: PointGridProps) {
                             onRow={(record) => ({
                                 style: getCompareRowStyle(record.compare_category, compare),
                             })}
+                            virtual
+                            scroll={{
+                                x: fullScrollX,
+                                y: tableScrollY,
+                            }}
                         />
                     </>
                 );
