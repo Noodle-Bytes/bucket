@@ -48,8 +48,23 @@ type SourceLoadPayload = {
 
 type LoadMode = "replace" | "append";
 
+type BulkLoadStrategy = "merge" | "individual" | "compare";
+
+export type PendingCompareActivation = {
+    recordIdA: string;
+    recordIdB: string;
+};
+
+type SourceLoadBatchResult = {
+    recordIds: string[];
+    sourceIds: string[];
+    recordsBySourceId: Map<string, string[]>;
+};
+
 /** Offer merge vs individual load when more than one archive is selected in one action. */
 const BULK_MERGE_THRESHOLD = 1;
+/** Warn that loading many separate records may slow the viewer. */
+const BULK_LOAD_SLOW_WARNING_THRESHOLD = 50;
 
 type ArchiveFileItem =
     | { kind: "fileObject"; file: File }
@@ -62,7 +77,7 @@ export type LoadingProgress = {
     /** `reading` = parsing archives; `applying` = merge or committing huge session state (blocks UI). */
     phase?: "reading" | "applying";
     /** Meaningful when `phase === "applying"`. */
-    applyingKind?: "merge" | "individual";
+    applyingKind?: BulkLoadStrategy;
 };
 
 function yieldToBrowser(): Promise<void> {
@@ -147,7 +162,9 @@ async function promptCoverageFileReselect(): Promise<File | null> {
     });
 }
 
-function promptBulkLoadStrategy(fileCount: number): Promise<"merge" | "individual" | "cancel"> {
+function promptBulkLoadStrategy(
+    fileCount: number,
+): Promise<BulkLoadStrategy | "cancel"> {
     return new Promise((resolve) => {
         let settled = false;
         let destroyModal: (() => void) | null = null;
@@ -156,8 +173,10 @@ function promptBulkLoadStrategy(fileCount: number): Promise<"merge" | "individua
         const border = cl.secondarybg.value;
         const txt = cl.primarytxt.value;
         const muted = cl.desaturatedtxt.value;
+        const canOfferCompare = fileCount === 2;
+        const warnManySeparateLoads = fileCount >= BULK_LOAD_SLOW_WARNING_THRESHOLD;
 
-        const finish = (choice: "merge" | "individual" | "cancel") => {
+        const finish = (choice: BulkLoadStrategy | "cancel") => {
             if (settled) {
                 return;
             }
@@ -174,22 +193,44 @@ function promptBulkLoadStrategy(fileCount: number): Promise<"merge" | "individua
             finish("cancel");
         };
         const archiveWord = fileCount === 1 ? "archive" : "archives";
+        const footerChrome = {
+            width: "100%",
+            boxSizing: "border-box" as const,
+            borderTop: `1px solid ${border}`,
+            marginTop: 4,
+            paddingTop: 14,
+            paddingBottom: 2,
+        };
         const instance = infoThemed({
             title: `Load ${fileCount} coverage ${archiveWord}`,
             icon: null,
-            width: 520,
+            width: canOfferCompare ? 440 : 520,
             maskClosable: false,
             closable: false,
             keyboard: true,
             onCancel: () => finish("cancel"),
-            content: (
+            content: canOfferCompare ? (
                 <>
                     <Typography.Paragraph
                         style={{ marginBottom: 10, fontSize: 14, color: txt, lineHeight: 1.5 }}
                     >
-                        Loading several archives as separate records can slow the viewer. You can
-                        merge them into one loaded record to keep things responsive, or load each
-                        archive as its own record.
+                        Choose how to open these two archives. Compare works best when you want
+                        side-by-side A/B coverage differences.
+                    </Typography.Paragraph>
+                    <Typography.Paragraph
+                        style={{ marginBottom: 0, fontSize: 13, color: muted, lineHeight: 1.5 }}
+                    >
+                        Merged results exist only for this session — export to keep them.
+                    </Typography.Paragraph>
+                </>
+            ) : (
+                <>
+                    <Typography.Paragraph
+                        style={{ marginBottom: 10, fontSize: 14, color: txt, lineHeight: 1.5 }}
+                    >
+                        {warnManySeparateLoads
+                            ? `Loading ${fileCount.toLocaleString()} archives as separate records can slow the viewer. You can merge them into one loaded record to keep things responsive, or load each archive as its own record.`
+                            : "Merge the archives into one loaded record, or load each archive as its own record."}
                     </Typography.Paragraph>
                     <Typography.Paragraph
                         style={{ marginBottom: 0, fontSize: 14, color: txt, lineHeight: 1.5 }}
@@ -198,23 +239,33 @@ function promptBulkLoadStrategy(fileCount: number): Promise<"merge" | "individua
                             Note:
                         </Typography.Text>{" "}
                         <span style={{ color: muted, opacity: 0.95 }}>
-                            A merged result exists only in this session. Use Export to save an Archive
-                            or JSON file if you want to keep it.
+                            A merged result exists only in this session. Use Export to save an
+                            Archive or JSON file if you want to keep it.
                         </span>
                     </Typography.Paragraph>
                 </>
             ),
-            footer: (
-                <div
-                    style={{
-                        width: "100%",
-                        boxSizing: "border-box",
-                        borderTop: `1px solid ${border}`,
-                        marginTop: 4,
-                        paddingTop: 14,
-                        paddingBottom: 2,
-                    }}
-                >
+            footer: canOfferCompare ? (
+                <div style={footerChrome}>
+                    <Flex vertical gap={8}>
+                        <Button type="primary" block onClick={() => finish("compare")}>
+                            Compare
+                        </Button>
+                        <Flex gap={8}>
+                            <Button block onClick={() => finish("individual")}>
+                                Load individually
+                            </Button>
+                            <Button block onClick={() => finish("merge")}>
+                                Merge into one
+                            </Button>
+                        </Flex>
+                        <Button type="text" onClick={() => finish("cancel")}>
+                            Cancel
+                        </Button>
+                    </Flex>
+                </div>
+            ) : (
+                <div style={footerChrome}>
                     <Flex justify="flex-end" gap={8} wrap="wrap">
                         <Button onClick={() => finish("cancel")}>Cancel</Button>
                         <Button onClick={() => finish("individual")}>Load individually</Button>
@@ -268,6 +319,8 @@ export function useFileLoader() {
     const [loadingProgress, setLoadingProgress] = useState<LoadingProgress | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [pendingCompareActivation, setPendingCompareActivation] =
+        useState<PendingCompareActivation | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const sourceCounterRef = useRef(1);
     const recordCounterRef = useRef(1);
@@ -283,9 +336,10 @@ export function useFileLoader() {
     const setSessionFromSources = (
         sourcePayloads: SourceLoadPayload[],
         mode: LoadMode,
-    ): void => {
+    ): SourceLoadBatchResult => {
         const sources: CoverageSourceRef[] = [];
         const records: CoverageRecord[] = [];
+        const recordsBySourceId = new Map<string, string[]>();
 
         for (const payload of sourcePayloads) {
             const sourceId = `source-${sourceCounterRef.current++}`;
@@ -295,13 +349,17 @@ export function useFileLoader() {
             };
             sources.push(sourceRef);
             for (const [index, readout] of payload.readouts.entries()) {
+                const recordId = `record-${recordCounterRef.current++}`;
                 records.push({
-                    id: `record-${recordCounterRef.current++}`,
+                    id: recordId,
                     readout,
                     sourceRef: sourceId,
                     sourceRecordIndex: index,
                     isLoaded: true,
                 });
+                const sourceRecordIds = recordsBySourceId.get(sourceId) ?? [];
+                sourceRecordIds.push(recordId);
+                recordsBySourceId.set(sourceId, sourceRecordIds);
             }
         }
 
@@ -312,20 +370,39 @@ export function useFileLoader() {
                 records,
                 loadedRecordIds,
             });
-            return;
+        } else {
+            setSession((current) => {
+                const mergedLoaded = new Set(current.loadedRecordIds);
+                for (const loadedId of loadedRecordIds) {
+                    mergedLoaded.add(loadedId);
+                }
+                return {
+                    sources: [...current.sources, ...sources],
+                    records: [...current.records, ...records],
+                    loadedRecordIds: Array.from(mergedLoaded),
+                };
+            });
         }
 
-        setSession((current) => {
-            const mergedLoaded = new Set(current.loadedRecordIds);
-            for (const loadedId of loadedRecordIds) {
-                mergedLoaded.add(loadedId);
-            }
-            return {
-                sources: [...current.sources, ...sources],
-                records: [...current.records, ...records],
-                loadedRecordIds: Array.from(mergedLoaded),
-            };
-        });
+        return {
+            recordIds: loadedRecordIds,
+            sourceIds: sources.map((source) => source.id),
+            recordsBySourceId,
+        };
+    };
+
+    const resolveCompareActivation = (
+        batch: SourceLoadBatchResult,
+    ): PendingCompareActivation | null => {
+        if (batch.sourceIds.length !== 2) {
+            return null;
+        }
+        const firstA = batch.recordsBySourceId.get(batch.sourceIds[0])?.[0];
+        const firstB = batch.recordsBySourceId.get(batch.sourceIds[1])?.[0];
+        if (!firstA || !firstB) {
+            return null;
+        }
+        return { recordIdA: firstA, recordIdB: firstB };
     };
 
     const loadArchiveBatch = async (
@@ -337,7 +414,7 @@ export function useFileLoader() {
             return { success: false };
         }
 
-        let strategy: "merge" | "individual" = "individual";
+        let strategy: BulkLoadStrategy = "individual";
         if (items.length > BULK_MERGE_THRESHOLD) {
             const choice = await promptBulkLoadStrategy(items.length);
             if (choice === "cancel") {
@@ -391,7 +468,25 @@ export function useFileLoader() {
                     duration: 5,
                 });
             } else {
-                setSessionFromSources(payloads, mode);
+                const batch = setSessionFromSources(payloads, mode);
+                if (strategy === "compare") {
+                    const activation = resolveCompareActivation(batch);
+                    if (activation) {
+                        setPendingCompareActivation(activation);
+                        notifySuccess({
+                            message: "Compare load complete",
+                            description: "Opening compare mode for the two loaded records.",
+                            duration: 4,
+                        });
+                    } else {
+                        notifyWarning({
+                            message: "Compare unavailable",
+                            description:
+                                "Compare needs one record from each archive. The files were loaded individually instead.",
+                            duration: 5,
+                        });
+                    }
+                }
             }
             return { success: true };
         } catch (err) {
@@ -449,6 +544,11 @@ export function useFileLoader() {
     const clearCoverage = (): void => {
         setSession(getDefaultSession());
         setError(null);
+        setPendingCompareActivation(null);
+    };
+
+    const clearPendingCompareActivation = (): void => {
+        setPendingCompareActivation(null);
     };
 
     const setLoadedRecords = (loadedRecordIds: string[]): void => {
@@ -817,5 +917,7 @@ export function useFileLoader() {
         mergeRecords,
         refreshLoadedRecords,
         exportRecords,
+        pendingCompareActivation,
+        clearPendingCompareActivation,
     };
 }
