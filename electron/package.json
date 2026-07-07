@@ -1,6 +1,6 @@
 {
   "name": "bucket-electron",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "Bucket Coverage Viewer - Mac App",
   "main": "main.js",
   "scripts": {
