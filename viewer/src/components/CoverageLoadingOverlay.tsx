@@ -141,7 +141,9 @@ export function CoverageLoadingOverlay({ open, loadingProgress }: CoverageLoadin
                                         {isApplying
                                             ? loadingProgress!.applyingKind === "merge"
                                                 ? "All files loaded. Merging and preparing the final record."
-                                                : "All files loaded. Preparing records, tree, and views."
+                                                : loadingProgress!.applyingKind === "compare"
+                                                  ? "All files loaded. Preparing records and opening compare mode."
+                                                  : "All files loaded. Preparing records, tree, and views."
                                             : "Reading and decoding selected archive files."}
                                     </Typography.Text>
                                 </>

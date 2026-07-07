@@ -4,6 +4,7 @@
  */
 
 import CoverageTree, { PointNode } from "./coveragetree";
+import { getPointNodeCompareCounts, getPointNodeCoverageMetrics } from "./coveragemetrics";
 import {
     Alert,
     Button,
@@ -39,9 +40,11 @@ import {
     FilterOutlined,
     InfoCircleFilled,
 } from "@ant-design/icons";
-import { hexToRgba, getCoverageColor } from "@/utils/colors";
+import { hexToRgba, getCoverageColor, getCompareCategoryBackground, getCompareCategoryLabel } from "@/utils/colors";
 import { coverageInfoChromeOuterBox } from "./coverageInfoChrome";
 import { confirmThemed } from "@/utils/themedStaticModal";
+import { getBucketCategoryForIndex, matchesCompareSetMode } from "@/services/coverageCompare";
+import type { BucketCategory, CompareViewContext } from "@/types/coverageCompare";
 import {
     CSSProperties,
     Dispatch,
@@ -71,7 +74,10 @@ type CoverageRecord = {
     hits: number;
     hit_ratio: number;
     goal_name: string;
-    [axisName: string]: string | number;
+    hits_a?: number;
+    hits_b?: number;
+    compare_category?: BucketCategory;
+    [axisName: string]: string | number | BucketCategory | undefined;
 };
 
 type LargeCoverageRecord = {
@@ -81,6 +87,9 @@ type LargeCoverageRecord = {
     hits: number;
     hit_ratio: number;
     goal_name: string;
+    hits_a?: number;
+    hits_b?: number;
+    compare_category?: BucketCategory;
 };
 
 type SummaryRecord = {
@@ -101,6 +110,12 @@ type SummaryRecord = {
     hit_ratio: number;
     buckets_hit_ratio: number;
     buckets_full_ratio: number;
+    compare_a_only?: number;
+    compare_both?: number;
+    compare_b_only?: number;
+    compare_neither?: number;
+    compare_valid?: number;
+    point_start?: number;
 };
 
 /** Hover text for summary table Total Hits vs Buckets headers (distinct meanings). */
@@ -313,13 +328,29 @@ function SummaryTagFilterDropdown({
 }
 
 type HitClassFilter = "all" | "full" | "partial" | "empty" | "illegal" | "ignore";
+type LargeCompareCategoryFilter = "all" | "a_only" | "both" | "b_only" | "neither";
 type LargeSortOption =
     | "bucket_asc"
     | "bucket_desc"
     | "hits_desc"
     | "hits_asc"
     | "ratio_desc"
-    | "ratio_asc";
+    | "ratio_asc"
+    | "hits_a_desc"
+    | "hits_a_asc"
+    | "hits_b_desc"
+    | "hits_b_asc"
+    | "category_asc"
+    | "category_desc";
+
+const COMPARE_CATEGORY_SORT_RANK: Record<BucketCategory, number> = {
+    a_only: 0,
+    both: 1,
+    b_only: 2,
+    neither: 3,
+    illegal: 4,
+    ignore: 5,
+};
 type AxisSortMode = "none" | "user_asc" | "user_desc" | "alpha_asc" | "alpha_desc";
 type AxisSortState = {
     axisName: string | null;
@@ -351,6 +382,7 @@ type PointTableSortActions = {
 
 export type PointGridProps = {
     node: PointNode;
+    compare?: CompareViewContext;
 };
 
 let sessionLargeModeWarningAcknowledged = false;
@@ -677,6 +709,7 @@ function sortLargeRows(
     rows: number[],
     model: PointTableModel,
     sortBy: LargeSortOption,
+    compare?: CompareViewContext,
 ): void {
     rows.sort((a, b) => {
         const targetA = model.goals[model.goalIndices[a]].target;
@@ -685,6 +718,44 @@ function sortLargeRows(
         const hitsB = model.hits[b];
         const ratioA = hitsA / targetA;
         const ratioB = hitsB / targetB;
+
+        if (compare) {
+            const bucketIndexA = model.bucketKeys[a];
+            const bucketIndexB = model.bucketKeys[b];
+            const recordAHitsA = compare.comparison.hitsAByIndex.get(bucketIndexA) ?? 0;
+            const recordBHitsA = compare.comparison.hitsAByIndex.get(bucketIndexB) ?? 0;
+            const recordAHitsB = compare.comparison.hitsBByIndex.get(bucketIndexA) ?? 0;
+            const recordBHitsB = compare.comparison.hitsBByIndex.get(bucketIndexB) ?? 0;
+            const categoryA =
+                getBucketCategoryForIndex(compare.comparison, bucketIndexA) ?? "ignore";
+            const categoryB =
+                getBucketCategoryForIndex(compare.comparison, bucketIndexB) ?? "ignore";
+
+            switch (sortBy) {
+                case "bucket_asc":
+                    return bucketIndexA - bucketIndexB;
+                case "bucket_desc":
+                    return bucketIndexB - bucketIndexA;
+                case "hits_a_desc":
+                    return recordBHitsA - recordAHitsA;
+                case "hits_a_asc":
+                    return recordAHitsA - recordBHitsA;
+                case "hits_b_desc":
+                    return recordBHitsB - recordAHitsB;
+                case "hits_b_asc":
+                    return recordAHitsB - recordBHitsB;
+                case "category_asc":
+                    return (
+                        COMPARE_CATEGORY_SORT_RANK[categoryA] - COMPARE_CATEGORY_SORT_RANK[categoryB]
+                    );
+                case "category_desc":
+                    return (
+                        COMPARE_CATEGORY_SORT_RANK[categoryB] - COMPARE_CATEGORY_SORT_RANK[categoryA]
+                    );
+                default:
+                    return bucketIndexA - bucketIndexB;
+            }
+        }
 
         switch (sortBy) {
             case "bucket_asc":
@@ -712,10 +783,11 @@ function getFullColumns(
     axisSortState: AxisSortState,
     goalSortState: GoalSortState,
     sortActions: PointTableSortActions,
+    compare?: CompareViewContext,
 ): TableProps<CoverageRecord>["columns"] {
     const axisModes = ["user_asc", "user_desc", "alpha_asc", "alpha_desc"] as const;
 
-    return [
+    const columns: TableProps<CoverageRecord>["columns"] = [
         {
             title: (
                 <Tooltip title="Unique bucket identifier">
@@ -724,7 +796,7 @@ function getFullColumns(
             ),
             dataIndex: "key",
             key: "key",
-            width: 1,
+            width: compare ? 90 : 1,
             onCell: () => ({ style: { whiteSpace: "nowrap" } }),
         },
         {
@@ -762,6 +834,7 @@ function getFullColumns(
                     ),
                     dataIndex: axis.name,
                     key: axis.name,
+                    ...(compare ? { width: 160 } : {}),
                     filters: axisValueSlice.map((axisValue) => ({
                         text: axisValue.value,
                         value: axisValue.value,
@@ -772,7 +845,13 @@ function getFullColumns(
                 };
             }),
         },
-        {
+    ];
+
+    if (compare) {
+        return columns;
+    }
+
+    columns.push({
             title: "Total Hits",
             children: [
                 {
@@ -952,24 +1031,29 @@ function getFullColumns(
                 },
             ],
         },
-    ];
+    );
+
+    return columns;
 }
 
 function getLargeColumns(
     theme: ThemeType,
     model: PointTableModel,
+    compare?: CompareViewContext,
 ): TableProps<LargeCoverageRecord>["columns"] {
-    return [
+    const axisColumnWidth = compare ? 160 : 140;
+    const columns: TableProps<LargeCoverageRecord>["columns"] = [
         {
             title: (
                 <Tooltip title="Unique bucket identifier">
-                  <span>ID</span>
+                    <span>ID</span>
                 </Tooltip>
-              ),
+            ),
             dataIndex: "key",
             key: "key",
-            width: 1,
-            onCell: () => ({ style: { whiteSpace: "nowrap" } })
+            width: compare ? 90 : 72,
+            fixed: compare ? "left" : undefined,
+            onCell: () => ({ style: { whiteSpace: "nowrap" } }),
         },
         {
             title: "Axes",
@@ -978,10 +1062,17 @@ function getLargeColumns(
                 key: axisModel.name,
                 render: (_value: unknown, record: LargeCoverageRecord) =>
                     getAxisValue(model, record.row, axisIdx),
-                width: 140,
+                width: axisColumnWidth,
+                onCell: () => ({ style: { whiteSpace: "nowrap" } }),
             })),
         },
-        {
+    ];
+
+    if (compare) {
+        return columns;
+    }
+
+    columns.push({
             title: "Total Hits",
             children: [
                 {
@@ -1011,16 +1102,81 @@ function getLargeColumns(
                 },
             ],
         },
+    );
+
+    return columns;
+}
+
+function bucketMatchesCompareFilter(
+    bucketIndex: number,
+    target: number,
+    compare: CompareViewContext | undefined,
+): boolean {
+    if (!compare) {
+        return true;
+    }
+    if (target <= 0) {
+        return false;
+    }
+    const category = getBucketCategoryForIndex(compare.comparison, bucketIndex);
+    return matchesCompareSetMode(category, compare.setMode);
+}
+
+function getCompareRowStyle(category: BucketCategory | undefined, compare: CompareViewContext | undefined) {
+    if (!compare || !category || category === "illegal" || category === "ignore") {
+        return {};
+    }
+    const active = compare.setMode === "all" || compare.setMode === category;
+    return {
+        backgroundColor: getCompareCategoryBackground(category, active),
+    };
+}
+
+function getCompareColumns(): TableProps<CoverageRecord>["columns"] {
+    return [
+        {
+            title: (
+                <Tooltip title="Hits in record A">
+                    <span>A</span>
+                </Tooltip>
+            ),
+            dataIndex: "hits_a",
+            key: "hits_a",
+            width: 72,
+            onCell: () => ({ style: { whiteSpace: "nowrap" } }),
+        },
+        {
+            title: (
+                <Tooltip title="Hits in record B">
+                    <span>B</span>
+                </Tooltip>
+            ),
+            dataIndex: "hits_b",
+            key: "hits_b",
+            width: 72,
+            onCell: () => ({ style: { whiteSpace: "nowrap" } }),
+        },
+        {
+            title: "Category",
+            dataIndex: "compare_category",
+            key: "compare_category",
+            width: 100,
+            onCell: () => ({ style: { whiteSpace: "nowrap" } }),
+            render: (value: BucketCategory | undefined) =>
+                value ? getCompareCategoryLabel(value as Exclude<BucketCategory, "illegal" | "ignore">) : "-",
+        },
     ];
 }
 
-export function PointGrid({ node }: PointGridProps) {
+export function PointGrid({ node, compare }: PointGridProps) {
     const [overrideState, setOverrideState] = useState<LargeModeOverrideState>(() =>
         createInitialLargeModeOverrideState(sessionLargeModeWarningAcknowledged),
     );
     const [isLargeBannerDismissed, setIsLargeBannerDismissed] = useState(false);
     const [largeGoalFilter, setLargeGoalFilter] = useState<string>("all");
     const [largeHitFilter, setLargeHitFilter] = useState<HitClassFilter>("all");
+    const [largeCompareCategoryFilter, setLargeCompareCategoryFilter] =
+        useState<LargeCompareCategoryFilter>("all");
     const [largeSort, setLargeSort] = useState<LargeSortOption>("bucket_asc");
     const [largeScrollY, setLargeScrollY] = useState<number>(LARGE_TABLE_SCROLL_Y);
     const [axisSortState, setAxisSortState] = useState<AxisSortState>({
@@ -1044,11 +1200,17 @@ export function PointGrid({ node }: PointGridProps) {
         );
         setLargeGoalFilter("all");
         setLargeHitFilter("all");
+        setLargeCompareCategoryFilter("all");
         setLargeSort("bucket_asc");
         setIsLargeBannerDismissed(false);
         setAxisSortState({ axisName: null, mode: "none" });
         setGoalSortState({ columnKey: null, order: null });
     }, [node.key]);
+
+    useEffect(() => {
+        setLargeCompareCategoryFilter("all");
+        setLargeSort("bucket_asc");
+    }, [compare?.active, compare?.setMode]);
 
     useEffect(() => {
         if (typeof window === "undefined") {
@@ -1091,6 +1253,21 @@ export function PointGrid({ node }: PointGridProps) {
         [model.goals],
     );
 
+    const largeCompareSetVisibleCount = useMemo(() => {
+        if (!compare || !isLargeMode) {
+            return model.rowCount;
+        }
+
+        let count = 0;
+        for (let row = 0; row < model.rowCount; row++) {
+            const goal = model.goals[model.goalIndices[row]];
+            if (bucketMatchesCompareFilter(model.bucketKeys[row], goal.target, compare)) {
+                count += 1;
+            }
+        }
+        return count;
+    }, [compare, isLargeMode, model]);
+
     const largeRowIndexes = useMemo(() => {
         if (!isLargeMode) {
             return [];
@@ -1100,21 +1277,41 @@ export function PointGrid({ node }: PointGridProps) {
         for (let row = 0; row < model.rowCount; row++) {
             const goal = model.goals[model.goalIndices[row]];
             const hits = model.hits[row];
+            const bucketIndex = model.bucketKeys[row];
             if (largeGoalFilter !== "all" && goal.name !== largeGoalFilter) {
                 continue;
             }
-            if (
+            if (compare) {
+                if (
+                    largeCompareCategoryFilter !== "all"
+                    && getBucketCategoryForIndex(compare.comparison, bucketIndex)
+                        !== largeCompareCategoryFilter
+                ) {
+                    continue;
+                }
+            } else if (
                 largeHitFilter !== "all"
                 && classifyHitClass(goal.target, hits) !== largeHitFilter
             ) {
                 continue;
             }
+            if (!bucketMatchesCompareFilter(bucketIndex, goal.target, compare)) {
+                continue;
+            }
             rows.push(row);
         }
 
-        sortLargeRows(rows, model, largeSort);
+        sortLargeRows(rows, model, largeSort, compare);
         return rows;
-    }, [isLargeMode, model, largeGoalFilter, largeHitFilter, largeSort]);
+    }, [
+        isLargeMode,
+        model,
+        largeGoalFilter,
+        largeHitFilter,
+        largeCompareCategoryFilter,
+        largeSort,
+        compare,
+    ]);
 
     const largeDataSource = useMemo<LargeCoverageRecord[]>(() => {
         if (!isLargeMode) {
@@ -1124,16 +1321,23 @@ export function PointGrid({ node }: PointGridProps) {
         return largeRowIndexes.map((row) => {
             const goal = model.goals[model.goalIndices[row]];
             const hits = model.hits[row];
-            return {
-                key: model.bucketKeys[row],
+            const bucketIndex = model.bucketKeys[row];
+            const record: LargeCoverageRecord = {
+                key: bucketIndex,
                 row,
                 target: goal.target,
                 hits,
                 hit_ratio: hits / goal.target,
                 goal_name: goal.name,
             };
+            if (compare) {
+                record.hits_a = compare.comparison.hitsAByIndex.get(bucketIndex) ?? 0;
+                record.hits_b = compare.comparison.hitsBByIndex.get(bucketIndex) ?? 0;
+                record.compare_category = getBucketCategoryForIndex(compare.comparison, bucketIndex);
+            }
+            return record;
         });
-    }, [isLargeMode, largeRowIndexes, model]);
+    }, [isLargeMode, largeRowIndexes, model, compare]);
 
     const fullDataSource = useMemo<CoverageRecord[]>(() => {
         if (isLargeMode) {
@@ -1144,13 +1348,23 @@ export function PointGrid({ node }: PointGridProps) {
         for (let row = 0; row < model.rowCount; row++) {
             const goal = model.goals[model.goalIndices[row]];
             const hits = model.hits[row];
+            const bucketIndex = model.bucketKeys[row];
+            if (!bucketMatchesCompareFilter(bucketIndex, goal.target, compare)) {
+                continue;
+            }
             const datum: CoverageRecord = {
-                key: model.bucketKeys[row],
+                key: bucketIndex,
                 target: goal.target,
                 hits,
                 hit_ratio: hits / goal.target,
                 goal_name: goal.name,
             };
+
+            if (compare) {
+                datum.hits_a = compare.comparison.hitsAByIndex.get(bucketIndex) ?? 0;
+                datum.hits_b = compare.comparison.hitsBByIndex.get(bucketIndex) ?? 0;
+                datum.compare_category = getBucketCategoryForIndex(compare.comparison, bucketIndex);
+            }
 
             for (let axisIdx = 0; axisIdx < model.axisModels.length; axisIdx++) {
                 const axisName = model.axisModels[axisIdx].name;
@@ -1159,7 +1373,7 @@ export function PointGrid({ node }: PointGridProps) {
             rows.push(datum);
         }
         return rows;
-    }, [isLargeMode, model]);
+    }, [isLargeMode, model, compare]);
 
     const clearAxisSort = useCallback(() => {
         setAxisSortState({ axisName: null, mode: "none" });
@@ -1581,39 +1795,84 @@ export function PointGrid({ node }: PointGridProps) {
                         </Typography.Text>
                         {isLargeMode && (
                             <>
-                                <Select
-                                    size="small"
-                                    value={largeGoalFilter}
-                                    onChange={(value) => setLargeGoalFilter(value)}
-                                    options={largeGoalOptions}
-                                    style={{ minWidth: 210 }}
-                                />
-                                <Select
-                                    size="small"
-                                    value={largeHitFilter}
-                                    onChange={(value) => setLargeHitFilter(value as HitClassFilter)}
-                                    options={[
-                                        { label: "All hit states", value: "all" },
-                                        { label: "Full", value: "full" },
-                                        { label: "Partial", value: "partial" },
-                                        { label: "Empty", value: "empty" },
-                                        { label: "Illegal", value: "illegal" },
-                                        { label: "Ignore", value: "ignore" },
-                                    ]}
-                                    style={{ minWidth: 160 }}
-                                />
+                                {model.goals.length > 1 && (
+                                    <Select
+                                        size="small"
+                                        value={largeGoalFilter}
+                                        onChange={(value) => setLargeGoalFilter(value)}
+                                        options={largeGoalOptions}
+                                        style={{ minWidth: 210 }}
+                                    />
+                                )}
+                                {compare ? (
+                                    compare.setMode === "all" && (
+                                        <Select
+                                            size="small"
+                                            value={largeCompareCategoryFilter}
+                                            onChange={(value) =>
+                                                setLargeCompareCategoryFilter(
+                                                    value as LargeCompareCategoryFilter,
+                                                )
+                                            }
+                                            options={[
+                                                { label: "All categories", value: "all" },
+                                                { label: "A only", value: "a_only" },
+                                                { label: "Both", value: "both" },
+                                                { label: "B only", value: "b_only" },
+                                                { label: "Neither", value: "neither" },
+                                            ]}
+                                            style={{ minWidth: 160 }}
+                                        />
+                                    )
+                                ) : (
+                                    <Select
+                                        size="small"
+                                        value={largeHitFilter}
+                                        onChange={(value) =>
+                                            setLargeHitFilter(value as HitClassFilter)
+                                        }
+                                        options={[
+                                            { label: "All hit states", value: "all" },
+                                            { label: "Full", value: "full" },
+                                            { label: "Partial", value: "partial" },
+                                            { label: "Empty", value: "empty" },
+                                            { label: "Illegal", value: "illegal" },
+                                            { label: "Ignore", value: "ignore" },
+                                        ]}
+                                        style={{ minWidth: 160 }}
+                                    />
+                                )}
                                 <Select
                                     size="small"
                                     value={largeSort}
                                     onChange={(value) => setLargeSort(value as LargeSortOption)}
-                                    options={[
-                                        { label: "Bucket (asc)", value: "bucket_asc" },
-                                        { label: "Bucket (desc)", value: "bucket_desc" },
-                                        { label: "Hits (desc)", value: "hits_desc" },
-                                        { label: "Hits (asc)", value: "hits_asc" },
-                                        { label: "Hit % (desc)", value: "ratio_desc" },
-                                        { label: "Hit % (asc)", value: "ratio_asc" },
-                                    ]}
+                                    options={
+                                        compare
+                                            ? [
+                                                  { label: "Bucket (asc)", value: "bucket_asc" },
+                                                  { label: "Bucket (desc)", value: "bucket_desc" },
+                                                  { label: "A hits (desc)", value: "hits_a_desc" },
+                                                  { label: "A hits (asc)", value: "hits_a_asc" },
+                                                  { label: "B hits (desc)", value: "hits_b_desc" },
+                                                  { label: "B hits (asc)", value: "hits_b_asc" },
+                                                  {
+                                                      label: "Category (asc)",
+                                                      value: "category_asc",
+                                                  },
+                                                  {
+                                                      label: "Category (desc)",
+                                                      value: "category_desc",
+                                                  },
+                                              ]
+                                            : [
+                                                  { label: "Bucket (asc)", value: "bucket_asc" },
+                                                  { label: "Bucket (desc)", value: "bucket_desc" },
+                                                  { label: "Hits (desc)", value: "hits_desc" },
+                                                  { label: "Hits (asc)", value: "hits_asc" },
+                                                  { label: "Hit % (desc)", value: "ratio_desc" },
+                                                  { label: "Hit % (asc)", value: "ratio_asc" },
+                                              ]
+                                    }
                                     style={{ minWidth: 150 }}
                                 />
                             </>
@@ -1621,7 +1880,12 @@ export function PointGrid({ node }: PointGridProps) {
                         {isLargeMode && (
                             <Typography.Text
                                 style={{ color: theme.theme.colors.primarytxt.value }}>
-                                Showing {largeDataSource.length.toLocaleString()} of {model.rowCount.toLocaleString()} rows
+                                Showing {largeDataSource.length.toLocaleString()} of{" "}
+                                {(compare
+                                    ? largeCompareSetVisibleCount
+                                    : model.rowCount
+                                ).toLocaleString()}{" "}
+                                rows
                             </Typography.Text>
                         )}
                         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
@@ -1631,6 +1895,13 @@ export function PointGrid({ node }: PointGridProps) {
                 ) : null;
 
                 if (isLargeMode) {
+                    const largeColumns = [
+                        ...(getLargeColumns(theme, model, compare) ?? []),
+                        ...(compare ? getCompareColumns() ?? [] : []),
+                    ];
+                    const largeScrollX = compare
+                        ? 90 + model.axisModels.length * 160 + 244
+                        : "max-content";
                     return (
                         <>
                             {pointMetadata}
@@ -1638,18 +1909,35 @@ export function PointGrid({ node }: PointGridProps) {
                             {largeControls}
                             <Table<LargeCoverageRecord>
                                 {...(view.body.content.table.props as unknown as TableProps<LargeCoverageRecord>)}
-                                key={node.key}
-                                columns={getLargeColumns(theme, model)}
+                                key={`${node.key}-${compare ? "compare" : "normal"}`}
+                                tableLayout={compare ? "fixed" : "auto"}
+                                columns={largeColumns}
                                 dataSource={largeDataSource}
+                                onRow={(record) => ({
+                                    style: getCompareRowStyle(record.compare_category, compare),
+                                })}
                                 virtual
                                 scroll={{
-                                    x: "max-content",
+                                    x: largeScrollX,
                                     y: largeScrollY,
                                 }}
                             />
                         </>
                     );
                 }
+
+                const fullColumns = [
+                    ...(getFullColumns(
+                        theme,
+                        model,
+                        node.data.point.axis_value_start,
+                        axisSortState,
+                        goalSortState,
+                        pointTableSortActions,
+                        compare,
+                    ) ?? []),
+                    ...(compare ? getCompareColumns() ?? [] : []),
+                ];
 
                 return (
                     <>
@@ -1658,16 +1946,13 @@ export function PointGrid({ node }: PointGridProps) {
                         {largeControls}
                         <Table<CoverageRecord>
                             {...(view.body.content.table.props as unknown as TableProps<CoverageRecord>)}
-                            key={node.key}
-                            columns={getFullColumns(
-                                theme,
-                                model,
-                                node.data.point.axis_value_start,
-                                axisSortState,
-                                goalSortState,
-                                pointTableSortActions,
-                            )}
+                            key={`${node.key}-${compare ? "compare" : "normal"}`}
+                            tableLayout={compare ? "fixed" : "auto"}
+                            columns={fullColumns}
                             dataSource={sortedFullDataSource}
+                            onRow={(record) => ({
+                                style: getCompareRowStyle(record.compare_category, compare),
+                            })}
                         />
                     </>
                 );
@@ -1680,6 +1965,7 @@ export type PointSummaryGridProps = {
     tree: CoverageTree;
     node: PointNode;
     setSelectedTreeKeys: (newSelectedKeys: TreeKey[]) => void;
+    compare?: CompareViewContext;
 };
 
 function createInitialExpandedSet(tree: CoverageTree, node: PointNode): Set<TreeKey> {
@@ -1697,7 +1983,12 @@ function createInitialExpandedSet(tree: CoverageTree, node: PointNode): Set<Tree
     return initialExpanded;
 }
 
-export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSummaryGridProps) {
+export function PointSummaryGrid({
+    tree,
+    node,
+    setSelectedTreeKeys,
+    compare,
+}: PointSummaryGridProps) {
     const [expandedCovergroups, setExpandedCovergroups] = useState<Set<TreeKey>>(() =>
         createInitialExpandedSet(tree, node),
     );
@@ -1756,6 +2047,19 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
             const isCovergroup = (subNode.children?.length ?? 0) > 0;
             const tier = normalizePointTier(point.tier);
             const tags = parsePointTags(point.tags);
+            const pointCompare = getPointNodeCompareCounts(
+                subNode as PointNode,
+                compare?.comparison,
+            );
+            const metrics = isCovergroup
+                ? getPointNodeCoverageMetrics(subNode as PointNode)
+                : {
+                    target: point.target,
+                    hits: point_hit.hits,
+                    target_buckets: point.target_buckets,
+                    hit_buckets: point_hit.hit_buckets,
+                    full_buckets: point_hit.full_buckets,
+                };
             rows.push({
                 key: subNode.key,
                 parentKey: parent?.key ?? null,
@@ -1766,19 +2070,27 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                 tier,
                 tags,
                 tags_text: tags.join(", "),
-                target: point.target,
-                hits: point_hit.hits,
-                target_buckets: point.target_buckets,
-                hit_buckets: point_hit.hit_buckets,
-                full_buckets: point_hit.full_buckets,
-                hit_ratio: point_hit.hits / point.target,
-                buckets_hit_ratio: point_hit.hit_buckets / point.target_buckets,
-                buckets_full_ratio: point_hit.full_buckets / point.target_buckets,
+                target: metrics.target,
+                hits: metrics.hits,
+                target_buckets: metrics.target_buckets,
+                hit_buckets: metrics.hit_buckets,
+                full_buckets: metrics.full_buckets,
+                hit_ratio: metrics.target > 0 ? metrics.hits / metrics.target : 0,
+                buckets_hit_ratio:
+                    metrics.target_buckets > 0 ? metrics.hit_buckets / metrics.target_buckets : 0,
+                buckets_full_ratio:
+                    metrics.target_buckets > 0 ? metrics.full_buckets / metrics.target_buckets : 0,
+                compare_a_only: pointCompare?.a_only,
+                compare_both: pointCompare?.both,
+                compare_b_only: pointCompare?.b_only,
+                compare_neither: pointCompare?.neither,
+                compare_valid: pointCompare?.valid,
+                point_start: point.start,
             });
         }
 
         return rows;
-    }, [tree, node, expandedCovergroups]);
+    }, [tree, node, expandedCovergroups, compare]);
 
     const tierFilterOptions = useMemo(
         () =>
@@ -2076,6 +2388,9 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                 },
             }),
         },
+        ...(compare
+            ? []
+            : [
         {
             title: summaryTableHeaderTitle("Total Hits", SUMMARY_COLUMN_HELP.goalGroup),
             children: [
@@ -2230,7 +2545,89 @@ export function PointSummaryGrid({ tree, node, setSelectedTreeKeys }: PointSumma
                 },
             ],
         },
+            ]),
                 ];
+
+                if (compare) {
+                    summaryColumns.push({
+                        title: "Compare",
+                        children: [
+                            {
+                                title: summaryTableHeaderTitle(
+                                    "Total",
+                                    "Valid buckets in this coverpoint or covergroup (denominator for A / Both / B / Neither)",
+                                ),
+                                dataIndex: "compare_valid",
+                                key: "compare_valid",
+                                width: 72,
+                                onCell: (record: SummaryRecord) => ({
+                                    style: {
+                                        backgroundColor: record.isCovergroup
+                                            ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                                            : "transparent",
+                                        fontWeight: record.isCovergroup ? 600 : 400,
+                                    },
+                                }),
+                            },
+                            {
+                                title: "A only",
+                                dataIndex: "compare_a_only",
+                                key: "compare_a_only",
+                                width: 80,
+                                onCell: (record: SummaryRecord) => ({
+                                    style: getCompareRowStyle(
+                                        record.compare_a_only && record.compare_a_only > 0
+                                            ? "a_only"
+                                            : undefined,
+                                        compare,
+                                    ),
+                                }),
+                            },
+                            {
+                                title: "Both",
+                                dataIndex: "compare_both",
+                                key: "compare_both",
+                                width: 80,
+                                onCell: (record: SummaryRecord) => ({
+                                    style: getCompareRowStyle(
+                                        record.compare_both && record.compare_both > 0
+                                            ? "both"
+                                            : undefined,
+                                        compare,
+                                    ),
+                                }),
+                            },
+                            {
+                                title: "B only",
+                                dataIndex: "compare_b_only",
+                                key: "compare_b_only",
+                                width: 80,
+                                onCell: (record: SummaryRecord) => ({
+                                    style: getCompareRowStyle(
+                                        record.compare_b_only && record.compare_b_only > 0
+                                            ? "b_only"
+                                            : undefined,
+                                        compare,
+                                    ),
+                                }),
+                            },
+                            {
+                                title: "Neither",
+                                dataIndex: "compare_neither",
+                                key: "compare_neither",
+                                width: 80,
+                                onCell: (record: SummaryRecord) => ({
+                                    style: getCompareRowStyle(
+                                        record.compare_neither && record.compare_neither > 0
+                                            ? "neither"
+                                            : undefined,
+                                        compare,
+                                    ),
+                                }),
+                            },
+                        ],
+                    });
+                }
 
                 const hasMetadataFilters =
                     selectedTiers.length > 0 || selectedTags.length > 0;

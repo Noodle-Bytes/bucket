@@ -23,6 +23,7 @@ import {
     Table,
     Typography,
     Alert,
+    Tooltip,
 } from "antd";
 import {
     ArrowLeftOutlined,
@@ -40,6 +41,7 @@ import {
     CloseOutlined,
     ExclamationCircleFilled,
     InfoCircleFilled,
+    DiffOutlined,
 } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 import Sider, { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "./components/Sider";
@@ -66,6 +68,12 @@ import { buildBucketAntModalTheme } from "@/utils/bucketAntModalTheme";
 import type { CoverageRecord, CoverageSourceRef, ExportFormat } from "@/types/coverageSession";
 import { getDefaultExportFileName } from "@/services/exportSaver";
 import { checkVersionCompat } from "@/utils/versionCompat";
+import CompareToolbar from "./components/CompareToolbar";
+import type { PointData, PointNode } from "./lib/coveragetree";
+import { getPointNodeCompareCounts, getPointNodeCoverageMetrics } from "./lib/coveragemetrics";
+import type { UseCoverageCompareResult } from "@/hooks/useCoverageCompare";
+import type { CompareRecordRow } from "@/hooks/useCoverageCompare";
+import type { CompareViewContext } from "@/types/coverageCompare";
 
 declare const __APP_VERSION__: string;
 
@@ -168,15 +176,14 @@ function getTopLevelCoverageInfo(
     counts: TopLevelCoverageCounts,
 ): RootCoverageInfo {
     const readout = node.data.readout as Readout;
-    const target = Number(node.data.point?.target ?? 0);
-    const hits = Number(node.data.point_hit?.hits ?? 0);
-    const overallCoverage = target > 0 ? hits / target : 0;
+    const metrics = getPointNodeCoverageMetrics(node as PointNode);
+    const overallCoverage = metrics.target > 0 ? metrics.hits / metrics.target : 0;
 
     return {
         name: node.data.point?.name ?? String(node.title),
         coverpoints: counts.coverpoints,
         covergroups: counts.covergroups,
-        hitsVsTargetText: `${hits.toLocaleString()} / ${target.toLocaleString()}`,
+        hitsVsTargetText: `${metrics.hits.toLocaleString()} / ${metrics.target.toLocaleString()}`,
         overallCoverageText: `${(overallCoverage * 100).toFixed(1)}%`,
         source: getReadoutSource(readout),
         defSha: getReadoutValue(readout, "get_def_sha"),
@@ -755,6 +762,8 @@ export type DashboardProps = {
     tree: Tree;
     records: CoverageRecord[];
     sources: CoverageSourceRef[];
+    compare?: UseCoverageCompareResult;
+    compareContext?: CompareViewContext;
     onOpenFile?: () => void | Promise<void>;
     onClearCoverage?: () => void;
     onSetLoadedRecords?: (loadedRecordIds: string[]) => void;
@@ -773,6 +782,8 @@ export default function Dashboard({
     tree,
     records,
     sources,
+    compare,
+    compareContext,
     onOpenFile,
     onClearCoverage,
     onSetLoadedRecords,
@@ -844,6 +855,20 @@ export default function Dashboard({
             };
         });
     }, [records, sourceById, recordCountBySourceRef]);
+
+    const compareRecordRows = useMemo<CompareRecordRow[]>(
+        () =>
+            records.map((record) => ({
+                id: record.id,
+                label: getReadoutLabel(
+                    record,
+                    sourceById.get(record.sourceRef),
+                    recordCountBySourceRef.get(record.sourceRef) ?? 1,
+                ),
+                readout: record.readout,
+            })),
+        [records, sourceById, recordCountBySourceRef],
+    );
 
     const loadedRecordRows = useMemo(
         () => recordRows.filter((record) => record.isLoaded),
@@ -942,7 +967,13 @@ export default function Dashboard({
             if (viewKey !== Tree.ROOT && !tree.getNodeByKey(viewKey)) {
                 navigationPastRef.current = [];
                 setViewNavigationPastLength(0);
-                setSelectedTreeKeys([]);
+                const remapped = tree.remapKey(viewKey);
+                if (remapped) {
+                    setSelectedTreeKeys([remapped]);
+                } else {
+                    const roots = tree.getRoots();
+                    setSelectedTreeKeys(roots.length === 1 ? [roots[0].key] : []);
+                }
                 setExpandedTreeKeys([]);
             }
         }
@@ -1050,6 +1081,20 @@ export default function Dashboard({
         });
     };
 
+    const compareTreeBadge = useCallback(
+        (node: TreeNode) => {
+            if (!compareContext || compareContext.setMode === "all") {
+                return null;
+            }
+            const counts = getPointNodeCompareCounts(node as PointNode, compareContext.comparison);
+            if (!counts) {
+                return null;
+            }
+            return counts[compareContext.setMode] ?? null;
+        },
+        [compareContext],
+    );
+
     const isElectronProduction =
         typeof window !== "undefined" && window.location.protocol === "app:";
     const isFileProtocol =
@@ -1117,6 +1162,7 @@ export default function Dashboard({
                         tree={tree}
                         node={currentNode}
                         setSelectedTreeKeys={onSelect}
+                        compare={compareContext}
                     />
                 );
                 return withTopLevelInfoPanel({
@@ -1127,7 +1173,7 @@ export default function Dashboard({
             }
             case "Point":
                 return withTopLevelInfoPanel({
-                    content: <PointGrid node={currentNode} />,
+                    content: <PointGrid node={currentNode} compare={compareContext} />,
                     info: topLevelCoverageInfo,
                     treeSelectionKey: viewKey,
                 });
@@ -1144,6 +1190,7 @@ export default function Dashboard({
         summaryViewMode,
         onSelect,
         topLevelCoverageInfo,
+        compareContext,
     ]);
 
     const applyLoadedEdits = () => {
@@ -1256,6 +1303,7 @@ export default function Dashboard({
                                     setSidebarWidth={setSidebarWidth}
                                     autoExpandTreeParent={autoExpandTreeParent}
                                     setAutoExpandTreeParent={setAutoExpandTreeParent}
+                                    compareBadge={compareContext ? compareTreeBadge : undefined}
                                 />
                             )}
                             <Layout {...view.body.props}>
@@ -1479,6 +1527,27 @@ export default function Dashboard({
                                                             Export
                                                         </Button>
                                                     )}
+                                                    {compare && (
+                                                        <Tooltip
+                                                            title={
+                                                                compare.canCompare
+                                                                    ? compare.active
+                                                                        ? "Compare mode is active"
+                                                                        : "Compare two compatible coverage records"
+                                                                    : compare.compatibilityMessage
+                                                            }
+                                                        >
+                                                            <Button
+                                                                icon={<DiffOutlined />}
+                                                                onClick={() => compare.setActive(!compare.active)}
+                                                                size="small"
+                                                                type={compare.active ? "primary" : "default"}
+                                                                disabled={!compare.canCompare}
+                                                            >
+                                                                Compare
+                                                            </Button>
+                                                        </Tooltip>
+                                                    )}
                                                     {onClearCoverage && (
                                                         <Button
                                                             icon={<ClearOutlined />}
@@ -1499,6 +1568,13 @@ export default function Dashboard({
                                             </Flex>
                                         </Flex>
                                     </Header>
+                                )}
+                                {compare?.active && (
+                                    <CompareToolbar
+                                        compare={compare}
+                                        records={compareRecordRows}
+                                        onClose={() => compare.setActive(false)}
+                                    />
                                 )}
                                 <Content {...view.body.content.props}>{selectedViewContent}</Content>
                             </Layout>

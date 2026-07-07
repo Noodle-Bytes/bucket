@@ -104,3 +104,69 @@ export async function saveExportBytes(
     URL.revokeObjectURL(url);
     return { canceled: false };
 }
+
+export type CompareReportFormat = "json" | "html";
+
+function getReportMimeType(format: CompareReportFormat): string {
+    return format === "json" ? "application/json" : "text/html";
+}
+
+function getReportExtension(format: CompareReportFormat): string {
+    return format;
+}
+
+export async function saveCompareReportBytes(
+    bytes: Uint8Array,
+    format: CompareReportFormat,
+    defaultFileName: string,
+): Promise<SaveResult> {
+    const arrayBuffer = bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength,
+    ) as ArrayBuffer;
+
+    if (isElectron() && window.electronAPI?.saveExportFile) {
+        return window.electronAPI.saveExportFile({
+            bytes: Array.from(bytes),
+            format: format === "json" ? "json" : "json",
+            defaultFileName,
+        });
+    }
+
+    const pickerWindow = window as SaveFilePickerWindow;
+    if (pickerWindow.showSaveFilePicker) {
+        try {
+            const handle = await pickerWindow.showSaveFilePicker({
+                suggestedName: defaultFileName,
+                types: [
+                    {
+                        description: format === "json" ? "JSON Report" : "HTML Report",
+                        accept: {
+                            [getReportMimeType(format)]: [`.${getReportExtension(format)}`],
+                        },
+                    },
+                ],
+            });
+            const writable = await handle.createWritable();
+            await writable.write(arrayBuffer);
+            await writable.close();
+            return { canceled: false };
+        } catch (error) {
+            if (isSavePickerUserAbort(error)) {
+                return { canceled: true };
+            }
+            throw error instanceof Error ? error : new Error(String(error));
+        }
+    }
+
+    const blob = new Blob([arrayBuffer], { type: getReportMimeType(format) });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = defaultFileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+    return { canceled: false };
+}

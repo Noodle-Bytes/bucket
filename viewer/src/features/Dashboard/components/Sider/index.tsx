@@ -29,11 +29,33 @@ export const MAX_SIDEBAR_WIDTH = 520;
 function treeTitleFormatter(
     tree: Tree,
     nodeTitleFormatter: (treeNode: TreeNode) => ReactNode,
+    compareBadge?: (treeNode: TreeNode) => number | null,
 ) {
     const callback = (treeNode: TreeNode): TreeNode => {
+        const title = nodeTitleFormatter(treeNode);
+        const badgeCount = compareBadge?.(treeNode) ?? null;
+        const formattedTitle =
+            badgeCount != null && badgeCount > 0 ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    {title}
+                    <span
+                        style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            padding: "0 6px",
+                            borderRadius: 10,
+                            background: "rgba(37, 99, 235, 0.15)",
+                        }}
+                    >
+                        {badgeCount}
+                    </span>
+                </span>
+            ) : (
+                title
+            );
         return {
             ...treeNode,
-            title: nodeTitleFormatter(treeNode),
+            title: formattedTitle,
             children: treeNode.children?.map(callback),
         };
     };
@@ -79,6 +101,7 @@ export type SiderProps = {
     setAutoExpandTreeParent: (newValue: boolean) => void;
     setSelectedTreeKeys: (newSelectedKeys: TreeKey[]) => void;
     setExpandedTreeKeys: (newExpandedKeys: TreeKey[]) => void;
+    compareBadge?: (treeNode: TreeNode) => number | null;
 };
 
 export default function Sider({
@@ -92,6 +115,7 @@ export default function Sider({
     setAutoExpandTreeParent,
     setSelectedTreeKeys,
     setExpandedTreeKeys,
+    compareBadge,
 }: SiderProps) {
     const [searchValue, setSearchValue] = useState("");
     const [isResizing, setIsResizing] = useState(false);
@@ -146,8 +170,9 @@ export default function Sider({
         return treeTitleFormatter(
             tree,
             searchNodeTitleFormatterFactory(searchValue),
+            compareBadge,
         );
-    }, [searchValue, tree]);
+    }, [searchValue, tree, compareBadge]);
 
     const onResizeMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
         if (!sidebarVisible) {
