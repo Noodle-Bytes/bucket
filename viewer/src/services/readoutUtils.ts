@@ -228,6 +228,51 @@ function buildMergedPointHits(
     return pointHits;
 }
 
+/** Sum bucket hits from two compare records (different rec_sha allowed). */
+export function mergeCompareReadoutsForDisplay(readoutA: Readout, readoutB: Readout): Readout {
+    const master = materializeReadout(readoutA);
+    const dataB = materializeReadout(readoutB);
+
+    if (master.defSha !== dataB.defSha) {
+        throw new Error("Cannot merge compare records with different covertree definitions.");
+    }
+    if (master.bucketGoals.length !== dataB.bucketGoals.length) {
+        throw new Error("Cannot merge compare records with different bucket counts.");
+    }
+
+    const hitsBByStart = new Map<number, number>();
+    for (const bucketHit of dataB.bucketHits) {
+        hitsBByStart.set(bucketHit.start, bucketHit.hits);
+    }
+
+    const mergedBucketHits = master.bucketHits.map((bucketHit) => ({
+        ...bucketHit,
+        hits: bucketHit.hits + (hitsBByStart.get(bucketHit.start) ?? 0),
+    }));
+
+    const mergedPointHits = buildMergedPointHits(
+        master.points,
+        master.bucketGoals,
+        master.goals,
+        mergedBucketHits,
+    );
+
+    return new InMemoryReadout({
+        defSha: master.defSha,
+        recSha: master.recSha,
+        source: "Compare merged (A+B)",
+        sourceKey: "",
+        bucketVersion: master.bucketVersion,
+        points: master.points,
+        bucketGoals: master.bucketGoals,
+        axes: master.axes,
+        axisValues: master.axisValues,
+        goals: master.goals,
+        pointHits: mergedPointHits,
+        bucketHits: mergedBucketHits,
+    });
+}
+
 export function mergeReadoutsStrict(readouts: Readout[]): Readout {
     if (readouts.length === 0) {
         throw new Error("No records selected for merge.");

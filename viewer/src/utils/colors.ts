@@ -32,6 +32,15 @@ type CoverageThemeColors = {
     desaturatedtxt?: { value: string };
 };
 
+export type CompareBucketCategory = "a_only" | "both" | "b_only" | "neither";
+
+const COMPARE_CATEGORY_COLORS: Record<CompareBucketCategory, string> = {
+    a_only: "#2563eb",
+    both: "#16a34a",
+    b_only: "#ea580c",
+    neither: "#6b7280",
+};
+
 /**
  * Calculate coverage color based on ratio
  * Creates a gradient between 0.2 and 0.6 mix ratios for better visibility
@@ -71,5 +80,32 @@ export function getCoverageColor(
         );
         const clamped = Math.min(Math.max(ratio, 0), 1);
         return mix(clamped).toString();
+    }
+}
+
+export function getCompareCategoryColor(category: CompareBucketCategory): string {
+    return COMPARE_CATEGORY_COLORS[category];
+}
+
+export function getCompareCategoryBackground(
+    category: CompareBucketCategory,
+    active: boolean,
+): string {
+    const alpha = active ? 0.35 : 0.12;
+    return hexToRgba(getCompareCategoryColor(category), alpha);
+}
+
+export function getCompareCategoryLabel(category: CompareBucketCategory): string {
+    switch (category) {
+        case "a_only":
+            return "A only";
+        case "both":
+            return "Both";
+        case "b_only":
+            return "B only";
+        case "neither":
+            return "Neither";
+        default:
+            return category;
     }
 }

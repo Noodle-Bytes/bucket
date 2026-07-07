@@ -15,7 +15,11 @@ export type PointData = {
 export type PointNode = TreeNode<PointData>;
 
 export default class CoverageTree extends Tree<PointData> {
-    static fromReadouts(readouts: Readout[]): CoverageTree {
+    static fromSingleReadout(readout: Readout, keyPrefix = "compare"): CoverageTree {
+        return CoverageTree.fromReadouts([readout], keyPrefix);
+    }
+
+    static fromReadouts(readouts: Readout[], keyPrefix?: string): CoverageTree {
         // Record the tree and stack of current ancestors
         const tree: TreeNode[] = [];
         const stack: TreeNode[] = [];
@@ -46,7 +50,9 @@ export default class CoverageTree extends Tree<PointData> {
 
                 const dataNode: TreeNode<PointData> = {
                     title: title,
-                    key: `${i}-${point.start}-${point.end}`,
+                    key: keyPrefix
+                        ? `${keyPrefix}-${point.start}-${point.end}`
+                        : `${i}-${point.start}-${point.end}`,
                     children: [],
                     data: {
                         readout,

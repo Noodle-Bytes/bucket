@@ -77,6 +77,39 @@ export default abstract class Tree<T = any> {
         return this.root.children ?? [];
     }
 
+    /** Match a node in this tree by coverpoint byte range when record index / key prefix changed. */
+    findKeyByPointRange(start: number, end: number): TreeKey | undefined {
+        const startText = String(start);
+        const endText = String(end);
+        for (const [node] of this.walk()) {
+            const parts = String(node.key).split("-");
+            if (parts.length < 3) {
+                continue;
+            }
+            if (parts[parts.length - 2] === startText && parts[parts.length - 1] === endText) {
+                return node.key;
+            }
+        }
+        return undefined;
+    }
+
+    /** Keep the same coverpoint selected after the tree is rebuilt with different key prefixes. */
+    remapKey(key: TreeKey): TreeKey | undefined {
+        if (this.getNodeByKey(key)) {
+            return key;
+        }
+        const parts = String(key).split("-");
+        if (parts.length < 3) {
+            return undefined;
+        }
+        const start = Number(parts[parts.length - 2]);
+        const end = Number(parts[parts.length - 1]);
+        if (Number.isNaN(start) || Number.isNaN(end)) {
+            return undefined;
+        }
+        return this.findKeyByPointRange(start, end);
+    }
+
     /**
      * Walk over the tree of node, yielding each node and its parent.
      *
