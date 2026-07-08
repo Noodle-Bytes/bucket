@@ -5,7 +5,11 @@
 
 import { describe, expect, test } from "vitest";
 
-import { readElectronFile } from "./readers";
+import {
+    parseCsvTable,
+    parseCsvTableBytes,
+    readElectronFile,
+} from "./readers";
 
 type JsonPayload = {
     tables: Record<string, string[]>;
@@ -170,5 +174,94 @@ describe("readers metadata compatibility", () => {
         await expect(readElectronFile([0, 1, 2, 3])).rejects.toThrow(
             "Unsupported file type - not a valid archive or JSON",
         );
+    });
+});
+
+describe("parseCsvTable", () => {
+    const encode = (csv: string) => new TextEncoder().encode(csv);
+
+    test("quoted fields with commas, newlines and escaped quotes", () => {
+        const csv = 'a,"b,c","he said ""hi""",d\n"multi\nline",2\n';
+        const { rows, offsets } = parseCsvTable(encode(csv));
+        expect(rows).toEqual([
+            ["a", "b,c", 'he said "hi"', "d"],
+            ["multi\nline", 2],
+        ]);
+        // Second row starts after the first \n row terminator, and the quoted
+        // \n inside the second row must not start a new row.
+        expect(Array.from(offsets)).toEqual([0, csv.indexOf('"multi')]);
+    });
+
+    test("\\r\\n line endings", () => {
+        const csv = "1,2\r\n3,four\r\n";
+        const { rows, offsets } = parseCsvTable(encode(csv));
+        expect(rows).toEqual([
+            [1, 2],
+            [3, "four"],
+        ]);
+        expect(Array.from(offsets)).toEqual([0, 5]);
+    });
+
+    test("empty fields and empty trailing fields", () => {
+        const csv = "a,,c\n,,\nx,\n";
+        const { rows, offsets } = parseCsvTable(encode(csv));
+        expect(rows).toEqual([
+            ["a", "", "c"],
+            ["", "", ""],
+            ["x", ""],
+        ]);
+        expect(Array.from(offsets)).toEqual([0, 5, 8]);
+    });
+
+    test("final row without trailing newline", () => {
+        const { rows, offsets } = parseCsvTable(encode("a,b\nc,d"));
+        expect(rows).toEqual([
+            ["a", "b"],
+            ["c", "d"],
+        ]);
+        expect(Array.from(offsets)).toEqual([0, 4]);
+    });
+
+    test("non-ASCII input falls back and keeps byte offsets", () => {
+        // "héllo,1\n" is 9 BYTES in UTF-8 (é = 2 bytes) but 8 characters, so
+        // the fast string-scan path must not be used: offsets are byte
+        // offsets into the file.
+        const csv = "héllo,1\nwörld,2\n";
+        const data = encode(csv);
+        expect(data.length).toBeGreaterThan(csv.length);
+        const { rows, offsets } = parseCsvTable(data);
+        expect(rows).toEqual([
+            ["héllo", 1],
+            ["wörld", 2],
+        ]);
+        expect(Array.from(offsets)).toEqual([0, 9]);
+        // Must agree exactly with the byte-wise parser
+        expect({ rows, offsets }).toEqual(parseCsvTableBytes(data));
+    });
+
+    test("offsets point at the first byte of each row", () => {
+        const csv = 'aa,bb\n"c\nc",dd\r\nee,"f""f"\n';
+        const data = encode(csv);
+        const { rows, offsets } = parseCsvTable(data);
+        expect(rows).toEqual([
+            ["aa", "bb"],
+            ["c\nc", "dd"],
+            ["ee", 'f"f'],
+        ]);
+        expect(Array.from(offsets)).toEqual([0, 6, 16]);
+        // Each offset must land on the first byte of its row's content
+        expect(data[offsets[0] as number]).toBe("a".charCodeAt(0));
+        expect(data[offsets[1] as number]).toBe('"'.charCodeAt(0));
+        expect(data[offsets[2] as number]).toBe("e".charCodeAt(0));
+    });
+
+    test("fast path matches byte-wise parser on tricky ASCII input", () => {
+        const csv =
+            'name,value\n"quoted,comma",1\n"esc""aped",2.5\n,\r\nplain,-3\nlast,"end"';
+        const data = encode(csv);
+        const fast = parseCsvTable(data);
+        const bytes = parseCsvTableBytes(data);
+        expect(fast.rows).toEqual(bytes.rows);
+        expect(Array.from(fast.offsets)).toEqual(Array.from(bytes.offsets));
     });
 });
