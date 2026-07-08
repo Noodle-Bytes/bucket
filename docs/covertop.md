@@ -10,7 +10,7 @@
 
 ## Covertop
 
-`Covertop` is a type of covergroup reserved for the very top of coverage. This class contains special functions such as filtering, sample and process_trace. This is the coverage instance that you will instance in your testbench.
+`Covertop` is a type of covergroup reserved for the very top of coverage. This class contains special functions such as filtering, `sample`, and `process_trace`. This is the coverage instance that you will instance in your testbench and call `sample(trace)` on each cycle.
 
 NOTE: The top of coverage should have a default name provided, and cannot be overridden when instancing. A description should also be added if it is used.
 
@@ -49,7 +49,7 @@ Some additional helper functions have been provided to allow for easy use of com
 | Functions | Description |
 |---|---|
 | `include_by_name`<br>`restrict_by_name`<br>`exclude_by_name` | Provide a list of names to match against both coverpoints and covergroups |
-| `include_by_tag`<br>`restrict_by_tag`<br>`exclude_by_tag` | Provide a list of tags to match against (either match all or some). Coverpoints only|
+| `include_by_tags`<br>`restrict_by_tags`<br>`exclude_by_tags` | Provide a list of tags to match against (either match all or some). Coverpoints only|
 
 When filtering by name, both covergroups and coverpoints are matched so you can enable all children of a covergroup easily. However, filtering by tag only matches against coverpoints, as covergroups will accumulate all of their children's tags and may match unexpectedly.
 
@@ -66,7 +66,7 @@ All coverpoints default to tier 0 if they aren't explicitly set and will be enab
 
 ```
     # Only run branch related coverage which are tier 1 or lower.
-    cvg = MyBigCoverGroup(name="my_toplevel_covergroup", description="All of my coverage")
+    cvg = MyBigCoverGroup(log=self.log)
     cvg.include_by_name('branch_coverage')
     cvg.set_tier_level(1)
 ```

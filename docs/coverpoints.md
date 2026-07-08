@@ -34,24 +34,30 @@ These two fields can be very useful when later reviewing coverage to ensure you 
 If you wish to filter coverpoints then you can set a tier and/or tags per coverpoint instance. These are optionally applied to each within the covergroup setup phase.
 <br>
 
-`Tier`: A coverpoint's tier is set to 0 by default, which is the highest priority. Any value can be set. When running a simulation, the tier_level can be set by the testbench which will disable coverpoints of a lower priority tier.
+`Tier`: A coverpoint's tier defaults to `0` (highest priority). Set the `TIER`
+class attribute, chain `set_tier()` before `add_coverpoint()`, or call
+`set_tier()` from `setup()`. At runtime, `Covertop.set_tier_level()` disables
+coverpoints above the chosen tier.
 <br>
 
-`Tags`: Tags can be added to coverpoints to allow for easier filtering (where relying names may not make sense - such as a group of coverpoints across several covergroups). They will also be made available in the coverage viewer so only coverpoints with matching tags are shown.
-
-Both of these fields can be provided as above, as well as being overridden when instancing. See [Covergroups](covergroups.md) for how to use the available methods to override.
+`Tags`: Set the `TAGS` class attribute, chain `set_tags()` / `add_tags()` before
+`add_coverpoint()`, or set tags from `setup()`. Tags are shown in the coverage
+viewer and can be used with `Covertop` filter methods. See
+[Covergroups](covergroups.md) for per-instance overrides when adding coverpoints.
 
 ---
-### Adding Axes and Goals
+### Adding axes and goals
 A `setup()` method is then required to add the axes and goals of the coverpoint.
 
-You use `add_axis()` to add each axis, which requires a name, description and some values.
+You use `add_axis()` to add each axis, which requires a name, values, and
+description.
 
 | Parameter | Type | Description |
 | --- | ---| ---|
 | name | str | Should be machine readable, containing no spaces. It is suggested to use lower case |
+| values | dict, list, tuple, set | All the values/ranges to be covered by the axis |
 | description | str | A short description of the axis |
-| values | dict,list,tuple,set | All the values/ranges to be covered by the axis |
+| enable_other | str or bool, optional | Group out-of-range values into a catch-all bucket (see `example/dogs.py`) |
 
 `Values` can be in the form of numbers or strings and will be processed by the coverpoint when added. A name for each value/range will automatically be generated unless one is provided. Names allow more meaning to be given to numbers/ranges, while still allowing either the name or the value to be sampled. Names will be shown in the exported coverage.
 
@@ -76,7 +82,7 @@ Goals can be optionally used to name buckets and define ILLEGAL, IGNORE or modif
 
 | Parameter | Type | Description |
 | --- | --- | ---|
-| name | str | Should be all caps, no spaces. It should also be uniquely named where possible |
+| name | str | Should be all caps, no spaces. It is recommended to be uniquely named where possible |
 | description | str | A short description of the goal aim |
 | \[target\] | int | Target number of hits to saturate the bucket(s) |
 | \[illegal\] | bool | Illegal. Bucket(s) will generate an error if hit |
@@ -111,7 +117,12 @@ NOTE: Each bucket axis provides both `.name` (the string representation) and `.v
 ---
 Finally, a `sample()` method needs to be defined. This method will be passed the trace data to be sampled. A trace object can be of any type, but is intended to be a class containing all information to be covered (accumulated from monitors, models, etc). Each coverpoint can then sample the relevant information. This could be as simple as directly assigning values to each axis, processing the values into something more useful and/or storing values for the next time the coverpoint is called.
 
-`set_axes()` is used to assign each axis a value/named-value. (eg. If an axis has the values `[0,1,2]` with the corresponding the names `[red,green,blue]` then either `0` or `red` could be assigned to the bucket). Once all axes have been set, then the bucket hit count can be incremented. If it is a regular bucket, then the hit count will be increased. If it is an IGNORE bucket, no action will be taken, and if it is an ILLEGAL bucket an error will be generated.
+`set_axes()` assigns each axis a value or named value (for example, if an axis
+has values `[0, 1, 2]` with names `red`, `green`, `blue`, either `0` or `red`
+can be assigned). Once all axes are set, call `hit()` to record a bucket hit.
+Alternatively, pass all axis values directly to `hit(my_axis_1=..., my_axis_2=...)`.
+IGNORE buckets record nothing; ILLEGAL buckets raise an error (or an exception
+when `except_on_illegal` is set on the `Covertop`).
 
 > **NOTE: The bucket should have every axis of the coverpoint assigned a valid value when hit() is called. Attempting to sample while not setting the bucket correctly will result in an error. (This is because the `hit()` function would not know which exact combination of axis values to to increment).**
 
@@ -146,9 +157,11 @@ Use `should_sample()` when you want to skip sampling entirely for some traces (e
 ---
 ### Passing the coverpoint extra arguments
 
-If you wish to create a coverpoint which relies on external data (such as a pre-processed list of instruction names, or a prefix for the axis names, etc), then you can use `__init__()`.
+If you wish to pass constructor arguments into a coverpoint (for example a list
+of names split across instances), define `__init__()` on the coverpoint class.
+Pass `name`, `description`, and `motivation` overrides to `add_coverpoint()`,
+not the coverpoint constructor:
 
-The example below shows instancing the same coverpoint twice with different names. These extra parameters could come from automatically generated lists which split up the original data into smaller groups.
 ```Python
 class ChewToysByName(Coverpoint):
     def __init__(self, dog_names):
@@ -161,22 +174,17 @@ class ChewToysByName(Coverpoint):
             description="Most important dog names only",
         )
 ...
-# To be instanced as below:
 class DogsAndToys(Covergroup):
     def setup(self, ctx):
         self.add_coverpoint(
-            ChewToysByName(
-                name="chew_toys_by_name__group_a",
-                description="Preferred chew toys by name (Group A)",
-                dog_names=["Barbara", "Connie", "Graham"],
-            )
+            ChewToysByName(dog_names=["Barbara", "Connie", "Graham"]),
+            name="chew_toys_by_name__group_a",
+            description="Preferred chew toys by name (Group A)",
         )
         self.add_coverpoint(
-            ChewToysByName(
-                name="chew_toys_by_name__group_b",
-                description="Preferred chew toys by name (Group B)",
-                dog_names=["Clive", "Derek", "Ethel"],
-            )
+            ChewToysByName(dog_names=["Clive", "Derek", "Ethel"]),
+            name="chew_toys_by_name__group_b",
+            description="Preferred chew toys by name (Group B)",
         )
 ```
 
