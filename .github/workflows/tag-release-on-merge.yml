@@ -1,0 +1,220 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+#
+# Tag-derived release flow (overview: .github/RELEASE_AUTOMATION.md).
+# Versions live in git tags, not files. When a [Patch]/[Minor]/[Major] PR
+# merges to main, compute the next version from the latest v* tag and create
+# the tag + GitHub release in one step. [None] PRs skip cleanly. The
+# workflow_dispatch trigger is the manual backup for cutting a release
+# immediately (or with an exact version).
+#
+# Releases are created with noodle-bucket-bot's PAT (VERSION_BUMP_TOKEN)
+# rather than github.token because tags pushed with the workflow token do
+# not trigger downstream workflows — deploy-viewer runs on the tag push.
+
+name: Tag Release On Merge
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version part to bump"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      version:
+        description: "Exact version X.Y.Z (overrides bump)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# Serialize releases so two near-simultaneous merges cannot both read the
+# same "latest tag" and compute the same next version.
+concurrency:
+  group: tag-release-main
+  cancel-in-progress: false
+
+jobs:
+  tag-release:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Derive bump type
+        id: bump
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          INPUT_BUMP: ${{ inputs.bump }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ -n "${INPUT_VERSION:-}" ]; then
+              if ! echo "$INPUT_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+                echo "::error title=Invalid version input::'${INPUT_VERSION}' is not of the form X.Y.Z"
+                exit 1
+              fi
+              echo "bump=exact" >> "$GITHUB_OUTPUT"
+              echo "exact_version=${INPUT_VERSION}" >> "$GITHUB_OUTPUT"
+            else
+              echo "bump=${INPUT_BUMP}" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          case "$PR_TITLE" in
+            \[Patch\]*)
+              echo "bump=patch" >> "$GITHUB_OUTPUT"
+              ;;
+            \[Minor\]*)
+              echo "bump=minor" >> "$GITHUB_OUTPUT"
+              ;;
+            \[Major\]*)
+              echo "bump=major" >> "$GITHUB_OUTPUT"
+              ;;
+            \[None\]*)
+              echo "bump=none" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error title=Unsupported PR title prefix::Expected one of [Patch], [Minor], [Major], [None]. Got: '$PR_TITLE'"
+              exit 1
+              ;;
+          esac
+
+      - name: No release needed
+        if: steps.bump.outputs.bump == 'none'
+        run: echo "PR title starts with [None]. Skipping tag and release."
+
+      - name: Validate VERSION_BUMP_TOKEN
+        if: steps.bump.outputs.bump != 'none'
+        env:
+          VERSION_BUMP_TOKEN: ${{ secrets.VERSION_BUMP_TOKEN }}
+        run: |
+          set -euo pipefail
+          expected_login="noodle-bucket-bot"
+
+          if [ -z "${VERSION_BUMP_TOKEN:-}" ]; then
+            echo "::error title=Missing VERSION_BUMP_TOKEN::Set repository secret VERSION_BUMP_TOKEN to a PAT from ${expected_login} (repo scope for classic PAT, or fine-grained Contents: Read and write)."
+            exit 1
+          fi
+
+          # Validate the token is not expired/revoked and belongs to the right
+          # account. An expired PAT is non-empty but would silently fail later.
+          if ! login="$(GH_TOKEN="${VERSION_BUMP_TOKEN}" gh api user --jq .login 2>&1)"; then
+            echo "::error title=Invalid VERSION_BUMP_TOKEN::Token authentication failed. It may be expired or revoked. Renew the PAT for ${expected_login} and update the VERSION_BUMP_TOKEN secret."
+            echo "gh api user output: ${login}"
+            exit 1
+          fi
+
+          if [ "$login" != "$expected_login" ]; then
+            echo "::error title=Wrong VERSION_BUMP_TOKEN owner::Token belongs to '${login}', expected '${expected_login}'. Update VERSION_BUMP_TOKEN to a PAT from ${expected_login}."
+            exit 1
+          fi
+
+          echo "VERSION_BUMP_TOKEN is valid (authenticated as ${login})."
+
+      - name: Checkout main with full history and tags
+        if: steps.bump.outputs.bump != 'none'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Compute next version
+        if: steps.bump.outputs.bump != 'none'
+        id: version
+        env:
+          BUMP: ${{ steps.bump.outputs.bump }}
+          EXACT_VERSION: ${{ steps.bump.outputs.exact_version }}
+        run: |
+          set -euo pipefail
+
+          latest_tag="$(git tag --list 'v[0-9]*' --sort=-v:refname | head -1)"
+          if [ -z "$latest_tag" ]; then
+            latest_tag="v0.0.0"
+          fi
+          echo "Latest tag: ${latest_tag}"
+
+          if [ "$BUMP" = "exact" ]; then
+            next="$EXACT_VERSION"
+          else
+            base="${latest_tag#v}"
+            major="$(echo "$base" | cut -d. -f1)"
+            minor="$(echo "$base" | cut -d. -f2)"
+            patch="$(echo "$base" | cut -d. -f3)"
+            case "$BUMP" in
+              major) next="$((major + 1)).0.0" ;;
+              minor) next="${major}.$((minor + 1)).0" ;;
+              patch) next="${major}.${minor}.$((patch + 1))" ;;
+              *)
+                echo "::error title=Unsupported bump type::'$BUMP'"
+                exit 1
+                ;;
+            esac
+          fi
+
+          echo "tag=v${next}" >> "$GITHUB_OUTPUT"
+          echo "Next version: v${next}"
+
+      - name: Resolve release target SHA
+        if: steps.bump.outputs.bump != 'none'
+        id: target
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            sha="$(git rev-parse HEAD)"
+          else
+            sha="$MERGE_SHA"
+          fi
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "Release target SHA: ${sha}"
+
+      - name: Create GitHub release with generated notes
+        if: steps.bump.outputs.bump != 'none'
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.VERSION_BUMP_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            echo "::error title=Tag already exists::${RELEASE_TAG} already exists. Use workflow_dispatch with an explicit version if you need to move past it."
+            exit 1
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release ${RELEASE_TAG} already exists. Skipping create."
+            exit 0
+          fi
+
+          url="$(gh release create "$RELEASE_TAG" \
+            --target "$TARGET_SHA" \
+            --title "$RELEASE_TAG" \
+            --generate-notes)"
+          echo "url=${url}" >> "$GITHUB_OUTPUT"
+          echo "Created release ${RELEASE_TAG}: ${url}"
+
+      - name: Comment on source PR
+        if: github.event_name == 'pull_request_target' && steps.bump.outputs.bump != 'none' && steps.release.outputs.url != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.VERSION_BUMP_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_URL: ${{ steps.release.outputs.url }}
+        run: |
+          set -euo pipefail
+          gh pr comment "$PR_NUMBER" --body "🪣 Shipped in [${RELEASE_TAG}](${RELEASE_URL})"

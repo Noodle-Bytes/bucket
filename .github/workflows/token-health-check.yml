@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 #
-# Proactive health check for secrets used by the release pipeline.
-# Runs on a schedule and on manual trigger so token expiry is caught
-# BEFORE a [Patch]/[Minor]/[Major] PR merges and needs the token.
+# Proactive health check for noodle-bucket-bot's PAT, which creates release
+# tags (see tag-release-on-merge.yml). Runs on a schedule and on manual
+# trigger so token expiry is caught BEFORE a [Patch]/[Minor]/[Major] PR
+# merges and needs the token.
 #
 # If this workflow fails:
 #   1. Renew the PAT for noodle-bucket-bot (repo scope for classic PAT,
@@ -11,7 +12,7 @@
 #   2. Update the VERSION_BUMP_TOKEN repository secret with the new PAT.
 #   3. Re-run this workflow to confirm.
 #
-# See .github/RELEASE_AUTOMATION.md for the full release pipeline overview.
+# See .github/RELEASE_AUTOMATION.md for the full release flow overview.
 
 name: Release Bot Token Health Check
 
@@ -54,56 +55,3 @@ jobs:
           fi
 
           echo "VERSION_BUMP_TOKEN is valid (authenticated as ${login})."
-
-      - name: Validate APPROVER_APP secrets are set
-        env:
-          APPROVER_APP_ID: ${{ secrets.APPROVER_APP_ID }}
-          APPROVER_APP_PRIVATE_KEY: ${{ secrets.APPROVER_APP_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-          failed=0
-
-          if [ -z "${APPROVER_APP_ID:-}" ]; then
-            echo "::error title=Missing APPROVER_APP_ID::Set the APPROVER_APP_ID repository secret to the bucket-release-approver GitHub App ID."
-            failed=1
-          else
-            echo "APPROVER_APP_ID is set."
-          fi
-
-          if [ -z "${APPROVER_APP_PRIVATE_KEY:-}" ]; then
-            echo "::error title=Missing APPROVER_APP_PRIVATE_KEY::Set the APPROVER_APP_PRIVATE_KEY repository secret to the bucket-release-approver GitHub App private key."
-            failed=1
-          else
-            echo "APPROVER_APP_PRIVATE_KEY is set."
-          fi
-
-          exit "$failed"
-
-      - name: Mint and validate approver app token
-        id: approver_token
-        # actions/create-github-app-token v3.1.1 (2026-04-11)
-        # refs/tags/v3.1.1 -> 1b10c78c7865c340bc4f6099eb2f838309f1e8c3
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3
-        with:
-          app-id: ${{ secrets.APPROVER_APP_ID }}
-          private-key: ${{ secrets.APPROVER_APP_PRIVATE_KEY }}
-
-      - name: Confirm approver app token resolves correct identity
-        env:
-          GH_TOKEN: ${{ steps.approver_token.outputs.token }}
-          EXPECTED_SLUG: bucket-release-approver
-        run: |
-          set -euo pipefail
-
-          slug="$(gh api /app --jq .slug 2>&1)" || {
-            echo "::error title=Approver app token invalid::Could not authenticate with the minted token. The APPROVER_APP_PRIVATE_KEY may be revoked or the App may have been suspended."
-            echo "Response: ${slug}"
-            exit 1
-          }
-
-          if [ "$slug" != "$EXPECTED_SLUG" ]; then
-            echo "::error title=Wrong approver app identity::App slug is '${slug}', expected '${EXPECTED_SLUG}'. Check APPROVER_APP_ID and APPROVER_APP_PRIVATE_KEY point to the right App."
-            exit 1
-          fi
-
-          echo "Approver app token is valid (slug: ${slug})."

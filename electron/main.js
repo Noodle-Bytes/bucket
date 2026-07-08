@@ -10,6 +10,13 @@ const fsp = fs.promises;
 const packageJson = require('./package.json');
 const windowStateKeeper = require('electron-window-state');
 
+// Packaged builds get the real version baked into package.json via
+// electron-builder's extraMetadata (see build.sh); the source tree holds a
+// 0.0.0 placeholder, so dev runs fall back to BUCKET_VERSION when set.
+const appVersion = packageJson.version !== '0.0.0'
+  ? packageJson.version
+  : (process.env.BUCKET_VERSION || packageJson.version);
+
 // Register app:// as a secure, standard scheme before the app is ready.
 // This lets us keep webSecurity enabled while serving the viewer from a
 // custom protocol.
@@ -419,7 +426,7 @@ function showAboutDialog() {
 <body>
   <img src="${logoSrc}" alt="Bucket">
   <h1>Bucket</h1>
-  <p class="version">Version ${packageJson.version}</p>
+  <p class="version">Version ${appVersion}</p>
   <p class="desc">${packageJson.description}</p>
   <p class="copy">Copyright \u00A9 2023-2026 Noodle-Bytes. MIT License.</p>
   <button onclick="window.close()">OK</button>
