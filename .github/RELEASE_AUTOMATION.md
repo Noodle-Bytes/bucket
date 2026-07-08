@@ -43,8 +43,8 @@ version is the `0.0.0` fallback (no git metadata at build time).
    - `[None]` → does nothing.
    - Otherwise → reads the latest `v*` tag, bumps the corresponding part,
      and creates a GitHub release (tag + auto-generated notes) targeting
-     the merge commit, as **noodle-bucket-bot**. The bot also comments
-     "🪣 Shipped in vX.Y.Z" on the source PR.
+     the merge commit, as the **noodle-bucket-releases** App. It also
+     comments "🪣 Shipped in vX.Y.Z" on the source PR.
 3. The new tag triggers
    [`deploy-viewer.yml`](workflows/deploy-viewer.yml), which builds the
    viewer with the exact release version and publishes it (plus docs) to
@@ -78,28 +78,30 @@ workflow*:
 
 ## Identities and secrets
 
-- **noodle-bucket-bot** (service account) — creates release tags, releases,
-  and the shipped-in comments. Authenticated via the `VERSION_BUMP_TOKEN`
-  repository secret (classic PAT with `repo` scope, or fine-grained with
-  Contents + Pull requests: Read and write). A PAT is required because tags
-  pushed with the default `GITHUB_TOKEN` do not trigger
-  `deploy-viewer.yml`.
-- [`token-health-check.yml`](workflows/token-health-check.yml) validates
-  the PAT every Monday 09:00 UTC (and on manual dispatch) so expiry is
-  caught before a release needs it.
+- **noodle-bucket-releases** (GitHub App) — creates release tags, releases,
+  and the shipped-in comments, appearing as `noodle-bucket-releases[bot]`.
+  The release workflow mints a short-lived installation token from the
+  `NOODLE_APP_ID` and `NOODLE_APP_PRIVATE_KEY` repository secrets (App
+  installed on this repo with Contents + Pull requests: Read and write). An
+  App token is used rather than the default `GITHUB_TOKEN` because tags
+  pushed with `GITHUB_TOKEN` do not trigger `deploy-viewer.yml`.
+- An App private key does not expire, so there is no token to renew and no
+  scheduled health check. If the key is ever compromised, generate a new
+  one on the App's settings page and update `NOODLE_APP_PRIVATE_KEY`.
 
-The `bucket-release-approver` GitHub App, the `release-pipeline-gate`
-status check, and bot-authored `[Release]` PRs belonged to the previous
-file-based versioning flow and are retired.
+The `noodle-bucket-bot` service account and its `VERSION_BUMP_TOKEN` PAT,
+the `bucket-release-approver` GitHub App, the `release-pipeline-gate` status
+check, bot-authored `[Release]` PRs, and the Monday token health check all
+belonged to earlier versions of the release flow and are retired.
 
 ## Recovery
 
 The failure surface is small: if `tag-release-on-merge.yml` fails, no state
 is left behind — no branches, no PRs, no blocked gates on other PRs. Fix
-the cause (usually an expired `VERSION_BUMP_TOKEN`) and either re-run the
-failed workflow run, or cut the missed release via `workflow_dispatch`.
-The release step is idempotent: it skips if the release already exists and
-refuses to overwrite an existing tag.
+the cause (e.g. a revoked App key, or the App losing repo access) and
+either re-run the failed workflow run, or cut the missed release via
+`workflow_dispatch`. The release step is idempotent: it skips if the
+release already exists and refuses to overwrite an existing tag.
 
 ## Required checks on `main` (GitHub settings)
 
@@ -110,4 +112,4 @@ refuses to overwrite an existing tag.
 
 `release-pipeline-gate` must NOT be in this list — it no longer exists and
 would block every PR. Optionally add a tag ruleset restricting `v*` tag
-creation to noodle-bucket-bot.
+creation to the noodle-bucket-releases App.

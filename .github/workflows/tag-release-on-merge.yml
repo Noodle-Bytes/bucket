@@ -8,9 +8,11 @@
 # workflow_dispatch trigger is the manual backup for cutting a release
 # immediately (or with an exact version).
 #
-# Releases are created with noodle-bucket-bot's PAT (VERSION_BUMP_TOKEN)
-# rather than github.token because tags pushed with the workflow token do
-# not trigger downstream workflows — deploy-viewer runs on the tag push.
+# Releases are created with a token minted from the noodle-bucket-releases
+# GitHub App (NOODLE_APP_ID / NOODLE_APP_PRIVATE_KEY) rather than
+# github.token, because tags pushed with the workflow token do not trigger
+# downstream workflows — deploy-viewer runs on the tag push. An App private
+# key does not expire, so there is no token to renew or health-check.
 
 name: Tag Release On Merge
 
@@ -91,33 +93,18 @@ jobs:
         if: steps.bump.outputs.bump == 'none'
         run: echo "PR title starts with [None]. Skipping tag and release."
 
-      - name: Validate VERSION_BUMP_TOKEN
+      # Mint a short-lived installation token for the noodle-bucket-releases
+      # App. Minting fails loudly if NOODLE_APP_ID / NOODLE_APP_PRIVATE_KEY are
+      # missing or the key is revoked, so no separate validation step is needed.
+      - name: Mint noodle-bucket-releases app token
         if: steps.bump.outputs.bump != 'none'
-        env:
-          VERSION_BUMP_TOKEN: ${{ secrets.VERSION_BUMP_TOKEN }}
-        run: |
-          set -euo pipefail
-          expected_login="noodle-bucket-bot"
-
-          if [ -z "${VERSION_BUMP_TOKEN:-}" ]; then
-            echo "::error title=Missing VERSION_BUMP_TOKEN::Set repository secret VERSION_BUMP_TOKEN to a PAT from ${expected_login} (repo scope for classic PAT, or fine-grained Contents: Read and write)."
-            exit 1
-          fi
-
-          # Validate the token is not expired/revoked and belongs to the right
-          # account. An expired PAT is non-empty but would silently fail later.
-          if ! login="$(GH_TOKEN="${VERSION_BUMP_TOKEN}" gh api user --jq .login 2>&1)"; then
-            echo "::error title=Invalid VERSION_BUMP_TOKEN::Token authentication failed. It may be expired or revoked. Renew the PAT for ${expected_login} and update the VERSION_BUMP_TOKEN secret."
-            echo "gh api user output: ${login}"
-            exit 1
-          fi
-
-          if [ "$login" != "$expected_login" ]; then
-            echo "::error title=Wrong VERSION_BUMP_TOKEN owner::Token belongs to '${login}', expected '${expected_login}'. Update VERSION_BUMP_TOKEN to a PAT from ${expected_login}."
-            exit 1
-          fi
-
-          echo "VERSION_BUMP_TOKEN is valid (authenticated as ${login})."
+        id: app_token
+        # actions/create-github-app-token v3.1.1 (2026-04-11)
+        # refs/tags/v3.1.1 -> 1b10c78c7865c340bc4f6099eb2f838309f1e8c3
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3
+        with:
+          app-id: ${{ secrets.NOODLE_APP_ID }}
+          private-key: ${{ secrets.NOODLE_APP_PRIVATE_KEY }}
 
       - name: Checkout main with full history and tags
         if: steps.bump.outputs.bump != 'none'
@@ -182,7 +169,7 @@ jobs:
         if: steps.bump.outputs.bump != 'none'
         id: release
         env:
-          GH_TOKEN: ${{ secrets.VERSION_BUMP_TOKEN }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
           TARGET_SHA: ${{ steps.target.outputs.sha }}
@@ -210,7 +197,7 @@ jobs:
         if: github.event_name == 'pull_request_target' && steps.bump.outputs.bump != 'none' && steps.release.outputs.url != ''
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ secrets.VERSION_BUMP_TOKEN }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
