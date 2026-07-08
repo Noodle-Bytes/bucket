@@ -102,9 +102,14 @@ class Coverpoint(CoverBase):
         # Instance of Bucket class to increment hit count for a bucket
         self.bucket = Bucket(parent=self, log=log)
 
-        self._tier = 0
+        tier_explicit = getattr(self, "_tier_explicit", False)
+        tags_explicit = getattr(self, "_tags_explicit", False)
+        if not tier_explicit:
+            self._tier = 0
+        if not tags_explicit:
+            self._tags = []
+
         self._tier_active = True
-        self._tags = []
 
         self._setup()
         self._name = name or self.NAME or type(self).__name__
@@ -141,8 +146,10 @@ class Coverpoint(CoverBase):
         This calls the user defined setup() plus any other setup required
         """
         self.setup(ctx=CoverageContext.get())
-        self.set_tags(self.TAGS)
-        self.set_tier(self.TIER)
+        if not getattr(self, "_tags_explicit", False):
+            self._tags = list(self.TAGS)
+        if not getattr(self, "_tier_explicit", False):
+            self._tier = self.TIER
 
     def setup(self, ctx: SimpleNamespace):
         """
@@ -155,18 +162,23 @@ class Coverpoint(CoverBase):
     def set_tier(self, tier):
         """Set coverpoint tier"""
         self._tier = tier
+        self._tier_explicit = True
         return self
 
     @validate_call
     def set_tags(self, tags: TagStrs):
         """Override coverpoint tags with only those provided"""
         self._tags = tags
+        self._tags_explicit = True
         return self
 
     @validate_call
     def add_tags(self, tags: TagStrs):
         """Add coverpoint tags to existing ones"""
+        if not getattr(self, "_tags_explicit", False):
+            self._tags = []
         self._tags += tags
+        self._tags_explicit = True
         return self
 
     def _set_tier_level(self, tier: int):
