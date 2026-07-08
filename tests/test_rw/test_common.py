@@ -716,3 +716,78 @@ class TestCommon:
         assert point.tier is None
         assert point.tags == ""
         assert point.motivation == ""
+
+    def test_archive_to_sql_with_empty_descriptions(self):
+        """
+        Archive readouts with empty goal/point descriptions must convert to
+        SQL. Regression test: the archive reader used to turn empty CSV fields
+        into None, which violated the NOT NULL SQL schema columns.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            archive_path = Path(tmpdir) / "storage.bktgz"
+            sql_path = Path(tmpdir) / "storage.db"
+
+            readout = GeneratedReadout()
+            readout.goals = [g._replace(description="") for g in readout.goals]
+            readout.points = [
+                p._replace(description="", motivation="") for p in readout.points
+            ]
+            readout.axes = [a._replace(description="") for a in readout.axes]
+
+            ArchiveAccessor(archive_path).writer().write(readout)
+            archive_readout = next(ArchiveAccessor(archive_path).reader().read_all())
+
+            # Empty strings must round-trip as empty strings, not None
+            for goal in archive_readout.iter_goals():
+                assert goal.description == ""
+
+            rec_ref = SQLAccessor.File(sql_path).writer().write(archive_readout)
+            sql_readout = SQLAccessor.File(sql_path).reader().read(rec_ref)
+            assert readouts_are_equal(archive_readout, sql_readout)
+
+    def test_multi_record_archive_reads_exact_ranges(self):
+        """
+        Each record in a multi-record archive must read back exactly its own
+        rows. Regression test: the archive reader used readlines(hint), which
+        over-reads past the requested byte range and returned rows from the
+        next definition/record block (duplicate points, corrupt readouts).
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "storage.bktgz"
+
+            # Non-ASCII descriptions make the byte length of a block exceed
+            # its character length, which is what made the old character-based
+            # readlines(hint) spill past the end of a block.
+            readouts = []
+            for seed in (1, 2, 3):
+                readout = GeneratedReadout(def_seed=seed, rec_seed=seed)
+                readout.points = [
+                    p._replace(description=f"points — with dashes — {seed}")
+                    for p in readout.points
+                ]
+                readouts.append(readout)
+            writer = ArchiveAccessor(path).writer()
+            for readout in readouts:
+                writer.write(readout)
+
+            read_back = list(ArchiveAccessor(path).reader().read_all())
+            assert len(read_back) == len(readouts)
+            for original, from_file in zip(readouts, read_back, strict=True):
+                points = list(from_file.iter_points())
+                keys = [(p.start, p.depth) for p in points]
+                assert len(keys) == len(set(keys)), "duplicate point rows read"
+                assert len(points) == len(list(original.iter_points()))
+                assert readouts_are_equal(original, from_file)
+
+    def test_sql_write_minimal_readout(self):
+        """
+        Readouts with few/no rows in some tables must still write to SQL
+        (bulk inserts must skip empty row sets rather than erroring).
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sql_path = Path(tmpdir) / "storage.db"
+            readout = GeneratedReadout(min_points=0, max_points=0)
+            accessor = SQLAccessor.File(sql_path)
+            rec_ref = accessor.writer().write(readout)
+            back = accessor.reader().read(rec_ref)
+            assert readouts_are_equal(readout, back)
