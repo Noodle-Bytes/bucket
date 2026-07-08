@@ -3,7 +3,7 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-const { app, BrowserWindow, ipcMain, dialog, Menu, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, protocol, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
@@ -578,6 +578,15 @@ function createBrowserWindow() {
   // Let windowStateKeeper manage the window state
   mainWindowState.manage(window);
 
+  // External links (e.g. the update notification's release link) open in
+  // the default browser rather than a new Electron window.
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://') || url.startsWith('http://')) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
   return window;
 }
 
@@ -791,8 +800,9 @@ ipcMain.handle('open-file-dialog', async () => {
 // Handle file reading
 ipcMain.handle('read-file', async (event, filePath) => {
   try {
-    const buffer = await fsp.readFile(filePath);
-    return Array.from(new Uint8Array(buffer));
+    // Returned as a Uint8Array in the renderer; structured clone handles
+    // typed arrays natively, so no per-byte conversion is needed.
+    return await fsp.readFile(filePath);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to read file: ${detail}`);
@@ -821,8 +831,9 @@ ipcMain.handle('save-export-file', async (event, payload) => {
       return { canceled: true };
     }
 
-    const bytes = Array.isArray(payload?.bytes) ? payload.bytes : [];
-    await fsp.writeFile(result.filePath, Buffer.from(bytes));
+    // The renderer sends a Uint8Array; structured clone delivers it as one.
+    const bytes = payload?.bytes instanceof Uint8Array ? payload.bytes : new Uint8Array(0);
+    await fsp.writeFile(result.filePath, bytes);
     return { canceled: false, path: result.filePath };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
@@ -835,8 +846,7 @@ ipcMain.handle('get-dropped-file', async (event, filePath) => {
   try {
     const stats = await fsp.stat(filePath);
     if (stats.isFile() && filePath.endsWith('.bktgz')) {
-      const buffer = await fsp.readFile(filePath);
-      return Array.from(new Uint8Array(buffer));
+      return await fsp.readFile(filePath);
     }
     return null;
   } catch (error) {

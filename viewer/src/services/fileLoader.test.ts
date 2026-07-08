@@ -22,7 +22,7 @@ const FIXTURE = join(
 
 describe("loadReadoutsFromBytes", () => {
     test("gzip magic bytes route to the archive reader", async () => {
-        const bytes = Array.from(readFileSync(FIXTURE));
+        const bytes = new Uint8Array(readFileSync(FIXTURE));
         const readouts = await loadReadoutsFromBytes(bytes);
         expect(readouts).toHaveLength(2);
     });
@@ -37,14 +37,14 @@ describe("loadReadoutsFromBytes", () => {
             ],
             records: [createBaseRecord()],
         };
-        const bytes = Array.from(new TextEncoder().encode(JSON.stringify(payload)));
+        const bytes = new TextEncoder().encode(JSON.stringify(payload));
         const readouts = await loadReadoutsFromBytes(bytes);
         expect(readouts).toHaveLength(1);
         expect(readouts[0].get_def_sha()).toBe("def-a");
     });
 
     test("garbage bytes reject with the unsupported-file-type error", async () => {
-        const bytes = Array.from(new TextEncoder().encode("not a coverage file"));
+        const bytes = new TextEncoder().encode("not a coverage file");
         await expect(loadReadoutsFromBytes(bytes)).rejects.toThrow(
             "Unsupported file type - not a valid archive or JSON",
         );
@@ -54,9 +54,7 @@ describe("loadReadoutsFromBytes", () => {
         // Valid gzip container, invalid archive contents: must not fall
         // through to the JSON path or leak a parse error.
         const { gzipSync } = await import("fflate");
-        const bytes = Array.from(
-            gzipSync(new TextEncoder().encode("not a tar archive")),
-        );
+        const bytes = gzipSync(new TextEncoder().encode("not a tar archive"));
         await expect(loadReadoutsFromBytes(bytes)).rejects.toThrow(
             "Unsupported file type - not a valid archive or JSON",
         );

@@ -46,8 +46,8 @@ async function collectReadouts(reader: Reader): Promise<Readout[]> {
 /**
  * Load readouts from bytes
  */
-export async function loadReadoutsFromBytes(bytes: number[]): Promise<Readout[]> {
-    return collectReadouts(await readerFromBuffer(new Uint8Array(bytes)));
+export async function loadReadoutsFromBytes(bytes: Uint8Array): Promise<Readout[]> {
+    return collectReadouts(await readerFromBuffer(bytes));
 }
 
 /**
