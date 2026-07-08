@@ -34,6 +34,19 @@ bucket = "bucket.__main__:cli"
 [tool.hatch.version]
 source = "vcs"
 
+# The viewer is bundled by `npm run bundle` at report time (bucket/rw/html.py),
+# so distributions ship its sources but never the generated directories.
+# Nested viewer/.gitignore is not consulted by hatchling, so exclude them
+# explicitly here.
+[tool.hatch.build]
+exclude = [
+    "viewer/node_modules",
+    "viewer/dist",
+    "viewer/dev-dist",
+    "viewer/coverage",
+]
+
 [tool.hatch.build.targets.wheel]
-packages = ["bucket"]
-include = ["viewer/**/*"]
+# `packages` is sugar for `only-include`, which limits traversal to the listed
+# paths; a plain `include` of viewer files would never match. List both roots.
+only-include = ["bucket", "viewer"]

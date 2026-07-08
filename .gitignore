@@ -19,7 +19,9 @@ example_*.db
 
 dist/
 dev-dist/
-index.html
+# Demo report written at the repo root; anchored so the pattern doesn't also
+# exclude viewer/index.html (hatchling applies these patterns to builds).
+/index.html
 
 # macOS
 .DS_Store
