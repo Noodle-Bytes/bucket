@@ -38,26 +38,24 @@ export async function readArchiveBytes(bytes: Uint8Array): Promise<ArchiveReader
     }
 
     try {
-        return await parseInWorker(worker, bytes);
-    } catch (error) {
-        // If the worker infrastructure failed before consuming the bytes
-        // (script failed to start, postMessage threw) the buffer is still
-        // attached and we can parse in-thread. A detached buffer means the
-        // worker received the data, so the failure is a genuine parse error
-        // and retrying would not help.
-        if (error instanceof ArchiveWorkerCrash && bytes.buffer.byteLength > 0) {
+        const result = workerResult(worker);
+        try {
+            const request: ArchiveWorkerRequest = { bytes };
+            // Transfer the underlying buffer — no copy on the way in.
+            worker.postMessage(request, [bytes.buffer]);
+        } catch {
+            // The transfer failed, so the bytes are still ours to parse.
+            // Failures after this point (worker crash or parse error) cannot
+            // fall back: the worker holds the only copy of the data.
             return ArchiveReader.fromCompressedBytes(bytes);
         }
-        throw error;
+        return await result;
     } finally {
         worker.terminate();
     }
 }
 
-/** Worker-infrastructure failure (as opposed to a real archive parse error). */
-class ArchiveWorkerCrash extends Error {}
-
-function parseInWorker(worker: Worker, bytes: Uint8Array): Promise<ArchiveReader> {
+function workerResult(worker: Worker): Promise<ArchiveReader> {
     return new Promise<ArchiveReader>((resolve, reject) => {
         worker.onmessage = (event: MessageEvent<ArchiveWorkerResponse>) => {
             const data = event.data;
@@ -72,14 +70,7 @@ function parseInWorker(worker: Worker, bytes: Uint8Array): Promise<ArchiveReader
             }
         };
         worker.onerror = (event: ErrorEvent) => {
-            reject(new ArchiveWorkerCrash(event.message || "Archive worker failed"));
+            reject(new Error(event.message || "Archive worker failed"));
         };
-        try {
-            const request: ArchiveWorkerRequest = { bytes };
-            // Transfer the underlying buffer — no copy on the way in.
-            worker.postMessage(request, [bytes.buffer]);
-        } catch (error) {
-            reject(new ArchiveWorkerCrash(String(error)));
-        }
     });
 }

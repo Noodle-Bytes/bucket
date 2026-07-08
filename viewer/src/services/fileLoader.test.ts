@@ -8,6 +8,12 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { loadReadoutsFromBytes } from "./fileLoader";
+import {
+    BASE_POINT_COLUMNS,
+    createBaseDefinition,
+    createBaseRecord,
+    createCommonTables,
+} from "../features/Dashboard/test/mocks/jsonPayload";
 
 const FIXTURE = join(
     __dirname,
@@ -23,38 +29,13 @@ describe("loadReadoutsFromBytes", () => {
 
     test("non-gzip bytes are tried as JSON", async () => {
         const payload = {
-            tables: {
-                point: [
-                    "start", "depth", "end", "axis_start", "axis_end",
-                    "axis_value_start", "axis_value_end", "goal_start",
-                    "goal_end", "bucket_start", "bucket_end", "target",
-                    "target_buckets", "name", "description",
-                ],
-                axis: ["start", "value_start", "value_end", "name", "description"],
-                axis_value: ["start", "value"],
-                goal: ["start", "target", "name", "description"],
-                bucket_goal: ["start", "goal"],
-                point_hit: ["start", "depth", "hits", "hit_buckets", "full_buckets"],
-                bucket_hit: ["start", "hits"],
-            },
+            tables: createCommonTables(BASE_POINT_COLUMNS),
             definitions: [
-                {
-                    sha: "def-a",
-                    point: [[0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, "point", "desc"]],
-                    axis: [[0, 0, 1, "axis", "axis description"]],
-                    axis_value: [[0, "A"]],
-                    goal: [[0, 1, "goal", "goal description"]],
-                    bucket_goal: [[0, 0]],
-                },
+                createBaseDefinition([
+                    0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, "point", "desc",
+                ]),
             ],
-            records: [
-                {
-                    def: 0,
-                    sha: "rec-a",
-                    point_hit: [[0, 0, 1, 1, 1]],
-                    bucket_hit: [[0, 1]],
-                },
-            ],
+            records: [createBaseRecord()],
         };
         const bytes = Array.from(new TextEncoder().encode(JSON.stringify(payload)));
         const readouts = await loadReadoutsFromBytes(bytes);

@@ -37,10 +37,7 @@ ctx.onmessage = (event: MessageEvent<ArchiveWorkerRequest>) => {
             // Offsets are numeric, so hand them back as a transferred typed
             // array instead of structured-cloning millions of numbers. The
             // rows contain strings and must be cloned.
-            const offsets =
-                table.offsets instanceof Float64Array
-                    ? table.offsets
-                    : Float64Array.from(table.offsets);
+            const offsets = Float64Array.from(table.offsets);
             tables[name] = { rows: table.rows, offsets };
             transfers.push(offsets.buffer);
         }

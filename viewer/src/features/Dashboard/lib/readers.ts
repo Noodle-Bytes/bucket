@@ -689,25 +689,32 @@ function parseCsvTableString(text: string): ParsedCsvTable {
         // stray \r force the slower accumulate-into-`field` path.
         let plain = true;
         let inQuotes = false;
-        let endedWithNewline = false;
+        // Where the final field of the row ends; length covers a last row
+        // with no trailing newline, the \n branch overrides it otherwise.
+        let fieldEnd = length;
 
         while (idx < length) {
             const code = text.charCodeAt(idx);
             if (inQuotes) {
-                if (code === 34) {
-                    if (text.charCodeAt(idx + 1) === 34) {
-                        // Escaped quote ("") inside a quoted field
-                        field += '"';
-                        idx += 2;
-                        continue;
-                    }
-                    inQuotes = false;
-                    idx += 1;
+                // Everything up to the closing quote (including , \r \n) is
+                // content — append it in one slice. The Python writer quotes
+                // every string field, so this is the common path for text.
+                const quote = text.indexOf('"', idx);
+                if (quote === -1) {
+                    // Unterminated quote: rest of the input is content
+                    field += text.slice(idx);
+                    idx = length;
                     continue;
                 }
-                // Inside quotes everything (including , \r \n) is content
-                field += text[idx];
-                idx += 1;
+                field += text.slice(idx, quote);
+                if (text.charCodeAt(quote + 1) === 34) {
+                    // Escaped quote ("") inside a quoted field
+                    field += '"';
+                    idx = quote + 2;
+                } else {
+                    inQuotes = false;
+                    idx = quote + 1;
+                }
                 continue;
             }
 
@@ -742,7 +749,7 @@ function parseCsvTableString(text: string): ParsedCsvTable {
             }
 
             if (code === 10) {
-                endedWithNewline = true;
+                fieldEnd = idx;
                 idx += 1;
                 break;
             }
@@ -754,11 +761,7 @@ function parseCsvTableString(text: string): ParsedCsvTable {
         }
 
         row.push(
-            parseCsvValue(
-                plain
-                    ? text.slice(fieldStart, endedWithNewline ? idx - 1 : idx)
-                    : field,
-            ),
+            parseCsvValue(plain ? text.slice(fieldStart, fieldEnd) : field),
         );
         rows.push(row);
     }
@@ -861,43 +864,4 @@ export function readJsonBytes(buffer: Uint8Array): JSONReader {
     const text = new TextDecoder().decode(buffer);
     const data: JSONData = JSON.parse(text);
     return new JSONReader(data);
-}
-
-export async function readFileHandle(file: FileSystemFileHandle): Promise<Reader> {
-
-    if (file.name.endsWith(".json")) {
-        const fileData = await file.getFile();
-        const json = await fileData.text();
-        const data: JSONData = JSON.parse(json);
-        return new JSONReader(data);
-    }
-
-    if (file.name.endsWith(".bktgz")) {
-        const fileData = await file.getFile();
-        const buffer = await fileData.arrayBuffer();
-        return ArchiveReader.fromCompressedBytes(new Uint8Array(buffer));
-    }
-
-    throw new Error("Unsupported file type");
-
-}
-
-// Electron-specific file reading
-export async function readElectronFile(bytes: number[]): Promise<Reader> {
-    const buffer = new Uint8Array(bytes);
-
-    // Try to detect file type by checking if it's a gzipped tar (archive)
-    // or JSON. For now, we'll assume .bktgz based on context, but could
-    // add more sophisticated detection.
-    try {
-        // Try parsing as archive first (most common case)
-        return ArchiveReader.fromCompressedBytes(buffer);
-    } catch {
-        // If that fails, try JSON
-        try {
-            return readJsonBytes(buffer);
-        } catch {
-            throw new Error("Unsupported file type - not a valid archive or JSON");
-        }
-    }
 }

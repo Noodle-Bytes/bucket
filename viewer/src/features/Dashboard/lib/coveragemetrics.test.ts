@@ -149,20 +149,33 @@ describe("getPointNodeCoverageMetrics", () => {
 });
 
 describe("getPointNodeCompareCounts", () => {
-    test("sums compare counts for tree covergroups", () => {
-        function leafCounts(start: number): PointNode {
-            return {
-                key: String(start),
-                title: String(start),
-                children: [],
-                data: {
-                    readout: {} as Readout,
-                    point: { start } as PointTuple,
-                    point_hit: {} as PointHitTuple,
-                },
-            } as PointNode;
-        }
+    function compareLeaf(start: number): PointNode {
+        return {
+            key: String(start),
+            title: String(start),
+            children: [],
+            data: {
+                readout: {} as Readout,
+                point: { start } as PointTuple,
+                point_hit: {} as PointHitTuple,
+            },
+        } as PointNode;
+    }
 
+    function compareGroup(children: PointNode[]): PointNode {
+        return {
+            key: "cg",
+            title: "CG",
+            children,
+            data: {
+                readout: {} as Readout,
+                point: { start: 99 } as PointTuple,
+                point_hit: {} as PointHitTuple,
+            },
+        } as PointNode;
+    }
+
+    test("sums compare counts for tree covergroups", () => {
         const comparison = {
             pointsByStart: new Map([
                 [
@@ -196,16 +209,7 @@ describe("getPointNodeCompareCounts", () => {
             ]),
         } as unknown as ComparisonResult;
 
-        const covergroup = {
-            key: "cg",
-            title: "CG",
-            children: [leafCounts(1), leafCounts(2)],
-            data: {
-                readout: {} as Readout,
-                point: { start: 99 } as PointTuple,
-                point_hit: {} as PointHitTuple,
-            },
-        } as PointNode;
+        const covergroup = compareGroup([compareLeaf(1), compareLeaf(2)]);
 
         expect(getPointNodeCompareCounts(covergroup, comparison)).toEqual({
             a_only: 11,
@@ -224,19 +228,6 @@ describe("getPointNodeCompareCounts", () => {
     });
 
     test("cache is keyed on the comparison, not just the node", () => {
-        function leafNode(start: number): PointNode {
-            return {
-                key: String(start),
-                title: String(start),
-                children: [],
-                data: {
-                    readout: {} as Readout,
-                    point: { start } as PointTuple,
-                    point_hit: {} as PointHitTuple,
-                },
-            } as PointNode;
-        }
-
         function makeComparison(aOnly: number): ComparisonResult {
             return {
                 pointsByStart: new Map([
@@ -258,16 +249,7 @@ describe("getPointNodeCompareCounts", () => {
             } as unknown as ComparisonResult;
         }
 
-        const covergroup = {
-            key: "cg",
-            title: "CG",
-            children: [leafNode(1)],
-            data: {
-                readout: {} as Readout,
-                point: { start: 99 } as PointTuple,
-                point_hit: {} as PointHitTuple,
-            },
-        } as PointNode;
+        const covergroup = compareGroup([compareLeaf(1)]);
 
         const comparisonA = makeComparison(5);
         const comparisonB = makeComparison(9);

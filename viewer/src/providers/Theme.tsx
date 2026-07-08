@@ -3,7 +3,7 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-import { PropsWithChildren, createContext, useState } from "react";
+import { PropsWithChildren, createContext, useContext, useState } from "react";
 import * as themes from "@/theme";
 import { getThemePreference, setStoredThemePreference } from "@/utils/themePreference";
 
@@ -63,5 +63,7 @@ const Theme = {
         );
     },
     Consumer: ThemeContext.Consumer,
+    /** Hook equivalent of Consumer, for use in function component bodies. */
+    useContext: () => useContext(ThemeContext),
 };
 export default Theme;

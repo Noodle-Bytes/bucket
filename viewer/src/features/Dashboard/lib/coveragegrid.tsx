@@ -53,7 +53,6 @@ import {
     useCallback,
     useEffect,
     useMemo,
-    useRef,
     useState,
 } from "react";
 import {
@@ -396,32 +395,6 @@ type ComparableRecord = Record<string, string | number | boolean | null | undefi
  */
 const NOWRAP_CELL_PROPS = { style: { whiteSpace: "nowrap" } as CSSProperties };
 const getNowrapCellProps = () => NOWRAP_CELL_PROPS;
-
-type RenderMemoCache<T> = { deps: readonly unknown[]; value: T };
-
-/**
- * Memoize a computation inside a render-prop callback (where useMemo is not
- * legal). The ref is created with useRef in the component body; the cached
- * value is reused while every dep is reference-equal. The computation must be
- * pure so that a discarded render recomputing is harmless.
- */
-function memoizeForRender<T>(
-    cache: { current: RenderMemoCache<T> | null },
-    deps: readonly unknown[],
-    compute: () => T,
-): T {
-    const cached = cache.current;
-    if (
-        cached
-        && cached.deps.length === deps.length
-        && cached.deps.every((dep, idx) => Object.is(dep, deps[idx]))
-    ) {
-        return cached.value;
-    }
-    const value = compute();
-    cache.current = { deps, value };
-    return value;
-}
 
 function parsePointTags(tags: string | null | undefined): string[] {
     if (!tags) {
@@ -1226,6 +1199,7 @@ function getCompareColumns<RecordType extends CompareColumnRecord>(): NonNullabl
 }
 
 export function PointGrid({ node, compare }: PointGridProps) {
+    const { theme } = Theme.useContext();
     const [overrideState, setOverrideState] = useState<LargeModeOverrideState>(() =>
         createInitialLargeModeOverrideState(sessionLargeModeWarningAcknowledged),
     );
@@ -1497,16 +1471,39 @@ export function PointGrid({ node, compare }: PointGridProps) {
         ],
     );
 
-    // Column definitions are built inside the Theme.Consumer render prop where
-    // useMemo cannot be called, so they are memoized manually via these refs
-    // (see memoizeForRender). This keeps the columns arrays referentially
-    // stable across re-renders unless one of their inputs actually changes.
-    const fullColumnsCache = useRef<RenderMemoCache<
-        NonNullable<TableProps<CoverageRecord>["columns"]>
-    > | null>(null);
-    const largeColumnsCache = useRef<RenderMemoCache<
-        NonNullable<TableProps<LargeCoverageRecord>["columns"]>
-    > | null>(null);
+    // Memoized so the columns arrays stay referentially stable across
+    // re-renders unless one of their inputs actually changes (Ant re-diffs
+    // columns on identity change).
+    const largeColumns = useMemo(
+        () => [
+            ...(getLargeColumns(theme, model, compare) ?? []),
+            ...(compare ? getCompareColumns<LargeCoverageRecord>() : []),
+        ],
+        [theme, model, compare],
+    );
+    const fullColumns = useMemo(
+        () => [
+            ...(getFullColumns(
+                theme,
+                model,
+                node.data.point.axis_value_start,
+                axisSortState,
+                goalSortState,
+                pointTableSortActions,
+                compare,
+            ) ?? []),
+            ...(compare ? getCompareColumns<CoverageRecord>() : []),
+        ],
+        [
+            theme,
+            model,
+            node.data.point.axis_value_start,
+            axisSortState,
+            goalSortState,
+            pointTableSortActions,
+            compare,
+        ],
+    );
 
     const sortedFullDataSource = useMemo<CoverageRecord[]>(() => {
         if (fullDataSource.length <= 1) {
@@ -1628,431 +1625,393 @@ export function PointGrid({ node, compare }: PointGridProps) {
         setOverrideState((prev) => withForcedFullFeatures(prev, false));
     };
 
-    return (
-        <Theme.Consumer>
-            {({ theme }) => {
-                const pointMetadata = (
-                    <div
-                        style={coverageInfoChromeOuterBox({
-                            accentbg: theme.theme.colors.accentbg,
-                            primarybg: theme.theme.colors.primarybg,
-                            secondarybg: theme.theme.colors.secondarybg,
-                            saturatedtxt: theme.theme.colors.saturatedtxt,
-                            primarytxt: theme.theme.colors.primarytxt,
-                        })}>
-                        <Collapse
-                            size="small"
-                            ghost
-                            defaultActiveKey={["metadata"]}
-                            className="point-metadata-collapse"
-                            items={[
-                                {
-                                    key: "metadata",
-                                    label: (
-                                        <Space size="small" wrap>
-                                            <Typography.Text
-                                                style={{
-                                                    fontSize: 13,
-                                                    fontWeight: 700,
-                                                    color: theme.theme.colors.saturatedtxt.value,
-                                                }}>
-                                                {`Details: ${node.data.point.name}`}
-                                            </Typography.Text>
-                                            {pointTier !== null && (
-                                                <Typography.Text
-                                                    style={{
-                                                        fontSize: 12,
-                                                        fontWeight: 600,
-                                                        color: theme.theme.colors.saturatedtxt.value,
-                                                    }}>
-                                                    Tier {pointTier}
-                                                </Typography.Text>
-                                            )}
-                                            {pointTags.length > 0 && (
-                                                <Typography.Text
-                                                    style={{
-                                                        fontSize: 12,
-                                                        fontWeight: 600,
-                                                        color: theme.theme.colors.saturatedtxt.value,
-                                                    }}>
-                                                    {pointTags.length} tag{pointTags.length === 1 ? "" : "s"}
-                                                </Typography.Text>
-                                            )}
-                                        </Space>
-                                    ),
-                                    children: (
-                                        <Descriptions
-                                            size="small"
-                                            column={1}
-                                            colon={false}
-                                            className="point-metadata-descriptions"
-                                            styles={{
-                                                label: {
-                                                    color: theme.theme.colors.primarytxt.value,
-                                                    fontWeight: 600,
-                                                    width: 84,
-                                                },
-                                                content: {
-                                                    color: theme.theme.colors.saturatedtxt.value,
-                                                    wordBreak: "break-word",
-                                                },
-                                            }}
-                                            items={[
-                                                ...(pointDescription
-                                                    ? [
-                                                          {
-                                                              key: "description",
-                                                              label: "Description",
-                                                              children: pointDescription,
-                                                          },
-                                                      ]
-                                                    : []),
-                                                ...(pointMotivation
-                                                    ? [
-                                                          {
-                                                              key: "motivation",
-                                                              label: "Motivation",
-                                                              children: pointMotivation,
-                                                          },
-                                                      ]
-                                                    : []),
-                                                ...(pointTags.length > 0
-                                                    ? [
-                                                          {
-                                                              key: "tags",
-                                                              label: "Tags",
-                                                              children: (
-                                                                  <Space wrap size={[4, 4]}>
-                                                                      {pointTags.map((tag) => (
-                                                                          <Tag
-                                                                              key={tag}
-                                                                              style={{
-                                                                                  marginInlineEnd: 0,
-                                                                                  backgroundColor: hexToRgba(
-                                                                                      theme.theme.colors.accentbg.value,
-                                                                                      0.2,
-                                                                                  ),
-                                                                                  borderColor:
-                                                                                      theme.theme.colors.accentbg.value,
-                                                                                  color:
-                                                                                      theme.theme.colors.primarytxt.value,
-                                                                              }}>
-                                                                              {tag}
-                                                                          </Tag>
-                                                                      ))}
-                                                                  </Space>
-                                                              ),
-                                                          },
-                                                      ]
-                                                    : []),
-                                                ...(pointTier !== null
-                                                    ? [
-                                                          {
-                                                              key: "tier",
-                                                              label: "Tier",
-                                                              children: pointTier,
-                                                          },
-                                                      ]
-                                                    : []),
-                                            ]}
-                                        />
-                                    ),
-                                },
-                            ]}
-                        />
-                    </div>
-                );
-
-                const largeActionButton = (
-                    <Button
-                        size="small"
-                        onClick={isLargeMode ? enableFullFeatures : disableFullFeatures}
-                        style={{
-                            borderColor: theme.theme.colors.lowlightbg.value,
-                            backgroundColor: theme.theme.colors.tertiarybg.value,
-                            color: theme.theme.colors.saturatedtxt.value,
-                        }}>
-                        {isLargeMode ? "Enable full features" : "Return to optimized mode"}
-                    </Button>
-                );
-
-                const banner = isLargeDataset && !isLargeBannerDismissed ? (
-                    <Alert
-                        className="bucket-large-dataset-alert"
-                        style={{
-                            marginBottom: 10,
-                            paddingInline: 12,
-                            paddingBlock: 10,
-                            color: theme.theme.colors.saturatedtxt.value,
-                            border: `1px solid ${hexToRgba(theme.theme.colors.saturatedtxt.value, 0.22)}`,
-                            backgroundColor: hexToRgba(
-                                theme.theme.colors.secondarybg.value,
-                                0.97,
+        const pointMetadata = (
+            <div
+                style={coverageInfoChromeOuterBox({
+                    accentbg: theme.theme.colors.accentbg,
+                    primarybg: theme.theme.colors.primarybg,
+                    secondarybg: theme.theme.colors.secondarybg,
+                    saturatedtxt: theme.theme.colors.saturatedtxt,
+                    primarytxt: theme.theme.colors.primarytxt,
+                })}>
+                <Collapse
+                    size="small"
+                    ghost
+                    defaultActiveKey={["metadata"]}
+                    className="point-metadata-collapse"
+                    items={[
+                        {
+                            key: "metadata",
+                            label: (
+                                <Space size="small" wrap>
+                                    <Typography.Text
+                                        style={{
+                                            fontSize: 13,
+                                            fontWeight: 700,
+                                            color: theme.theme.colors.saturatedtxt.value,
+                                        }}>
+                                        {`Details: ${node.data.point.name}`}
+                                    </Typography.Text>
+                                    {pointTier !== null && (
+                                        <Typography.Text
+                                            style={{
+                                                fontSize: 12,
+                                                fontWeight: 600,
+                                                color: theme.theme.colors.saturatedtxt.value,
+                                            }}>
+                                            Tier {pointTier}
+                                        </Typography.Text>
+                                    )}
+                                    {pointTags.length > 0 && (
+                                        <Typography.Text
+                                            style={{
+                                                fontSize: 12,
+                                                fontWeight: 600,
+                                                color: theme.theme.colors.saturatedtxt.value,
+                                            }}>
+                                            {pointTags.length} tag{pointTags.length === 1 ? "" : "s"}
+                                        </Typography.Text>
+                                    )}
+                                </Space>
                             ),
-                        }}
-                        showIcon
-                        icon={
-                            isLargeMode ? (
-                                <ExclamationCircleFilled
-                                    style={{
-                                        color: theme.theme.colors.accentbg.value,
-                                        fontSize: 18,
-                                    }}
-                                />
-                            ) : (
-                                <InfoCircleFilled
-                                    style={{
-                                        color: theme.theme.colors.accentbg.value,
-                                        fontSize: 18,
-                                    }}
-                                />
-                            )
-                        }
-                        closable
-                        closeIcon={
-                            <CloseOutlined
-                                style={{
-                                    color: theme.theme.colors.saturatedtxt.value,
-                                    fontSize: 12,
-                                }}
-                            />
-                        }
-                        onClose={() => setIsLargeBannerDismissed(true)}
-                        type="info"
-                        message={
-                            <Typography.Text
-                                style={{
-                                    color: theme.theme.colors.saturatedtxt.value,
-                                    fontWeight: 600,
-                                    fontSize: 14,
-                                    lineHeight: 1.45,
-                                }}>
-                                {isLargeMode
-                                    ? `Large dataset mode active (${model.rowCount.toLocaleString()} rows).`
-                                    : `Full features forced for ${model.rowCount.toLocaleString()} rows.`}
-                            </Typography.Text>
-                        }
-                        description={
-                            <Typography.Text
-                                style={{
-                                    color: theme.theme.colors.saturatedtxt.value,
-                                    fontSize: 13,
-                                    lineHeight: 1.5,
-                                    opacity: 0.92,
-                                }}>
-                                {isLargeMode
-                                    ? `Optimized rendering is enabled above ${POINT_FULL_FEATURE_ROW_LIMIT.toLocaleString()} rows.`
-                                    : "Optimized large mode is available if performance drops."}
-                            </Typography.Text>
-                        }
-                    />
-                ) : null;
-
-                const largeControls = isLargeDataset ? (
-                    <div
-                        style={{
-                            marginBottom: 10,
-                            paddingInline: 8,
-                            display: "flex",
-                            alignItems: "center",
-                            flexWrap: "wrap",
-                            gap: 8,
-                        }}>
-                        <Typography.Text
-                            strong
-                            style={{ color: theme.theme.colors.saturatedtxt.value }}>
-                            {isLargeMode ? "Large mode controls:" : "Large dataset controls:"}
-                        </Typography.Text>
-                        {isLargeMode && (
-                            <>
-                                {model.goals.length > 1 && (
-                                    <Select
-                                        size="small"
-                                        value={largeGoalFilter}
-                                        onChange={(value) => setLargeGoalFilter(value)}
-                                        options={largeGoalOptions}
-                                        style={{ minWidth: 210 }}
-                                    />
-                                )}
-                                {compare ? (
-                                    compare.setMode === "all" && (
-                                        <Select
-                                            size="small"
-                                            value={largeCompareCategoryFilter}
-                                            onChange={(value) =>
-                                                setLargeCompareCategoryFilter(
-                                                    value as LargeCompareCategoryFilter,
-                                                )
-                                            }
-                                            options={[
-                                                { label: "All categories", value: "all" },
-                                                { label: "A only", value: "a_only" },
-                                                { label: "Both", value: "both" },
-                                                { label: "B only", value: "b_only" },
-                                                { label: "Neither", value: "neither" },
-                                            ]}
-                                            style={{ minWidth: 160 }}
-                                        />
-                                    )
-                                ) : (
-                                    <Select
-                                        size="small"
-                                        value={largeHitFilter}
-                                        onChange={(value) =>
-                                            setLargeHitFilter(value as HitClassFilter)
-                                        }
-                                        options={[
-                                            { label: "All hit states", value: "all" },
-                                            { label: "Full", value: "full" },
-                                            { label: "Partial", value: "partial" },
-                                            { label: "Empty", value: "empty" },
-                                            { label: "Illegal", value: "illegal" },
-                                            { label: "Ignore", value: "ignore" },
-                                        ]}
-                                        style={{ minWidth: 160 }}
-                                    />
-                                )}
-                                <Select
+                            children: (
+                                <Descriptions
                                     size="small"
-                                    value={largeSort}
-                                    onChange={(value) => setLargeSort(value as LargeSortOption)}
-                                    options={
-                                        compare
+                                    column={1}
+                                    colon={false}
+                                    className="point-metadata-descriptions"
+                                    styles={{
+                                        label: {
+                                            color: theme.theme.colors.primarytxt.value,
+                                            fontWeight: 600,
+                                            width: 84,
+                                        },
+                                        content: {
+                                            color: theme.theme.colors.saturatedtxt.value,
+                                            wordBreak: "break-word",
+                                        },
+                                    }}
+                                    items={[
+                                        ...(pointDescription
                                             ? [
-                                                  { label: "Bucket (asc)", value: "bucket_asc" },
-                                                  { label: "Bucket (desc)", value: "bucket_desc" },
-                                                  { label: "A hits (desc)", value: "hits_a_desc" },
-                                                  { label: "A hits (asc)", value: "hits_a_asc" },
-                                                  { label: "B hits (desc)", value: "hits_b_desc" },
-                                                  { label: "B hits (asc)", value: "hits_b_asc" },
                                                   {
-                                                      label: "Category (asc)",
-                                                      value: "category_asc",
-                                                  },
-                                                  {
-                                                      label: "Category (desc)",
-                                                      value: "category_desc",
+                                                      key: "description",
+                                                      label: "Description",
+                                                      children: pointDescription,
                                                   },
                                               ]
-                                            : [
-                                                  { label: "Bucket (asc)", value: "bucket_asc" },
-                                                  { label: "Bucket (desc)", value: "bucket_desc" },
-                                                  { label: "Hits (desc)", value: "hits_desc" },
-                                                  { label: "Hits (asc)", value: "hits_asc" },
-                                                  { label: "Hit % (desc)", value: "ratio_desc" },
-                                                  { label: "Hit % (asc)", value: "ratio_asc" },
+                                            : []),
+                                        ...(pointMotivation
+                                            ? [
+                                                  {
+                                                      key: "motivation",
+                                                      label: "Motivation",
+                                                      children: pointMotivation,
+                                                  },
                                               ]
-                                    }
-                                    style={{ minWidth: 150 }}
+                                            : []),
+                                        ...(pointTags.length > 0
+                                            ? [
+                                                  {
+                                                      key: "tags",
+                                                      label: "Tags",
+                                                      children: (
+                                                          <Space wrap size={[4, 4]}>
+                                                              {pointTags.map((tag) => (
+                                                                  <Tag
+                                                                      key={tag}
+                                                                      style={{
+                                                                          marginInlineEnd: 0,
+                                                                          backgroundColor: hexToRgba(
+                                                                              theme.theme.colors.accentbg.value,
+                                                                              0.2,
+                                                                          ),
+                                                                          borderColor:
+                                                                              theme.theme.colors.accentbg.value,
+                                                                          color:
+                                                                              theme.theme.colors.primarytxt.value,
+                                                                      }}>
+                                                                      {tag}
+                                                                  </Tag>
+                                                              ))}
+                                                          </Space>
+                                                      ),
+                                                  },
+                                              ]
+                                            : []),
+                                        ...(pointTier !== null
+                                            ? [
+                                                  {
+                                                      key: "tier",
+                                                      label: "Tier",
+                                                      children: pointTier,
+                                                  },
+                                              ]
+                                            : []),
+                                    ]}
                                 />
-                            </>
-                        )}
-                        {isLargeMode && (
-                            <Typography.Text
-                                style={{ color: theme.theme.colors.primarytxt.value }}>
-                                Showing {largeDataSource.length.toLocaleString()} of{" "}
-                                {(compare
-                                    ? largeCompareSetVisibleCount
-                                    : model.rowCount
-                                ).toLocaleString()}{" "}
-                                rows
-                            </Typography.Text>
-                        )}
-                        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
-                            {largeActionButton}
-                        </div>
-                    </div>
-                ) : null;
+                            ),
+                        },
+                    ]}
+                />
+            </div>
+        );
 
-                if (isLargeMode) {
-                    const largeColumns = memoizeForRender(
-                        largeColumnsCache,
-                        [theme, model, compare],
-                        () => [
-                            ...(getLargeColumns(theme, model, compare) ?? []),
-                            ...(compare ? getCompareColumns<LargeCoverageRecord>() : []),
-                        ],
-                    );
-                    const largeScrollX = compare
-                        ? 90 + model.axisModels.length * 160 + 244
-                        : "max-content";
-                    return (
-                        <>
-                            {pointMetadata}
-                            {banner}
-                            {largeControls}
-                            <Table<LargeCoverageRecord>
-                                {...(view.body.content.table.props as unknown as TableProps<LargeCoverageRecord>)}
-                                key={`${node.key}-${compare ? "compare" : "normal"}`}
-                                tableLayout={compare ? "fixed" : "auto"}
-                                columns={largeColumns}
-                                dataSource={largeDataSource}
-                                onRow={(record) => ({
-                                    style: getCompareRowStyle(record.compare_category, compare),
-                                })}
-                                virtual
-                                scroll={{
-                                    x: largeScrollX,
-                                    y: tableScrollY,
-                                }}
-                            />
-                        </>
-                    );
-                }
+        const largeActionButton = (
+            <Button
+                size="small"
+                onClick={isLargeMode ? enableFullFeatures : disableFullFeatures}
+                style={{
+                    borderColor: theme.theme.colors.lowlightbg.value,
+                    backgroundColor: theme.theme.colors.tertiarybg.value,
+                    color: theme.theme.colors.saturatedtxt.value,
+                }}>
+                {isLargeMode ? "Enable full features" : "Return to optimized mode"}
+            </Button>
+        );
 
-                const fullColumns = memoizeForRender(
-                    fullColumnsCache,
-                    [
-                        theme,
-                        model,
-                        node.data.point.axis_value_start,
-                        axisSortState,
-                        goalSortState,
-                        pointTableSortActions,
-                        compare,
-                    ],
-                    () => [
-                        ...(getFullColumns(
-                            theme,
-                            model,
-                            node.data.point.axis_value_start,
-                            axisSortState,
-                            goalSortState,
-                            pointTableSortActions,
-                            compare,
-                        ) ?? []),
-                        ...(compare ? getCompareColumns<CoverageRecord>() : []),
-                    ],
-                );
-                const fullScrollX = compare
-                    ? 90 + model.axisModels.length * 160 + 244
-                    : "max-content";
-
-                return (
-                    <>
-                        {pointMetadata}
-                        {banner}
-                        {largeControls}
-                        <Table<CoverageRecord>
-                            {...(view.body.content.table.props as unknown as TableProps<CoverageRecord>)}
-                            key={`${node.key}-${compare ? "compare" : "normal"}`}
-                            tableLayout={compare ? "fixed" : "auto"}
-                            columns={fullColumns}
-                            dataSource={sortedFullDataSource}
-                            onRow={(record) => ({
-                                style: getCompareRowStyle(record.compare_category, compare),
-                            })}
-                            virtual
-                            scroll={{
-                                x: fullScrollX,
-                                y: tableScrollY,
+        const banner = isLargeDataset && !isLargeBannerDismissed ? (
+            <Alert
+                className="bucket-large-dataset-alert"
+                style={{
+                    marginBottom: 10,
+                    paddingInline: 12,
+                    paddingBlock: 10,
+                    color: theme.theme.colors.saturatedtxt.value,
+                    border: `1px solid ${hexToRgba(theme.theme.colors.saturatedtxt.value, 0.22)}`,
+                    backgroundColor: hexToRgba(
+                        theme.theme.colors.secondarybg.value,
+                        0.97,
+                    ),
+                }}
+                showIcon
+                icon={
+                    isLargeMode ? (
+                        <ExclamationCircleFilled
+                            style={{
+                                color: theme.theme.colors.accentbg.value,
+                                fontSize: 18,
                             }}
                         />
+                    ) : (
+                        <InfoCircleFilled
+                            style={{
+                                color: theme.theme.colors.accentbg.value,
+                                fontSize: 18,
+                            }}
+                        />
+                    )
+                }
+                closable
+                closeIcon={
+                    <CloseOutlined
+                        style={{
+                            color: theme.theme.colors.saturatedtxt.value,
+                            fontSize: 12,
+                        }}
+                    />
+                }
+                onClose={() => setIsLargeBannerDismissed(true)}
+                type="info"
+                message={
+                    <Typography.Text
+                        style={{
+                            color: theme.theme.colors.saturatedtxt.value,
+                            fontWeight: 600,
+                            fontSize: 14,
+                            lineHeight: 1.45,
+                        }}>
+                        {isLargeMode
+                            ? `Large dataset mode active (${model.rowCount.toLocaleString()} rows).`
+                            : `Full features forced for ${model.rowCount.toLocaleString()} rows.`}
+                    </Typography.Text>
+                }
+                description={
+                    <Typography.Text
+                        style={{
+                            color: theme.theme.colors.saturatedtxt.value,
+                            fontSize: 13,
+                            lineHeight: 1.5,
+                            opacity: 0.92,
+                        }}>
+                        {isLargeMode
+                            ? `Optimized rendering is enabled above ${POINT_FULL_FEATURE_ROW_LIMIT.toLocaleString()} rows.`
+                            : "Optimized large mode is available if performance drops."}
+                    </Typography.Text>
+                }
+            />
+        ) : null;
+
+        const largeControls = isLargeDataset ? (
+            <div
+                style={{
+                    marginBottom: 10,
+                    paddingInline: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 8,
+                }}>
+                <Typography.Text
+                    strong
+                    style={{ color: theme.theme.colors.saturatedtxt.value }}>
+                    {isLargeMode ? "Large mode controls:" : "Large dataset controls:"}
+                </Typography.Text>
+                {isLargeMode && (
+                    <>
+                        {model.goals.length > 1 && (
+                            <Select
+                                size="small"
+                                value={largeGoalFilter}
+                                onChange={(value) => setLargeGoalFilter(value)}
+                                options={largeGoalOptions}
+                                style={{ minWidth: 210 }}
+                            />
+                        )}
+                        {compare ? (
+                            compare.setMode === "all" && (
+                                <Select
+                                    size="small"
+                                    value={largeCompareCategoryFilter}
+                                    onChange={(value) =>
+                                        setLargeCompareCategoryFilter(
+                                            value as LargeCompareCategoryFilter,
+                                        )
+                                    }
+                                    options={[
+                                        { label: "All categories", value: "all" },
+                                        { label: "A only", value: "a_only" },
+                                        { label: "Both", value: "both" },
+                                        { label: "B only", value: "b_only" },
+                                        { label: "Neither", value: "neither" },
+                                    ]}
+                                    style={{ minWidth: 160 }}
+                                />
+                            )
+                        ) : (
+                            <Select
+                                size="small"
+                                value={largeHitFilter}
+                                onChange={(value) =>
+                                    setLargeHitFilter(value as HitClassFilter)
+                                }
+                                options={[
+                                    { label: "All hit states", value: "all" },
+                                    { label: "Full", value: "full" },
+                                    { label: "Partial", value: "partial" },
+                                    { label: "Empty", value: "empty" },
+                                    { label: "Illegal", value: "illegal" },
+                                    { label: "Ignore", value: "ignore" },
+                                ]}
+                                style={{ minWidth: 160 }}
+                            />
+                        )}
+                        <Select
+                            size="small"
+                            value={largeSort}
+                            onChange={(value) => setLargeSort(value as LargeSortOption)}
+                            options={
+                                compare
+                                    ? [
+                                          { label: "Bucket (asc)", value: "bucket_asc" },
+                                          { label: "Bucket (desc)", value: "bucket_desc" },
+                                          { label: "A hits (desc)", value: "hits_a_desc" },
+                                          { label: "A hits (asc)", value: "hits_a_asc" },
+                                          { label: "B hits (desc)", value: "hits_b_desc" },
+                                          { label: "B hits (asc)", value: "hits_b_asc" },
+                                          {
+                                              label: "Category (asc)",
+                                              value: "category_asc",
+                                          },
+                                          {
+                                              label: "Category (desc)",
+                                              value: "category_desc",
+                                          },
+                                      ]
+                                    : [
+                                          { label: "Bucket (asc)", value: "bucket_asc" },
+                                          { label: "Bucket (desc)", value: "bucket_desc" },
+                                          { label: "Hits (desc)", value: "hits_desc" },
+                                          { label: "Hits (asc)", value: "hits_asc" },
+                                          { label: "Hit % (desc)", value: "ratio_desc" },
+                                          { label: "Hit % (asc)", value: "ratio_asc" },
+                                      ]
+                            }
+                            style={{ minWidth: 150 }}
+                        />
                     </>
-                );
-            }}
-        </Theme.Consumer>
-    );
+                )}
+                {isLargeMode && (
+                    <Typography.Text
+                        style={{ color: theme.theme.colors.primarytxt.value }}>
+                        Showing {largeDataSource.length.toLocaleString()} of{" "}
+                        {(compare
+                            ? largeCompareSetVisibleCount
+                            : model.rowCount
+                        ).toLocaleString()}{" "}
+                        rows
+                    </Typography.Text>
+                )}
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
+                    {largeActionButton}
+                </div>
+            </div>
+        ) : null;
+
+        if (isLargeMode) {
+            const largeScrollX = compare
+                ? 90 + model.axisModels.length * 160 + 244
+                : "max-content";
+            return (
+                <>
+                    {pointMetadata}
+                    {banner}
+                    {largeControls}
+                    <Table<LargeCoverageRecord>
+                        {...(view.body.content.table.props as unknown as TableProps<LargeCoverageRecord>)}
+                        key={`${node.key}-${compare ? "compare" : "normal"}`}
+                        tableLayout={compare ? "fixed" : "auto"}
+                        columns={largeColumns}
+                        dataSource={largeDataSource}
+                        onRow={(record) => ({
+                            style: getCompareRowStyle(record.compare_category, compare),
+                        })}
+                        virtual
+                        scroll={{
+                            x: largeScrollX,
+                            y: tableScrollY,
+                        }}
+                    />
+                </>
+            );
+        }
+
+        const fullScrollX = compare
+            ? 90 + model.axisModels.length * 160 + 244
+            : "max-content";
+
+        return (
+            <>
+                {pointMetadata}
+                {banner}
+                {largeControls}
+                <Table<CoverageRecord>
+                    {...(view.body.content.table.props as unknown as TableProps<CoverageRecord>)}
+                    key={`${node.key}-${compare ? "compare" : "normal"}`}
+                    tableLayout={compare ? "fixed" : "auto"}
+                    columns={fullColumns}
+                    dataSource={sortedFullDataSource}
+                    onRow={(record) => ({
+                        style: getCompareRowStyle(record.compare_category, compare),
+                    })}
+                    virtual
+                    scroll={{
+                        x: fullScrollX,
+                        y: tableScrollY,
+                    }}
+                />
+            </>
+        );
 }
 
 export type PointSummaryGridProps = {

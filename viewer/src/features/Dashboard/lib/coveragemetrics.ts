@@ -87,7 +87,9 @@ export function getPointNodeCoverageMetrics(node: PointNode): PointCoverageMetri
     if (cached) {
         return cached;
     }
-    const metrics = computePointNodeCoverageMetrics(node);
+    // Frozen so an accidental mutation by a consumer throws instead of
+    // silently poisoning the cache for every other consumer.
+    const metrics = Object.freeze(computePointNodeCoverageMetrics(node));
     coverageMetricsByNode.set(node, metrics);
     return metrics;
 }
@@ -126,7 +128,10 @@ function computePointNodeCompareCounts(
         totals.illegal += childCounts.illegal;
         totals.ignore += childCounts.ignore;
     }
-    return totals;
+    // Frozen so an accidental mutation by a consumer throws instead of
+    // silently poisoning the cache. (Leaf counts above are owned by the
+    // comparison result, so they are returned as-is.)
+    return Object.freeze(totals);
 }
 
 /**

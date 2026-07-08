@@ -5,56 +5,19 @@
 
 import { describe, expect, test } from "vitest";
 
+import { parseCsvTable, parseCsvTableBytes, readJsonBytes } from "./readers";
 import {
-    parseCsvTable,
-    parseCsvTableBytes,
-    readElectronFile,
-} from "./readers";
+    JsonPayload,
+    createBaseDefinition,
+    createBaseRecord,
+    createCommonTables,
+} from "../test/mocks/jsonPayload";
 
-type JsonPayload = {
-    tables: Record<string, string[]>;
-    definitions: Record<string, unknown>[];
-    records: Record<string, unknown>[];
-};
-
-function createCommonTables(pointColumns: string[]): Record<string, string[]> {
-    return {
-        point: pointColumns,
-        axis: ["start", "value_start", "value_end", "name", "description"],
-        axis_value: ["start", "value"],
-        goal: ["start", "target", "name", "description"],
-        bucket_goal: ["start", "goal"],
-        point_hit: ["start", "depth", "hits", "hit_buckets", "full_buckets"],
-        bucket_hit: ["start", "hits"],
-    };
-}
-
-function createBaseDefinition(pointRow: unknown[]): Record<string, unknown> {
-    return {
-        sha: "def-a",
-        point: [pointRow],
-        axis: [[0, 0, 1, "axis", "axis description"]],
-        axis_value: [[0, "A"]],
-        goal: [[0, 1, "goal", "goal description"]],
-        bucket_goal: [[0, 0]],
-    };
-}
-
-function createBaseRecord(overrides?: Record<string, unknown>): Record<string, unknown> {
-    return {
-        def: 0,
-        sha: "rec-a",
-        point_hit: [[0, 0, 1, 1, 1]],
-        bucket_hit: [[0, 1]],
-        ...overrides,
-    };
-}
 
 async function readSingle(payload: JsonPayload): Promise<Readout> {
     const bytes = new TextEncoder().encode(JSON.stringify(payload));
-    const reader = await readElectronFile(Array.from(bytes));
     const readouts: Readout[] = [];
-    for await (const readout of reader.read_all()) {
+    for await (const readout of readJsonBytes(bytes).read_all()) {
         readouts.push(readout);
     }
     expect(readouts).toHaveLength(1);
@@ -168,12 +131,6 @@ describe("readers metadata compatibility", () => {
         expect(points[0].motivation).toBe("");
         expect(readout.get_source()).toBe("");
         expect(readout.get_source_key()).toBe("");
-    });
-
-    test("invalid bytes reject with unsupported file type", async () => {
-        await expect(readElectronFile([0, 1, 2, 3])).rejects.toThrow(
-            "Unsupported file type - not a valid archive or JSON",
-        );
     });
 });
 

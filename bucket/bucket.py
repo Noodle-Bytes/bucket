@@ -66,7 +66,8 @@ class Bucket:
         except KeyError as ex:
             raise Exception(f"Axis {ex.args[0]} has not been set") from None
 
-        # Check for any applied goals
+        # Check for any applied goals (inlined Coverpoint._get_goal — this is
+        # the innermost sampling loop, where the extra call is measurable)
         bucket_goal = parent._cvg_goals.get(axis_value_tuple, parent._default_goal)
 
         # If the bucket goal is defined as IGNORE, nothing happens.

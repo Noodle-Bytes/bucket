@@ -10,6 +10,7 @@ import { describe, expect, test } from "vitest";
 import { readArchiveBytes } from "./archiveLoader";
 import { ArchiveReader, parseArchiveBytes } from "./readers";
 import type { Readout } from "./readers";
+import { materializeReadout } from "@/services/readoutUtils";
 
 // Two-record archive written by the Python ArchiveAccessor, with non-ASCII
 // point descriptions (byte offsets differ from character offsets, so this
@@ -26,28 +27,6 @@ async function collect(reader: ArchiveReader): Promise<Readout[]> {
         readouts.push(readout);
     }
     return readouts;
-}
-
-type ReadoutSummary = {
-    def_sha: string;
-    points: { name: string; description: string; start: number; depth: number }[];
-    bucketHits: { start: number; hits: number }[];
-};
-
-async function summarize(readout: Readout): Promise<ReadoutSummary> {
-    return {
-        def_sha: readout.get_def_sha(),
-        points: Array.from(readout.iter_points()).map((p) => ({
-            name: p.name,
-            description: p.description,
-            start: p.start,
-            depth: p.depth,
-        })),
-        bucketHits: Array.from(readout.iter_bucket_hits()).map((b) => ({
-            start: b.start,
-            hits: b.hits,
-        })),
-    };
 }
 
 describe("archiveLoader", () => {
@@ -95,8 +74,8 @@ describe("archiveLoader", () => {
 
         expect(workerReadouts).toHaveLength(syncReadouts.length);
         for (let i = 0; i < syncReadouts.length; i += 1) {
-            expect(await summarize(workerReadouts[i])).toEqual(
-                await summarize(syncReadouts[i]),
+            expect(materializeReadout(workerReadouts[i])).toEqual(
+                materializeReadout(syncReadouts[i]),
             );
         }
     });

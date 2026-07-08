@@ -3,7 +3,7 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-import { readFileHandle, readJsonBytes } from "../features/Dashboard/lib/readers";
+import { readJsonBytes } from "../features/Dashboard/lib/readers";
 import { readArchiveBytes } from "../features/Dashboard/lib/archiveLoader";
 
 /**
@@ -23,17 +23,12 @@ function isGzip(buffer: Uint8Array): boolean {
  * tried as JSON.
  */
 async function readerFromBuffer(buffer: Uint8Array): Promise<Reader> {
-    if (isGzip(buffer)) {
-        try {
-            return await readArchiveBytes(buffer);
-        } catch {
-            throw new Error("Unsupported file type - not a valid archive or JSON");
-        }
-    }
     try {
-        return readJsonBytes(buffer);
-    } catch {
-        throw new Error("Unsupported file type - not a valid archive or JSON");
+        return isGzip(buffer) ? await readArchiveBytes(buffer) : readJsonBytes(buffer);
+    } catch (cause) {
+        throw new Error("Unsupported file type - not a valid archive or JSON", {
+            cause,
+        });
     }
 }
 
@@ -70,13 +65,9 @@ export async function loadReadoutsFromFileObject(file: File): Promise<Readout[]>
  * Load readouts from a FileSystemFileHandle (PWA file handling)
  */
 export async function loadReadoutsFromFileHandle(file: FileSystemFileHandle): Promise<Readout[]> {
-    if (file.name.endsWith('.bktgz')) {
-        const fileData = await file.getFile();
-        const buffer = new Uint8Array(await fileData.arrayBuffer());
-        return collectReadouts(await readerFromBuffer(buffer));
-    }
-    // Other supported types (e.g. .json) keep the existing in-thread path
-    return collectReadouts(await readFileHandle(file));
+    const fileData = await file.getFile();
+    const buffer = new Uint8Array(await fileData.arrayBuffer());
+    return collectReadouts(await readerFromBuffer(buffer));
 }
 
 /**
