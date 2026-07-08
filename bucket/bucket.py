@@ -47,37 +47,39 @@ class Bucket:
         """
 
         # If axis values are passed in, set axes
-        self.set_axes(**kwargs)
-
         axis_values = self.axis_values
+        if kwargs:
+            axis_values.update(kwargs)
+
+        parent = self.parent
         assert (
-            len(axis_values) == self.parent._axis_count
+            len(axis_values) == parent._axis_count
         ), "Incorrect number of axes have been set"
 
-        axis_value_list = []
-        for axis_name, axis_resolver in self.parent._axis_resolvers:
-            if axis_name in axis_values:
-                result = axis_resolver(axis_values[axis_name])
-                axis_value_list.append(result)
-            else:
-                raise Exception(f"Axis {axis_name} has not been set")
+        try:
+            axis_value_tuple = tuple(
+                [
+                    axis_resolver(axis_values[axis_name])
+                    for axis_name, axis_resolver in parent._axis_resolvers
+                ]
+            )
+        except KeyError as ex:
+            raise Exception(f"Axis {ex.args[0]} has not been set") from None
 
-        # make it a tuple, increment cvg_hits
-        axis_value_tuple = tuple(axis_value_list)
         # Check for any applied goals
-        bucket_goal = self.parent._get_goal(axis_value_tuple)
+        bucket_goal = parent._cvg_goals.get(axis_value_tuple, parent._default_goal)
 
         # If the bucket goal is defined as IGNORE, nothing happens.
         # If the bucket goal is defined as ILLEGAL, an error is printed out
         # Else the bucket hit count is incremented
         if bucket_goal.target != 0:
-            self.parent._increment_hit_count(axis_value_tuple)
+            parent._cvg_hits[axis_value_tuple] += 1
         if bucket_goal.target < 0:
             illegal_str = (
-                f"Illegal bucket '{self.parent._name}.{bucket_goal.name}' hit! "
-                + f"Bucket values: {dict(zip(self.parent._axis_names, list(axis_value_tuple), strict=True))}"
+                f"Illegal bucket '{parent._name}.{bucket_goal.name}' hit! "
+                + f"Bucket values: {dict(zip(parent._axis_names, list(axis_value_tuple), strict=True))}"
             )
-            if self.parent._config.except_on_illegal:
+            if parent._config.except_on_illegal:
                 raise RuntimeError(illegal_str)
             self.log.error(illegal_str)
 
