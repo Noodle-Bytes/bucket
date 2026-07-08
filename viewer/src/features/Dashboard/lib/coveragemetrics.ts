@@ -24,8 +24,16 @@ const EMPTY_COMPARE_COUNTS: CategoryCounts = {
     ignore: 0,
 };
 
-/** Leaf nodes use readout point_hit; covergroups sum descendant leaf coverpoints. */
-export function getPointNodeCoverageMetrics(node: PointNode): PointCoverageMetrics {
+/**
+ * Cache of aggregated metrics keyed on node identity. Tree nodes (and their
+ * readout tuples) are immutable once CoverageTree construction completes, and a
+ * data refresh always builds fresh node objects, so results never go stale.
+ * Using a WeakMap means dropped trees are garbage collected along with their
+ * cached metrics.
+ */
+const coverageMetricsByNode = new WeakMap<PointNode, PointCoverageMetrics>();
+
+function computePointNodeCoverageMetrics(node: PointNode): PointCoverageMetrics {
     const children = node.children ?? [];
     if (children.length === 0) {
         const { point, point_hit } = node.data ?? {};
@@ -68,17 +76,37 @@ export function getPointNodeCoverageMetrics(node: PointNode): PointCoverageMetri
 }
 
 /**
- * Compare category counts for a tree node. Covergroups sum descendant coverpoints
- * (tree structure), since readout leaf/covergroup flags do not always match the UI tree.
+ * Leaf nodes use readout point_hit; covergroups sum descendant leaf coverpoints.
+ *
+ * Results are memoized per node (bottom-up: aggregating a covergroup caches
+ * every descendant too), so walking a tree costs O(nodes) overall instead of
+ * O(depth x nodes). Callers must treat the returned object as read-only.
  */
-export function getPointNodeCompareCounts(
-    node: PointNode,
-    comparison: ComparisonResult | undefined,
-): CategoryCounts | undefined {
-    if (!comparison) {
-        return undefined;
+export function getPointNodeCoverageMetrics(node: PointNode): PointCoverageMetrics {
+    const cached = coverageMetricsByNode.get(node);
+    if (cached) {
+        return cached;
     }
+    const metrics = computePointNodeCoverageMetrics(node);
+    coverageMetricsByNode.set(node, metrics);
+    return metrics;
+}
 
+/**
+ * Compare counts cache, keyed first on the comparison (results differ per
+ * comparison) and then on node identity. Both keys are stable object
+ * identities: a re-run compare produces a new ComparisonResult, and a data
+ * refresh produces new tree nodes.
+ */
+const compareCountsByComparison = new WeakMap<
+    ComparisonResult,
+    WeakMap<PointNode, CategoryCounts | undefined>
+>();
+
+function computePointNodeCompareCounts(
+    node: PointNode,
+    comparison: ComparisonResult,
+): CategoryCounts | undefined {
     const children = node.children ?? [];
     if (children.length === 0) {
         return comparison.pointsByStart.get(node.data.point.start)?.counts;
@@ -99,4 +127,32 @@ export function getPointNodeCompareCounts(
         totals.ignore += childCounts.ignore;
     }
     return totals;
+}
+
+/**
+ * Compare category counts for a tree node. Covergroups sum descendant coverpoints
+ * (tree structure), since readout leaf/covergroup flags do not always match the UI tree.
+ *
+ * Results are memoized per (comparison, node) pair; callers must treat the
+ * returned object as read-only.
+ */
+export function getPointNodeCompareCounts(
+    node: PointNode,
+    comparison: ComparisonResult | undefined,
+): CategoryCounts | undefined {
+    if (!comparison) {
+        return undefined;
+    }
+
+    let countsByNode = compareCountsByComparison.get(comparison);
+    if (!countsByNode) {
+        countsByNode = new WeakMap();
+        compareCountsByComparison.set(comparison, countsByNode);
+    }
+    if (countsByNode.has(node)) {
+        return countsByNode.get(node);
+    }
+    const counts = computePointNodeCompareCounts(node, comparison);
+    countsByNode.set(node, counts);
+    return counts;
 }

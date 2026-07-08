@@ -53,6 +53,7 @@ import {
     useCallback,
     useEffect,
     useMemo,
+    useRef,
     useState,
 } from "react";
 import {
@@ -166,6 +167,7 @@ type AxisModel = {
 type PointTableModel = {
     rowCount: number;
     axes: AxisTuple[];
+    axisByName: Map<string, AxisTuple>;
     axisModels: AxisModel[];
     axisValues: AxisValueTuple[];
     goals: GoalTuple[];
@@ -387,6 +389,39 @@ export type PointGridProps = {
 
 let sessionLargeModeWarningAcknowledged = false;
 type ComparableRecord = Record<string, string | number | boolean | null | undefined>;
+
+/**
+ * Shared cell props hoisted to module scope so per-cell `onCell` callbacks do
+ * not allocate a fresh style object for every rendered cell on every render.
+ */
+const NOWRAP_CELL_PROPS = { style: { whiteSpace: "nowrap" } as CSSProperties };
+const getNowrapCellProps = () => NOWRAP_CELL_PROPS;
+
+type RenderMemoCache<T> = { deps: readonly unknown[]; value: T };
+
+/**
+ * Memoize a computation inside a render-prop callback (where useMemo is not
+ * legal). The ref is created with useRef in the component body; the cached
+ * value is reused while every dep is reference-equal. The computation must be
+ * pure so that a discarded render recomputing is harmless.
+ */
+function memoizeForRender<T>(
+    cache: { current: RenderMemoCache<T> | null },
+    deps: readonly unknown[],
+    compute: () => T,
+): T {
+    const cached = cache.current;
+    if (
+        cached
+        && cached.deps.length === deps.length
+        && cached.deps.every((dep, idx) => Object.is(dep, deps[idx]))
+    ) {
+        return cached.value;
+    }
+    const value = compute();
+    cache.current = { deps, value };
+    return value;
+}
 
 function parsePointTags(tags: string | null | undefined): string[] {
     if (!tags) {
@@ -673,6 +708,7 @@ function buildPointTableModel(node: PointNode): PointTableModel {
     return {
         rowCount: row,
         axes,
+        axisByName: new Map(axes.map((axis) => [axis.name, axis])),
         axisModels,
         axisValues,
         goals,
@@ -797,7 +833,7 @@ function getFullColumns(
             dataIndex: "key",
             key: "key",
             width: compare ? 90 : 1,
-            onCell: () => ({ style: { whiteSpace: "nowrap" } }),
+            onCell: getNowrapCellProps,
         },
         {
             title: "Axes",
@@ -1053,7 +1089,7 @@ function getLargeColumns(
             key: "key",
             width: compare ? 90 : 72,
             fixed: compare ? "left" : undefined,
-            onCell: () => ({ style: { whiteSpace: "nowrap" } }),
+            onCell: getNowrapCellProps,
         },
         {
             title: "Axes",
@@ -1063,7 +1099,7 @@ function getLargeColumns(
                 render: (_value: unknown, record: LargeCoverageRecord) =>
                     getAxisValue(model, record.row, axisIdx),
                 width: axisColumnWidth,
-                onCell: () => ({ style: { whiteSpace: "nowrap" } }),
+                onCell: getNowrapCellProps,
             })),
         },
     ];
@@ -1132,8 +1168,18 @@ function getCompareRowStyle(category: BucketCategory | undefined, compare: Compa
     };
 }
 
-function getCompareColumns(): TableProps<CoverageRecord>["columns"] {
-    return [
+/** The compare-related fields shared by both point table record shapes. */
+type CompareColumnRecord = {
+    hits_a?: number;
+    hits_b?: number;
+    compare_category?: BucketCategory;
+};
+
+/**
+ * Compare columns are theme/model independent, so they are built once at
+ * module scope and shared across renders (React elements are immutable).
+ */
+const COMPARE_COLUMNS: TableProps<CompareColumnRecord>["columns"] = [
         {
             title: (
                 <Tooltip title="Hits in record A">
@@ -1143,7 +1189,7 @@ function getCompareColumns(): TableProps<CoverageRecord>["columns"] {
             dataIndex: "hits_a",
             key: "hits_a",
             width: 72,
-            onCell: () => ({ style: { whiteSpace: "nowrap" } }),
+            onCell: getNowrapCellProps,
         },
         {
             title: (
@@ -1154,18 +1200,29 @@ function getCompareColumns(): TableProps<CoverageRecord>["columns"] {
             dataIndex: "hits_b",
             key: "hits_b",
             width: 72,
-            onCell: () => ({ style: { whiteSpace: "nowrap" } }),
+            onCell: getNowrapCellProps,
         },
         {
             title: "Category",
             dataIndex: "compare_category",
             key: "compare_category",
             width: 100,
-            onCell: () => ({ style: { whiteSpace: "nowrap" } }),
+            onCell: getNowrapCellProps,
             render: (value: BucketCategory | undefined) =>
                 value ? getCompareCategoryLabel(value as Exclude<BucketCategory, "illegal" | "ignore">) : "-",
         },
-    ];
+];
+
+/**
+ * The compare columns only read the shared optional compare fields, but antd's
+ * column types are invariant in the record type (ColumnTitleProps references
+ * ColumnType in both variance positions), so reusing one definition for both
+ * tables requires a cast.
+ */
+function getCompareColumns<RecordType extends CompareColumnRecord>(): NonNullable<
+    TableProps<RecordType>["columns"]
+> {
+    return COMPARE_COLUMNS as unknown as NonNullable<TableProps<RecordType>["columns"]>;
 }
 
 export function PointGrid({ node, compare }: PointGridProps) {
@@ -1207,10 +1264,12 @@ export function PointGrid({ node, compare }: PointGridProps) {
         setGoalSortState({ columnKey: null, order: null });
     }, [node.key]);
 
+    // Note: CompareViewContext has no `active` field; compare being enabled or
+    // disabled is observable via setMode flipping between defined/undefined.
     useEffect(() => {
         setLargeCompareCategoryFilter("all");
         setLargeSort("bucket_asc");
-    }, [compare?.active, compare?.setMode]);
+    }, [compare?.setMode]);
 
     useEffect(() => {
         if (typeof window === "undefined") {
@@ -1438,6 +1497,17 @@ export function PointGrid({ node, compare }: PointGridProps) {
         ],
     );
 
+    // Column definitions are built inside the Theme.Consumer render prop where
+    // useMemo cannot be called, so they are memoized manually via these refs
+    // (see memoizeForRender). This keeps the columns arrays referentially
+    // stable across re-renders unless one of their inputs actually changes.
+    const fullColumnsCache = useRef<RenderMemoCache<
+        NonNullable<TableProps<CoverageRecord>["columns"]>
+    > | null>(null);
+    const largeColumnsCache = useRef<RenderMemoCache<
+        NonNullable<TableProps<LargeCoverageRecord>["columns"]>
+    > | null>(null);
+
     const sortedFullDataSource = useMemo<CoverageRecord[]>(() => {
         if (fullDataSource.length <= 1) {
             return fullDataSource;
@@ -1456,7 +1526,7 @@ export function PointGrid({ node, compare }: PointGridProps) {
             return fullDataSource;
         }
 
-        const axis = model.axes.find((it) => it.name === axisName);
+        const axis = model.axisByName.get(axisName);
         if (!axis) {
             return fullDataSource;
         }
@@ -1499,7 +1569,7 @@ export function PointGrid({ node, compare }: PointGridProps) {
         axisSortState,
         goalSortState,
         fullDataSource,
-        model.axes,
+        model.axisByName,
         model.axisValues,
         node.data.point.axis_value_start,
     ]);
@@ -1895,10 +1965,14 @@ export function PointGrid({ node, compare }: PointGridProps) {
                 ) : null;
 
                 if (isLargeMode) {
-                    const largeColumns = [
-                        ...(getLargeColumns(theme, model, compare) ?? []),
-                        ...(compare ? getCompareColumns() ?? [] : []),
-                    ];
+                    const largeColumns = memoizeForRender(
+                        largeColumnsCache,
+                        [theme, model, compare],
+                        () => [
+                            ...(getLargeColumns(theme, model, compare) ?? []),
+                            ...(compare ? getCompareColumns<LargeCoverageRecord>() : []),
+                        ],
+                    );
                     const largeScrollX = compare
                         ? 90 + model.axisModels.length * 160 + 244
                         : "max-content";
@@ -1926,8 +2000,9 @@ export function PointGrid({ node, compare }: PointGridProps) {
                     );
                 }
 
-                const fullColumns = [
-                    ...(getFullColumns(
+                const fullColumns = memoizeForRender(
+                    fullColumnsCache,
+                    [
                         theme,
                         model,
                         node.data.point.axis_value_start,
@@ -1935,9 +2010,20 @@ export function PointGrid({ node, compare }: PointGridProps) {
                         goalSortState,
                         pointTableSortActions,
                         compare,
-                    ) ?? []),
-                    ...(compare ? getCompareColumns() ?? [] : []),
-                ];
+                    ],
+                    () => [
+                        ...(getFullColumns(
+                            theme,
+                            model,
+                            node.data.point.axis_value_start,
+                            axisSortState,
+                            goalSortState,
+                            pointTableSortActions,
+                            compare,
+                        ) ?? []),
+                        ...(compare ? getCompareColumns<CoverageRecord>() : []),
+                    ],
+                );
                 const fullScrollX = compare
                     ? 90 + model.axisModels.length * 160 + 244
                     : "max-content";
