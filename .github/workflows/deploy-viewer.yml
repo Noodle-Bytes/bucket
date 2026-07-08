@@ -4,12 +4,11 @@
 name: Deploy Viewer to GitHub Pages
 
 on:
-  # Only deploy when a [Release] PR merges to main, not on every commit.
-  # Source PRs ([Patch]/[Minor]/[Major]) do not change the public-facing
-  # site; only the version-bump release PR should trigger a deploy.
-  pull_request_target:
-    branches: ["main"]
-    types: [closed]
+  # Deploy when a release tag is created (by the Tag Release On Merge
+  # workflow, using noodle-bucket-bot's PAT so this trigger fires), not on
+  # every commit to main.
+  push:
+    tags: ["v[0-9]*"]
   workflow_dispatch:
 
 permissions:
@@ -23,14 +22,14 @@ concurrency:
 
 jobs:
   build:
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.merged == true &&
-       startsWith(github.event.pull_request.title, '[Release]'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history so the viewer's git-describe version fallback works
+          # on workflow_dispatch runs (tag pushes set BUCKET_VERSION directly).
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -48,6 +47,9 @@ jobs:
         working-directory: viewer
         env:
           GITHUB_PAGES: "true"
+          # Exact version from the pushed tag; empty on workflow_dispatch,
+          # where the resolver falls back to git describe.
+          BUCKET_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
 
       - name: Set up Python
         uses: actions/setup-python@v5

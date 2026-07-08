@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "bucket"
-version = "2.4.3"
+dynamic = ["version"]
 description = "Functional coverage written in Python"
 authors = [
     {name = "Stuart Alldred", email = "stuartalldred@gmail.com"},
@@ -30,6 +30,9 @@ dev = [
 
 [project.scripts]
 bucket = "bucket.__main__:cli"
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["bucket"]

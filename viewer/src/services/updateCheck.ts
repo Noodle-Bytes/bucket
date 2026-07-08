@@ -24,6 +24,11 @@ export async function checkForNewerRelease(
     currentVersion: string,
     timeoutMs = 5000,
 ): Promise<UpdateInfo | null> {
+    // 0.0.0 is the build-time placeholder used when no version could be
+    // resolved (no git metadata) — every release would look newer.
+    if (currentVersion.trim() === "0.0.0") {
+        return null;
+    }
     try {
         const response = await fetch(LATEST_RELEASE_API, {
             headers: { Accept: "application/vnd.github+json" },

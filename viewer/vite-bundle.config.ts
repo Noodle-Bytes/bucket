@@ -16,6 +16,7 @@ import tsconfigPaths from "vite-tsconfig-paths";
 import { viteSingleFile } from "vite-plugin-singlefile"
 import {resolve} from 'path'
 import { createRequire } from "module";
+import { resolveBucketVersion } from "./scripts/resolve-version.mjs";
 
 export default defineConfig(async () => {
     let cvgPathJSON = process.env["BUCKET_CVG_JSON"];
@@ -28,12 +29,11 @@ export default defineConfig(async () => {
     // Note modern but experimental syntax is:
     //  `await import(cvgPathJSON, { with: { type: 'json' }});`
 
-    const pkg = createRequire(import.meta.url)(resolve('package.json'));
     return {
         plugins: [react(), tsconfigPaths(), viteSingleFile()],
         define: {
             __BUCKET_CVG_JSON: coverage,
-            __APP_VERSION__: JSON.stringify(pkg.version),
+            __APP_VERSION__: JSON.stringify(resolveBucketVersion()),
         }
     }
 });

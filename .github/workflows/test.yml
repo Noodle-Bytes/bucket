@@ -13,7 +13,10 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
+      # Full history and tags so hatch-vcs can derive the package version.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -39,7 +42,10 @@ jobs:
       run:
         working-directory: ./viewer
     steps:
+      # Full history and tags so __APP_VERSION__ resolves via git describe.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:

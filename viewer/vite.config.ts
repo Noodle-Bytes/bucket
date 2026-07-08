@@ -3,14 +3,13 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-import { readFileSync } from "fs";
-import { resolve } from "path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 // Plugin that synchronises vite's path searching with tsconfig settings.
 import tsconfigPaths from "vite-tsconfig-paths";
 // Plugin to allow download as a Progressive Web Application (PWA)
 import { VitePWA } from 'vite-plugin-pwa'
+import { resolveBucketVersion } from "./scripts/resolve-version.mjs";
 
 const githubRepoBase = (() => {
     if (process.env.GITHUB_PAGES !== "true") {
@@ -98,11 +97,10 @@ const getPluginPWA = ((env) => {
 
 // https://vitejs.dev/config/
 export default defineConfig((env) => {
-    const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
     return {
         base: githubRepoBase,
         define: {
-            __APP_VERSION__: JSON.stringify(pkg.version),
+            __APP_VERSION__: JSON.stringify(resolveBucketVersion()),
         },
         plugins: [react(),
         tsconfigPaths(),
