@@ -96,8 +96,8 @@ export default function EmptyState({ logoSrc, onOpenFile }: EmptyStateProps) {
                             }}
                         >
                             <LockOutlined style={{ marginRight: 6 }} />
-                            Coverage files are processed locally on your device
-                            — nothing is uploaded anywhere.
+                            Coverage files are processed locally (nothing is
+                            uploaded).
                         </Typography.Text>
                         <Typography.Text
                             style={{
