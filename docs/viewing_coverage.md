@@ -5,87 +5,192 @@
 
 ## Viewing coverage
 
-There are two ways to view the collected coverage.
+There are three ways to view collected coverage:
 
-1) Terminal
-2) Browser
+1. Terminal
+2. Web viewer
+3. Electron Mac app
+
+The recommended workflow is to export a `.bktgz` archive from your testbench and
+open it in the viewer. Coverage is processed locally in the browser or desktop
+app — nothing is uploaded.
 
 ---
+
 ### Terminal
-Bucket is able to print both a summary, or whole tables of coverage collected during a simulation. The summary view can be useful to see how much a test contributed at the end of it's run, or to summarise a regression after merging. This can be shown by running the following:
+
+Bucket can print a summary or full tables of coverage collected during a
+simulation. The summary view is useful at the end of a test run, or to summarise
+a regression after merging.
 
 ```Python
     ...
-    readout_a = point_reader.read(cvg_a)
-    ConsoleWriter().write(readout_a)
+    readout = PointReader(context_hash).read(cvg)
+    ConsoleWriter().write(readout)
     ...
 ```
 
-`ConsoleWriter` has the following options which can be set to True for more detailed information:
-|Parameter| Default | Description|
-|--|--|--|
-|axes|False|Print name and description of all axes for all coverpoints|
-|goals|False|Print name and description of all goals for all coverpoints|
-|points|False|Print hit count and goal for all buckets for each coverpoint|
-|summary|True|Print a summary of hits for each coverpoint in the tree|
+`ConsoleWriter` options:
 
-Or to read in coverage from a SQL database:
+| Parameter | Default | Description |
+| -- | -- | -- |
+| axes | False | Print name and description of all axes for all coverpoints |
+| goals | False | Print name and description of all goals for all coverpoints |
+| points | False | Print hit count and goal for all buckets for each coverpoint |
+| summary | True | Print a summary of hits for each coverpoint in the tree |
+
+From the command line:
+
+```bash
+python -m bucket write -r sql:./example.db console --summary
+python -m bucket write -r archive:./run.bktgz console --points
 ```
-python -m bucket write console --sql-path [SQL_DB_PATH] [--axes] [--goals] [--points] [--summary] --record [ID]
-```
+
+See [Exporting and merging coverage](export_and_merge.md) for the full `-r`
+readout syntax.
 
 ---
 
-### Web Viewer
+### Web viewer
 
-The intended way to view coverage is via the web viewer. This allows for simple navigation of the coverage tree, easy identification of hit, partially hit, and unhit coverpoints. Columns can be sorted and filtered to quickly narrow down the coverage you wish to see.
+The hosted viewer is available at https://noodle-bytes.github.io/bucket/
 
-To generate the coverage viewer please run the following command:
+You can also generate a standalone HTML file that embeds the viewer:
+
+```bash
+python -m bucket write -r archive:./run.bktgz html -o index.html
 ```
-python -m bucket write html --sql-path ./example.db --output index.html
-```
 
-You can then open the created HTML file in your preferred browser.
+Open the HTML file in your browser, or load `.bktgz` archives directly in the
+hosted viewer.
+
+#### Loading coverage
+
+On the empty state, use **Open File…** or drag and drop one or more `.bktgz`
+files. While coverage is loading, a progress overlay shows how many archives have
+been read and when the viewer is applying them to the session.
+
+When more than one archive is selected in a single action, a dialog offers:
+
+| Option | Result |
+| -- | -- |
+| **Compare** (two files only) | Load each archive as its own record and open compare mode |
+| **Load individually** | Add each archive as separate loaded record(s) |
+| **Merge into one** | Merge all archives into a single in-session record |
+| **Cancel** | Abort the load |
+
+Loading 50 or more archives individually shows a warning that this may slow the
+viewer. Merged results exist only for the current session — use **Export** to
+save them.
+
+#### Navigating coverage
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Main__dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Main__light.png">
-  <img alt="Screenshot showing an example covertree loaded into the Bucket viewer" src="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Main__dark.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/Main__dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/Main__light.png">
+  <img alt="Screenshot showing an example covertree loaded into the Bucket viewer" src="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/Main__dark.png">
 </picture>
 
-Above you can see the initial window when opening. The whole coverage tree is shown along with various hit statistics.
-|Statistic| Descrption|
-|--|--|
-|Goal Targets| Total number of all bucket targets|
-|Goal Hits | Total number of hits (capped at each bucket's target)
-|Buckets target | Number of targets (not their value, excluding illegal and ignore)|
-|Buckets Hit | Number of buckets with at least 1 hit|
-|Buckets Full| Number of fully saturated buckets (hits >= target)|
+The navigation tree on the left can be expanded, collapsed, and searched.
 
-On the left, the navigation menu shows the coverage tree, which can be expanded/collapsed as necessary or searched.
+| Statistic | Description |
+| -- | -- |
+| Goal Targets | Total number of all bucket targets |
+| Goal Hits | Total number of hits (capped at each bucket's target) |
+| Buckets target | Number of targets (not their value, excluding illegal and ignore) |
+| Buckets Hit | Number of buckets with at least 1 hit |
+| Buckets Full | Number of fully saturated buckets (hits >= target) |
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Search__dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Search__light.png">
-  <img alt="Screenshot showing searching the covertree for the word 'chew'" src="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Search__dark.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/Search__dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/Search__light.png">
+  <img alt="Screenshot showing searching the covertree for the word 'chew'" src="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/Search__dark.png">
 </picture>
+
+Selecting a coverpoint shows its buckets, goals, hit counts, and hit percentage.
+Axis columns and goal names can be filtered; columns can be sorted. Summary views
+also support tier and tag filters, and can be shown as a table or donut chart.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/Coverpoint__dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/Coverpoint__light.png">
+  <img alt="Screenshot showing an example coverpoint" src="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/Coverpoint__dark.png">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/Filter__dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/Filter__light.png">
+  <img alt="Screenshot showing an example coverpoint filter" src="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/Filter__dark.png">
+</picture>
+
+Coverpoints with more than 50,000 buckets automatically use optimized large-table
+mode: a virtualized table with dropdown-based filtering and sorting. You can
+optionally enable full per-column features if needed.
+
+#### Session management
+
+Once coverage is loaded, the header provides:
+
+| Action | Description |
+| -- | -- |
+| **Load** | Append more `.bktgz` archives |
+| **Edit** | Choose which records are loaded, or merge selected records |
+| **Refresh** | Reload file-backed records from disk (Electron) or re-select files (browser) |
+| **Export** | Save loaded record(s) as `.bktgz` or JSON |
+| **Compare** | Enter compare mode when compatible records are available |
+| **Clear** | Remove all loaded coverage from the session |
+
+A single `.bktgz` archive can contain multiple records. The **Edit** dialog shows
+each record's source and lets you toggle which records contribute to the tree.
+
+#### Compare mode
+
+Compare mode shows bucket-level differences between two coverage records that
+share the same covertree definition (`def_sha`).
+
+**To start compare:**
+
+1. Load two `.bktgz` files together and choose **Compare**, or
+2. Load records individually, then click **Compare** in the header.
+
+The compare toolbar lets you choose records **A** and **B**, a coverage
+definition (**Any hit** or **Met goal**), and a set filter:
+
+| Set filter | Shows buckets where |
+| -- | -- |
+| **A only** | Covered in A but not B |
+| **Both** | Covered in both |
+| **B only** | Covered in B but not A |
+| **Neither** | Covered in neither |
+| **All** | All valid buckets (use category filters in large tables) |
+
+Summary cards show counts and percentages for each category. While compare is
+active, the tree, summary table, and coverpoint tables add compare columns and
+category highlighting.
+
+Use **Generate report** to export an HTML or JSON compare report. The report
+includes global statistics, asymmetric coverage patterns, coverpoints with
+differences, and per-category bucket lists.
+
+To try compare locally:
+
+```bash
+python tools/gen_compare_fixtures.py
+```
+
+This writes `compare_a.bktgz` and `compare_b.bktgz` with the same covertree but
+different hit data.
 
 ---
-If you click on a coverpoint, the Bucket viewer shows all buckets, the goals, number of hits and hit percentage.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Coverpoint__dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Coverpoint__light.png">
-  <img alt="Screenshot showing an example coverpoint" src="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Coverpoint__dark.png">
-</picture>
+### Electron Mac app
 
-Each of the axis columns and goal names can be filtered to only display the buckets you are interested in. Each column can also be sorted.
+The Electron app provides a native Mac experience for viewing `.bktgz` archives.
+See [`electron/README.md`](../electron/README.md) for build instructions.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Filter__dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Filter__light.png">
-  <img alt="Screenshot showing an example coverpoint" src="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/Filter__dark.png">
-</picture>
+Open archives via **File > Open**, drag and drop, double-click (when associated
+with the app), or **Open Recent**. The same load, compare, export, and session
+features are available as in the web viewer.
 
 <!-- Navigation links below are auto-generated by tools/update_docs_nav.py. Do not edit manually. -->
 ---
@@ -93,4 +198,4 @@ Each of the axis columns and goal names can be filtered to only display the buck
 
 Prev: [Reading and Writing](reading_and_writing.md)
 <br>
-Next: [Performance guide](performance.md)
+Back to index: [Index](index.md)

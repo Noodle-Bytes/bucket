@@ -12,7 +12,7 @@ $ ./bin/shell
 $ python -m example.example
 ```
 
-Below describes how to use Bucket to create a coverage tree, sample your data and then merge the results. Examples of coverpoints in use can be seen in [cats.py](https://github.com/VyperCore/bucket/blob/main/example/cats.py) and [dogs.py](https://github.com/VyperCore/bucket/blob/main/example/dogs.py).
+Below describes how to use Bucket to create a coverage tree, sample your data and then merge the results. Examples of coverpoints in use can be seen in [cats.py](https://github.com/Noodle-Bytes/bucket/blob/main/example/cats.py) and [dogs.py](https://github.com/Noodle-Bytes/bucket/blob/main/example/dogs.py).
 
 # Contents
 1. [Introduction](introduction.md)
@@ -23,7 +23,6 @@ Below describes how to use Bucket to create a coverage tree, sample your data an
 6. [Exporting and merging coverage](export_and_merge.md)
 7. [Reading and Writing](reading_and_writing.md)
 8. [Viewing coverage](viewing_coverage.md)
-9. [Performance guide](performance.md)
 
 
 ---

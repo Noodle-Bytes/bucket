@@ -10,12 +10,14 @@
 
 ## Adding coverage to the testbench
 
-A sampler must be initialised with a reference to the top of the coverage hierarchy (the top level covergroup). The `sample()` method can then be passed a copy of the trace object each time, and will then recursively call each coverpoints sample method.
+Instance your top-level `Covertop` in the testbench. On each sampling opportunity,
+call `sample()` with your trace object; this recursively invokes each active
+coverpoint's `sample()` method.
 
 ``` Python
-    # My testbench
+    # My testbench
 
-    cvg = MyBigCoverGroup(logger=self.log)
+    cvg = MyBigCoverGroup(log=self.log)
 
     ...
     # Collect trace_data from monitors and other sources, then pass to coverage

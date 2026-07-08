@@ -12,14 +12,14 @@
 
 Bucket is a functional coverage tool allowing for the creation of coverpoints, sampling of data, and viewing of collected coverage. It is written entirely in Python which allows for easy integration with cocotb and other Python-based testbenches.
 
-Rather than binding coverage to each DUT monitor, Bucket creates a coverage tree which is to be instanced within your testbench. The testbench is expected to collate any data which is to be covered (normally a dataclass) and pass it to the Sampler.
+Rather than binding coverage to each DUT monitor, Bucket creates a coverage tree which is to be instanced within your testbench. The testbench is expected to collate any data which is to be covered (normally a dataclass) and pass it to the top-level coverage instance via `sample()`.
 
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/trace_from_dut__dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/trace_from_dut__light.png">
-  <img alt="Image demonstrating collecting trace data from a DUT, collating it in the testbench, before passing it to Bucket" src="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/trace_from_dut__dark.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/trace_from_dut__dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/trace_from_dut__light.png">
+  <img alt="Image demonstrating collecting trace data from a DUT, collating it in the testbench, before passing it to Bucket" src="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/trace_from_dut__dark.png">
 </picture>
 
 <br>
@@ -29,9 +29,9 @@ Since Bucket coverage is independent from the simulator, and the testbench, it c
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/trace_from_log__dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/trace_from_log__light.png">
-  <img alt="Image demonstrating collecting trace data from a log parser, reforming the trace data, before passing it to Bucket" src="https://raw.githubusercontent.com/vypercore/bucket/main/.github/images/trace_from_log__dark.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/trace_from_log__dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/trace_from_log__light.png">
+  <img alt="Image demonstrating collecting trace data from a log parser, reforming the trace data, before passing it to Bucket" src="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/trace_from_log__dark.png">
 </picture>
 
 <br>
