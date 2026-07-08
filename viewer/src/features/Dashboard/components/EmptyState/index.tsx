@@ -4,7 +4,7 @@
  */
 
 import { Button, Typography } from "antd";
-import { FolderOpenOutlined } from "@ant-design/icons";
+import { FolderOpenOutlined, LockOutlined } from "@ant-design/icons";
 import Theme from "@/providers/Theme";
 
 declare const __APP_VERSION__: string;
@@ -61,7 +61,6 @@ export default function EmptyState({ logoSrc, onOpenFile }: EmptyStateProps) {
                                 color: secondaryTextColor,
                                 fontSize: '16px',
                                 textAlign: 'center',
-                                whiteSpace: 'nowrap',
                             }}
                         >
                             Load a coverage archive (.bktgz) to view coverage data.
@@ -87,6 +86,19 @@ export default function EmptyState({ logoSrc, onOpenFile }: EmptyStateProps) {
                                 </Typography.Text>
                             )}
                         </div>
+                        <Typography.Text
+                            style={{
+                                marginTop: '40px',
+                                fontSize: '13px',
+                                color: secondaryTextColor,
+                                textAlign: 'center',
+                                maxWidth: '560px',
+                            }}
+                        >
+                            <LockOutlined style={{ marginRight: 6 }} />
+                            Coverage files are processed locally on your device
+                            — nothing is uploaded anywhere.
+                        </Typography.Text>
                         <Typography.Text
                             style={{
                                 position: 'absolute',
