@@ -5,8 +5,8 @@ name: Deploy Viewer to GitHub Pages
 
 on:
   # Deploy when a release tag is created (by the Tag Release On Merge
-  # workflow, using noodle-bucket-bot's PAT so this trigger fires), not on
-  # every commit to main.
+  # workflow, using a noodle-bucket-releases App token so this trigger
+  # fires), not on every commit to main.
   push:
     tags: ["v[0-9]*"]
   workflow_dispatch:
