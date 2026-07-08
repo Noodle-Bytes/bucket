@@ -202,12 +202,6 @@ class Coverpoint(CoverBase):
             axis_values.append(list(axis.values.keys()))
         yield from itertools.product(*axis_values)
 
-    def _increment_hit_count(self, bucket: tuple, hits: int = 1):
-        """
-        Increment hit count for the specified bucket. Default is +1
-        """
-        self._cvg_hits[bucket] += hits
-
     @validate_call
     def add_axis(
         self,
@@ -261,7 +255,8 @@ class Coverpoint(CoverBase):
 
     def _get_goal(self, bucket: tuple):
         """
-        Retrieve goal for a given bucket
+        Retrieve goal for a given bucket.
+        Note Bucket.hit() inlines this lookup for speed — keep them in sync.
         """
         return self._cvg_goals.get(bucket, self._default_goal)
 

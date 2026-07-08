@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Iterable, overload
 
-from sqlalchemy import Integer, String, create_engine, select
+from sqlalchemy import Integer, String, create_engine, insert, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
@@ -19,7 +19,6 @@ from .common import (
     GoalTuple,
     MergeReadout,
     PointHitTuple,
-    PointTuple,
     PuppetReadout,
     Reader,
     Readout,
@@ -77,13 +76,6 @@ class PointRow(BaseRow):
     name: Mapped[str] = mapped_column(String(30))
     description: Mapped[str] = mapped_column(String(30))
 
-    @classmethod
-    def from_tuple(cls, definition: int, tup: PointTuple):
-        # Core point fields are stored in point table; optional metadata fields
-        # are stored in point_meta to preserve compatibility with older DBs.
-        data = {field: tup._asdict()[field] for field in PointTuple._fields[:15]}
-        return cls(definition=definition, **data)
-
 
 class PointMetaRow(BaseRow):
     __tablename__ = "point_meta"
@@ -93,17 +85,6 @@ class PointMetaRow(BaseRow):
     tier: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tags: Mapped[str] = mapped_column(String(300), nullable=False, default="")
     motivation: Mapped[str] = mapped_column(String(300), nullable=False, default="")
-
-    @classmethod
-    def from_tuple(cls, definition: int, tup: PointTuple):
-        return cls(
-            definition=definition,
-            start=tup.start,
-            depth=tup.depth,
-            tier=tup.tier,
-            tags=tup.tags,
-            motivation=tup.motivation,
-        )
 
 
 class AxisRow(BaseRow):
@@ -115,10 +96,6 @@ class AxisRow(BaseRow):
     name: Mapped[str] = mapped_column(String(30))
     description: Mapped[str] = mapped_column(String(30))
 
-    @classmethod
-    def from_tuple(cls, definition: int, tup: AxisTuple):
-        return cls(definition=definition, **tup._asdict())
-
 
 class GoalRow(BaseRow):
     __tablename__ = "goal"
@@ -128,10 +105,6 @@ class GoalRow(BaseRow):
     name: Mapped[str] = mapped_column(String(30))
     description: Mapped[str] = mapped_column(String(30))
 
-    @classmethod
-    def from_tuple(cls, definition: int, tup: GoalTuple):
-        return cls(definition=definition, **tup._asdict())
-
 
 class AxisValueRow(BaseRow):
     __tablename__ = "axis_value"
@@ -139,21 +112,12 @@ class AxisValueRow(BaseRow):
     start: Mapped[int] = mapped_column(Integer, primary_key=True)
     value: Mapped[str] = mapped_column(String(30))
 
-    @classmethod
-    def from_tuple(cls, definition: int, tup: AxisValueTuple):
-        # Keep SQL schema stable (start/value only); sort metadata is optional.
-        return cls(definition=definition, start=tup.start, value=tup.value)
-
 
 class BucketGoalRow(BaseRow):
     __tablename__ = "bucket_goal"
     definition: Mapped[int] = mapped_column(Integer, primary_key=True)
     start: Mapped[int] = mapped_column(Integer, primary_key=True)
     goal: Mapped[int] = mapped_column(Integer)
-
-    @classmethod
-    def from_tuple(cls, definition: int, tup: BucketGoalTuple):
-        return cls(definition=definition, **tup._asdict())
 
 
 class PointHitRow(BaseRow):
@@ -165,20 +129,12 @@ class PointHitRow(BaseRow):
     hit_buckets: Mapped[int] = mapped_column(Integer)
     full_buckets: Mapped[int] = mapped_column(Integer)
 
-    @classmethod
-    def from_tuple(cls, run: int, tup: PointHitTuple):
-        return cls(run=run, **tup._asdict())
-
 
 class BucketHitRow(BaseRow):
     __tablename__ = "bucket_hit"
     run: Mapped[int] = mapped_column(Integer, primary_key=True)
     start: Mapped[int] = mapped_column(Integer, primary_key=True)
     hits: Mapped[int] = mapped_column(Integer)
-
-    @classmethod
-    def from_tuple(cls, run: int, tup: BucketHitTuple):
-        return cls(run=run, **tup._asdict())
 
 
 ###############################################################################
@@ -196,29 +152,42 @@ class SQLWriter(Writer):
         self._has_point_meta = inspect(engine).has_table(PointMetaRow.__tablename__)
 
     def write(self, readout: Readout):
-        with Session(self.engine) as self.session:
+        # Rows are inserted with bulk executemany statements rather than
+        # per-row session.add(), which is an order of magnitude slower for
+        # the large bucket tables. Each table's columns are populated from the
+        # tuple fields of the same name, so the table definitions above are the
+        # single owner of the tuple-to-column mapping (including the core/meta
+        # split of PointTuple and the schema-stable subset of AxisValueTuple).
+        with Session(self.engine) as session:
+
+            def bulk(table: type[BaseRow], ref_column: str, ref: int, tuples):
+                fields = [
+                    column.key
+                    for column in table.__table__.columns
+                    if column.key != ref_column
+                ]
+                rows = []
+                for tup in tuples:
+                    row = {field: getattr(tup, field) for field in fields}
+                    row[ref_column] = ref
+                    rows.append(row)
+                if rows:
+                    session.execute(insert(table), rows)
+
             # Write the definition out
             def_row = DefinitionRow(sha=readout.get_def_sha())
-            self.session.add(def_row)
-            self.session.commit()
+            session.add(def_row)
+            session.flush()
             def_ref = def_row.definition
 
-            for point in readout.iter_points():
-                self.session.add(PointRow.from_tuple(def_ref, point))
-                if self._has_point_meta:
-                    self.session.add(PointMetaRow.from_tuple(def_ref, point))
-
-            for axis in readout.iter_axes():
-                self.session.add(AxisRow.from_tuple(def_ref, axis))
-
-            for axis_value in readout.iter_axis_values():
-                self.session.add(AxisValueRow.from_tuple(def_ref, axis_value))
-
-            for goal in readout.iter_goals():
-                self.session.add(GoalRow.from_tuple(def_ref, goal))
-
-            for bucket_goal in readout.iter_bucket_goals():
-                self.session.add(BucketGoalRow.from_tuple(def_ref, bucket_goal))
+            points = list(readout.iter_points())
+            bulk(PointRow, "definition", def_ref, points)
+            if self._has_point_meta:
+                bulk(PointMetaRow, "definition", def_ref, points)
+            bulk(AxisRow, "definition", def_ref, readout.iter_axes())
+            bulk(AxisValueRow, "definition", def_ref, readout.iter_axis_values())
+            bulk(GoalRow, "definition", def_ref, readout.iter_goals())
+            bulk(BucketGoalRow, "definition", def_ref, readout.iter_bucket_goals())
 
             rec_row = RunRow(
                 definition=def_ref,
@@ -226,17 +195,14 @@ class SQLWriter(Writer):
                 source=readout.get_source(),
                 source_key=readout.get_source_key(),
             )
-            self.session.add(rec_row)
-            self.session.commit()
+            session.add(rec_row)
+            session.flush()
             rec_ref = rec_row.run
 
-            for point_hit in readout.iter_point_hits():
-                self.session.add(PointHitRow.from_tuple(rec_ref, point_hit))
+            bulk(PointHitRow, "run", rec_ref, readout.iter_point_hits())
+            bulk(BucketHitRow, "run", rec_ref, readout.iter_bucket_hits())
 
-            for bucket_hit in readout.iter_bucket_hits():
-                self.session.add(BucketHitRow.from_tuple(rec_ref, bucket_hit))
-
-            self.session.commit()
+            session.commit()
 
         return rec_ref
 

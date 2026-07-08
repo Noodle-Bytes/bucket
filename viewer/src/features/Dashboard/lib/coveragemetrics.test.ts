@@ -5,9 +5,12 @@
 
 import { describe, expect, test } from "vitest";
 import type { PointNode } from "./coveragetree";
-import { getPointNodeCompareCounts, getPointNodeCoverageMetrics } from "./coveragemetrics";
+import {
+    getPointNodeCompareCounts,
+    getPointNodeCoverageMetrics,
+    type PointCoverageMetrics,
+} from "./coveragemetrics";
 import type { ComparisonResult } from "@/types/coverageCompare";
-import type { CategoryCounts } from "@/types/coverageCompare";
 
 function leaf(key: string, target: number, hits: number, buckets: number, hitBuckets: number): PointNode {
     return {
@@ -68,26 +71,111 @@ describe("getPointNodeCoverageMetrics", () => {
             full_buckets: 0,
         });
     });
+
+    /** Reference implementation without memoization, for validating the cached path. */
+    function referenceMetrics(node: PointNode): PointCoverageMetrics {
+        const children = (node.children ?? []) as PointNode[];
+        if (children.length === 0) {
+            const { point, point_hit } = node.data ?? {};
+            if (!point || !point_hit) {
+                return { target: 0, hits: 0, target_buckets: 0, hit_buckets: 0, full_buckets: 0 };
+            }
+            return {
+                target: point.target,
+                hits: point_hit.hits,
+                target_buckets: point.target_buckets,
+                hit_buckets: point_hit.hit_buckets,
+                full_buckets: point_hit.full_buckets,
+            };
+        }
+        return children.map(referenceMetrics).reduce(
+            (acc, m) => ({
+                target: acc.target + m.target,
+                hits: acc.hits + m.hits,
+                target_buckets: acc.target_buckets + m.target_buckets,
+                hit_buckets: acc.hit_buckets + m.hit_buckets,
+                full_buckets: acc.full_buckets + m.full_buckets,
+            }),
+            { target: 0, hits: 0, target_buckets: 0, hit_buckets: 0, full_buckets: 0 },
+        );
+    }
+
+    function group(key: string, children: PointNode[]): PointNode {
+        return {
+            key,
+            title: key,
+            children,
+            data: {
+                readout: {} as Readout,
+                point: { target: 0, target_buckets: 0 } as PointTuple,
+                point_hit: { hits: 0, hit_buckets: 0, full_buckets: 0 } as PointHitTuple,
+            },
+        } as PointNode;
+    }
+
+    test("cached results for nested covergroups match uncached computation", () => {
+        const inner = group("inner", [leaf("a", 10, 3, 2, 1), leaf("b", 20, 12, 5, 4)]);
+        const middle = group("middle", [inner, leaf("c", 5, 5, 3, 3)]);
+        const root = group("root", [middle, leaf("d", 7, 0, 1, 0)]);
+
+        // Query children first so the root aggregation exercises cached child entries.
+        expect(getPointNodeCoverageMetrics(inner)).toEqual(referenceMetrics(inner));
+        expect(getPointNodeCoverageMetrics(middle)).toEqual(referenceMetrics(middle));
+        expect(getPointNodeCoverageMetrics(root)).toEqual(referenceMetrics(root));
+        expect(getPointNodeCoverageMetrics(root)).toEqual({
+            target: 42,
+            hits: 20,
+            target_buckets: 11,
+            hit_buckets: 8,
+            full_buckets: 0,
+        });
+    });
+
+    test("repeated calls return the memoized result for the same node", () => {
+        const covergroup = group("cg", [leaf("a", 10, 3, 2, 1), leaf("b", 20, 12, 5, 4)]);
+        const first = getPointNodeCoverageMetrics(covergroup);
+        const second = getPointNodeCoverageMetrics(covergroup);
+        expect(second).toBe(first);
+        expect(second).toEqual(referenceMetrics(covergroup));
+    });
+
+    test("cache is keyed on node identity, not structure", () => {
+        const treeA = group("cg", [leaf("a", 10, 3, 2, 1)]);
+        const treeB = group("cg", [leaf("a", 40, 25, 8, 6)]);
+        expect(getPointNodeCoverageMetrics(treeA)).toEqual(referenceMetrics(treeA));
+        expect(getPointNodeCoverageMetrics(treeB)).toEqual(referenceMetrics(treeB));
+        expect(getPointNodeCoverageMetrics(treeB).target).toBe(40);
+    });
 });
 
 describe("getPointNodeCompareCounts", () => {
-    test("sums compare counts for tree covergroups", () => {
-        function leafCounts(
-            start: number,
-            counts: Partial<CategoryCounts>,
-        ): PointNode {
-            return {
-                key: String(start),
-                title: String(start),
-                children: [],
-                data: {
-                    readout: {} as Readout,
-                    point: { start } as PointTuple,
-                    point_hit: {} as PointHitTuple,
-                },
-            } as PointNode;
-        }
+    function compareLeaf(start: number): PointNode {
+        return {
+            key: String(start),
+            title: String(start),
+            children: [],
+            data: {
+                readout: {} as Readout,
+                point: { start } as PointTuple,
+                point_hit: {} as PointHitTuple,
+            },
+        } as PointNode;
+    }
 
+    function compareGroup(children: PointNode[]): PointNode {
+        return {
+            key: "cg",
+            title: "CG",
+            children,
+            data: {
+                readout: {} as Readout,
+                point: { start: 99 } as PointTuple,
+                point_hit: {} as PointHitTuple,
+            },
+        } as PointNode;
+    }
+
+    test("sums compare counts for tree covergroups", () => {
         const comparison = {
             pointsByStart: new Map([
                 [
@@ -121,16 +209,7 @@ describe("getPointNodeCompareCounts", () => {
             ]),
         } as unknown as ComparisonResult;
 
-        const covergroup = {
-            key: "cg",
-            title: "CG",
-            children: [leafCounts(1, {}), leafCounts(2, {})],
-            data: {
-                readout: {} as Readout,
-                point: { start: 99 } as PointTuple,
-                point_hit: {} as PointHitTuple,
-            },
-        } as PointNode;
+        const covergroup = compareGroup([compareLeaf(1), compareLeaf(2)]);
 
         expect(getPointNodeCompareCounts(covergroup, comparison)).toEqual({
             a_only: 11,
@@ -141,5 +220,44 @@ describe("getPointNodeCompareCounts", () => {
             illegal: 0,
             ignore: 0,
         });
+
+        // Memoized: repeated calls with the same (node, comparison) pair reuse the result.
+        expect(getPointNodeCompareCounts(covergroup, comparison)).toBe(
+            getPointNodeCompareCounts(covergroup, comparison),
+        );
+    });
+
+    test("cache is keyed on the comparison, not just the node", () => {
+        function makeComparison(aOnly: number): ComparisonResult {
+            return {
+                pointsByStart: new Map([
+                    [
+                        1,
+                        {
+                            counts: {
+                                a_only: aOnly,
+                                both: 0,
+                                b_only: 0,
+                                neither: 0,
+                                valid: aOnly,
+                                illegal: 0,
+                                ignore: 0,
+                            },
+                        },
+                    ],
+                ]),
+            } as unknown as ComparisonResult;
+        }
+
+        const covergroup = compareGroup([compareLeaf(1)]);
+
+        const comparisonA = makeComparison(5);
+        const comparisonB = makeComparison(9);
+
+        expect(getPointNodeCompareCounts(covergroup, comparisonA)?.a_only).toBe(5);
+        expect(getPointNodeCompareCounts(covergroup, comparisonB)?.a_only).toBe(9);
+        // Re-query the first comparison to ensure it was not overwritten.
+        expect(getPointNodeCompareCounts(covergroup, comparisonA)?.a_only).toBe(5);
+        expect(getPointNodeCompareCounts(covergroup, undefined)).toBeUndefined();
     });
 });

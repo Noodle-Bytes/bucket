@@ -96,51 +96,48 @@ def _write(path: Path, values: Iterable[tuple]):
     return byte_offset, byte_end
 
 
+def _parse_rows(lines: Iterable[str]) -> Iterable[tuple]:
+    """
+    Parse CSV lines into value tuples. Empty fields are preserved as empty
+    strings (None values are stored as "" since CSV has no null
+    representation; optional numeric fields such as the point tier are
+    converted back to None by their tuple constructors).
+    """
+    for row in csv.reader(lines, quoting=csv.QUOTE_NONNUMERIC):
+        yield tuple(
+            int(x) if isinstance(x, float) and x.is_integer() else x for x in row
+        )
+
+
+def _read_row(path: Path, byte_offset: int) -> tuple:
+    """
+    Read the single CSV row starting at the given byte offset.
+    """
+    with path.open("rb") as f:
+        f.seek(byte_offset)
+        line = f.readline()
+    return next(_parse_rows([line.decode("utf-8")]))
+
+
 def _read(
     path: Path,
     byte_offset: int,
     byte_end: int,
     line_offset: int,
-    line_end: int,
+    line_end: int | None,
 ) -> Iterable[tuple]:
     """
     Read a slice of values from a CSV file from a 'seeked' section of the file.
-    For record rows (8 fields), preserves empty strings for source/source_key (indices 6, 7).
-    For all other rows, converts empty strings to None.
     """
-    if byte_end - byte_offset == 0:
-        yield from []
-        return
-
-    with path.open("r", newline="") as f:
+    # Read the byte range exactly. Note readlines(hint) must not be used here:
+    # in text mode the hint is only checked per buffered chunk, so it can return
+    # lines beyond byte_end (spilling into the next definition/record block).
+    with path.open("rb") as f:
         f.seek(byte_offset)
+        data = f.read(byte_end - byte_offset)
 
-        lines = f.readlines(byte_end - byte_offset - 1)[line_offset:line_end]
-
-        for row in csv.reader(lines, quoting=csv.QUOTE_NONNUMERIC):
-            # For record rows (8 or 9 fields), keep empty strings as empty strings
-            # for source/source_key/bucket_version (indices 6, 7, 8).
-            # CSV doesn't support None, so we store "" for empty values
-            # For all other rows, convert empty strings to None
-            is_record_row = len(row) in (8, 9)  # ArchiveRecordTuple has 8 or 9 fields
-            processed_row = []
-            for idx, x in enumerate(row):
-                if x == "":
-                    # Keep empty strings for source, source_key, bucket_version in record rows
-                    # Convert to None for other fields/rows
-                    if is_record_row and idx in (
-                        6,
-                        7,
-                        8,
-                    ):  # source, source_key, bucket_version
-                        processed_row.append("")
-                    else:
-                        processed_row.append(None)
-                elif isinstance(x, float) and x.is_integer():
-                    processed_row.append(int(x))
-                else:
-                    processed_row.append(x)
-            yield tuple(processed_row)
+    lines = data.decode("utf-8").splitlines()[line_offset:line_end]
+    yield from _parse_rows(lines)
 
 
 class ArchiveReadout(Readout):
@@ -153,17 +150,11 @@ class ArchiveReadout(Readout):
         self.path = path
         self._tempdir = _tempdir
 
-        record_row = next(_read(self.path / RECORD_PATH, rec_ref, rec_ref + 1, 0, 1))
+        record_row = _read_row(self.path / RECORD_PATH, rec_ref)
         self.record = ArchiveRecordTuple(*record_row)
 
-        definition_row = next(
-            _read(
-                self.path / DEFINITION_PATH,
-                self.record.definition_offset,
-                self.record.definition_offset + 1,
-                0,
-                1,
-            )
+        definition_row = _read_row(
+            self.path / DEFINITION_PATH, self.record.definition_offset
         )
         self.definition = ArchiveDefinitionTuple(*definition_row)
 

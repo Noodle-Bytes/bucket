@@ -278,7 +278,6 @@ class Covergroup(CoverBase):
             for child in self.iter_children():
                 child._sample(trace)
 
-    @validate_call
     def iter_children(self) -> Iterable[CoverBase]:
         # We maintain a cache for the ordered sequence of children (coverpoints then
         # covergroups, each sorted by name) to avoid repeated sorting on every iteration.

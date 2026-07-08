@@ -176,12 +176,22 @@ type ArchiveRecord = {
 
 type ArchiveTableMap = Record<ArchiveTableName, ArchiveTable>;
 
+// Offsets may arrive as a plain array (synchronous parse) or as a Float64Array
+// (transferred back from the archive worker without copying).
+export type CsvOffsets = number[] | Float64Array;
+
+export type ParsedCsvTable = {
+    rows: (string | number)[][];
+    offsets: CsvOffsets;
+};
+
+export type ParsedArchiveTables = Record<ArchiveTableName, ParsedCsvTable>;
+
 class ArchiveTable {
     rows: (string | number)[][];
-    offsets: number[];
+    offsets: CsvOffsets;
 
-    constructor(data: Uint8Array) {
-        const parsed = parseCsvTable(data);
+    constructor(parsed: ParsedCsvTable) {
         this.rows = parsed.rows;
         this.offsets = parsed.offsets;
     }
@@ -422,9 +432,18 @@ export class ArchiveReader implements Reader {
     }
 
     static fromCompressedBytes(bytes: Uint8Array): ArchiveReader {
-        const decompressed = gunzipSync(bytes);
-        const tableEntries = parseTarEntries(decompressed);
-        const tables = buildArchiveTables(tableEntries);
+        return ArchiveReader.fromParsedTables(parseArchiveBytes(bytes));
+    }
+
+    /**
+     * Reconstruct a reader from already-parsed table data (e.g. produced off
+     * the main thread by the archive worker — see archiveWorker.ts).
+     */
+    static fromParsedTables(parsed: ParsedArchiveTables): ArchiveReader {
+        const tables = {} as ArchiveTableMap;
+        for (const name of ARCHIVE_TABLE_FILES) {
+            tables[name] = new ArchiveTable(parsed[name]);
+        }
         return new ArchiveReader(tables);
     }
 
@@ -597,14 +616,21 @@ function parseTarEntries(buffer: Uint8Array): Record<string, Uint8Array> {
     return entries;
 }
 
-function buildArchiveTables(entries: Record<string, Uint8Array>): ArchiveTableMap {
+/**
+ * Decompress a .bktgz archive and parse every table into rows + byte offsets.
+ * This is the expensive part of loading an archive; it is deliberately free of
+ * DOM/class state so it can also run inside a Web Worker (archiveWorker.ts).
+ */
+export function parseArchiveBytes(bytes: Uint8Array): ParsedArchiveTables {
+    const decompressed = gunzipSync(bytes);
+    const entries = parseTarEntries(decompressed);
     const missing = ARCHIVE_TABLE_FILES.filter((name) => !(name in entries));
     if (missing.length > 0) {
         throw new Error(`Archive is missing tables: ${missing.join(", ")}`);
     }
-    const tables = {} as ArchiveTableMap;
+    const tables = {} as ParsedArchiveTables;
     for (const name of ARCHIVE_TABLE_FILES) {
-        tables[name] = new ArchiveTable(entries[name]!);
+        tables[name] = parseCsvTable(entries[name]!);
     }
     return tables;
 }
@@ -621,7 +647,134 @@ function decodeCString(bytes: Uint8Array): string {
     return result.trimEnd();
 }
 
-function parseCsvTable(data: Uint8Array): { rows: (string | number)[][]; offsets: number[] } {
+/**
+ * Parse a CSV table into rows plus the BYTE offset of the first byte of each
+ * row. The byte offsets are load-bearing: they are matched against byte
+ * ranges written into the definition/record tables by the Python side.
+ *
+ * Fast path: decode the whole buffer once and scan the resulting string,
+ * slicing substrings per field. String indices only equal byte offsets when
+ * the input is pure ASCII — for UTF-8, decoded.length === data.length if and
+ * only if every code unit came from a single ASCII byte — so any non-ASCII
+ * table falls back to the byte-wise parser. Coverage data is overwhelmingly
+ * ASCII, so the fast path is almost always taken.
+ */
+export function parseCsvTable(data: Uint8Array): ParsedCsvTable {
+    const text = new TextDecoder().decode(data);
+    if (text.length !== data.length) {
+        return parseCsvTableBytes(data);
+    }
+    return parseCsvTableString(text);
+}
+
+function parseCsvTableString(text: string): ParsedCsvTable {
+    const rows: (string | number)[][] = [];
+    const offsets: number[] = [];
+    const length = text.length;
+    let idx = 0;
+
+    while (idx < length) {
+        const first = text.charCodeAt(idx);
+        if (first === 10 || first === 13) {
+            idx += 1;
+            continue;
+        }
+
+        offsets.push(idx);
+        const row: (string | number)[] = [];
+        let field = "";
+        let fieldStart = idx;
+        // While `plain`, the field so far is an unbroken run of ordinary
+        // characters and can be sliced straight out of `text`. Quotes and
+        // stray \r force the slower accumulate-into-`field` path.
+        let plain = true;
+        let inQuotes = false;
+        // Where the final field of the row ends; length covers a last row
+        // with no trailing newline, the \n branch overrides it otherwise.
+        let fieldEnd = length;
+
+        while (idx < length) {
+            const code = text.charCodeAt(idx);
+            if (inQuotes) {
+                // Everything up to the closing quote (including , \r \n) is
+                // content — append it in one slice. The Python writer quotes
+                // every string field, so this is the common path for text.
+                const quote = text.indexOf('"', idx);
+                if (quote === -1) {
+                    // Unterminated quote: rest of the input is content
+                    field += text.slice(idx);
+                    idx = length;
+                    continue;
+                }
+                field += text.slice(idx, quote);
+                if (text.charCodeAt(quote + 1) === 34) {
+                    // Escaped quote ("") inside a quoted field
+                    field += '"';
+                    idx = quote + 2;
+                } else {
+                    inQuotes = false;
+                    idx = quote + 1;
+                }
+                continue;
+            }
+
+            if (code === 34) {
+                if (plain) {
+                    field = text.slice(fieldStart, idx);
+                    plain = false;
+                }
+                inQuotes = true;
+                idx += 1;
+                continue;
+            }
+
+            if (code === 44) {
+                row.push(parseCsvValue(plain ? text.slice(fieldStart, idx) : field));
+                field = "";
+                plain = true;
+                idx += 1;
+                fieldStart = idx;
+                continue;
+            }
+
+            if (code === 13) {
+                // Unquoted \r is skipped, matching the byte-wise parser
+                // (\r\n row endings are completed by the \n branch below).
+                if (plain) {
+                    field = text.slice(fieldStart, idx);
+                    plain = false;
+                }
+                idx += 1;
+                continue;
+            }
+
+            if (code === 10) {
+                fieldEnd = idx;
+                idx += 1;
+                break;
+            }
+
+            if (!plain) {
+                field += text[idx];
+            }
+            idx += 1;
+        }
+
+        row.push(
+            parseCsvValue(plain ? text.slice(fieldStart, fieldEnd) : field),
+        );
+        rows.push(row);
+    }
+
+    return { rows, offsets };
+}
+
+/**
+ * Byte-wise CSV parser. Slower than parseCsvTableString but correct for any
+ * UTF-8 input: it tracks byte offsets directly, so it is used as the fallback
+ * whenever a table contains non-ASCII bytes.
+ */
+export function parseCsvTableBytes(data: Uint8Array): ParsedCsvTable {
     const rows: (string | number)[][] = [];
     const offsets: number[] = [];
     const length = data.length;
@@ -707,43 +860,8 @@ function toString(value: string | number): string {
     return typeof value === "string" ? value : String(value);
 }
 
-export async function readFileHandle(file: FileSystemFileHandle): Promise<Reader> {
-
-    if (file.name.endsWith(".json")) {
-        const fileData = await file.getFile();
-        const json = await fileData.text();
-        const data: JSONData = JSON.parse(json);
-        return new JSONReader(data);
-    }
-
-    if (file.name.endsWith(".bktgz")) {
-        const fileData = await file.getFile();
-        const buffer = await fileData.arrayBuffer();
-        return ArchiveReader.fromCompressedBytes(new Uint8Array(buffer));
-    }
-
-    throw new Error("Unsupported file type");
-
-}
-
-// Electron-specific file reading
-export async function readElectronFile(bytes: number[]): Promise<Reader> {
-    const buffer = new Uint8Array(bytes);
-
-    // Try to detect file type by checking if it's a gzipped tar (archive)
-    // or JSON. For now, we'll assume .bktgz based on context, but could
-    // add more sophisticated detection.
-    try {
-        // Try parsing as archive first (most common case)
-        return ArchiveReader.fromCompressedBytes(buffer);
-    } catch (error) {
-        // If that fails, try JSON
-        try {
-            const text = new TextDecoder().decode(buffer);
-            const data: JSONData = JSON.parse(text);
-            return new JSONReader(data);
-        } catch (jsonError) {
-            throw new Error("Unsupported file type - not a valid archive or JSON");
-        }
-    }
+export function readJsonBytes(buffer: Uint8Array): JSONReader {
+    const text = new TextDecoder().decode(buffer);
+    const data: JSONData = JSON.parse(text);
+    return new JSONReader(data);
 }

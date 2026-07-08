@@ -9,7 +9,7 @@ import {
     serializeReadoutsToArchiveBytes,
     serializeReadoutsToJsonBytes,
 } from "@/services/exportSerializers";
-import { readElectronFile } from "../features/Dashboard/lib/readers";
+import { loadReadoutsFromBytes } from "./fileLoader";
 
 function createReadout(overrides?: {
     defSha?: string;
@@ -90,11 +90,7 @@ function createReadout(overrides?: {
 }
 
 async function readSingle(bytes: Uint8Array): Promise<Readout> {
-    const reader = await readElectronFile(Array.from(bytes));
-    const readouts: Readout[] = [];
-    for await (const readout of reader.read_all()) {
-        readouts.push(readout);
-    }
+    const readouts = await loadReadoutsFromBytes(Array.from(bytes));
     expect(readouts).toHaveLength(1);
     return readouts[0];
 }
