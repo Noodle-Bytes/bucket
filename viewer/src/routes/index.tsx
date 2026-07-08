@@ -10,11 +10,50 @@ import { useCoverageCompare } from "@/hooks/useCoverageCompare";
 import CoverageTree from "@/features/Dashboard/lib/coveragetree";
 import { buildCompareDisplayReadout, getCompareCompatibility } from "@/services/coverageCompare";
 import { CoverageLoadingOverlay } from "@/components/CoverageLoadingOverlay";
-import { notifyWarning } from "@/utils/themedStaticNotification";
+import { notifyInfo, notifyWarning } from "@/utils/themedStaticNotification";
+import { checkForNewerRelease } from "@/services/updateCheck";
 import { useEffect, useMemo } from "react";
 import type { CompareViewContext } from "@/types/coverageCompare";
 
+declare const __APP_VERSION__: string;
+
+// Module-level guard so StrictMode's double-mount fires a single check.
+let updateCheckStarted = false;
+
+function useUpdateNotification() {
+    useEffect(() => {
+        if (updateCheckStarted) {
+            return;
+        }
+        updateCheckStarted = true;
+        void checkForNewerRelease(__APP_VERSION__).then((update) => {
+            if (!update) {
+                return;
+            }
+            notifyInfo({
+                message: "Update available",
+                description: (
+                    <>
+                        Bucket v{update.latestVersion} has been released (this
+                        viewer is v{__APP_VERSION__}).{" "}
+                        <a
+                            href={update.releaseUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ textDecoration: "underline", color: "inherit" }}
+                        >
+                            View release
+                        </a>
+                    </>
+                ),
+                duration: 10,
+            });
+        });
+    }, []);
+}
+
 export const AppRoutes = () => {
+    useUpdateNotification();
     const {
         tree,
         session,
