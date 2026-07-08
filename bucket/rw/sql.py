@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Iterable, overload
 
-from sqlalchemy import Integer, String, create_engine, select
+from sqlalchemy import Integer, String, create_engine, insert, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
@@ -196,29 +196,69 @@ class SQLWriter(Writer):
         self._has_point_meta = inspect(engine).has_table(PointMetaRow.__tablename__)
 
     def write(self, readout: Readout):
-        with Session(self.engine) as self.session:
+        # Rows are inserted with bulk executemany statements rather than
+        # per-row session.add(), which is an order of magnitude slower for
+        # the large bucket tables.
+        def bulk(session: Session, table: type[BaseRow], rows: list[dict]):
+            if rows:
+                session.execute(insert(table), rows)
+
+        core_point_fields = PointTuple._fields[:15]
+
+        with Session(self.engine) as session:
             # Write the definition out
             def_row = DefinitionRow(sha=readout.get_def_sha())
-            self.session.add(def_row)
-            self.session.commit()
+            session.add(def_row)
+            session.flush()
             def_ref = def_row.definition
 
+            points = []
+            point_meta = []
             for point in readout.iter_points():
-                self.session.add(PointRow.from_tuple(def_ref, point))
+                data = point._asdict()
+                points.append(
+                    {"definition": def_ref, **{f: data[f] for f in core_point_fields}}
+                )
                 if self._has_point_meta:
-                    self.session.add(PointMetaRow.from_tuple(def_ref, point))
+                    point_meta.append(
+                        {
+                            "definition": def_ref,
+                            "start": point.start,
+                            "depth": point.depth,
+                            "tier": point.tier,
+                            "tags": point.tags,
+                            "motivation": point.motivation,
+                        }
+                    )
+            bulk(session, PointRow, points)
+            bulk(session, PointMetaRow, point_meta)
 
-            for axis in readout.iter_axes():
-                self.session.add(AxisRow.from_tuple(def_ref, axis))
-
-            for axis_value in readout.iter_axis_values():
-                self.session.add(AxisValueRow.from_tuple(def_ref, axis_value))
-
-            for goal in readout.iter_goals():
-                self.session.add(GoalRow.from_tuple(def_ref, goal))
-
-            for bucket_goal in readout.iter_bucket_goals():
-                self.session.add(BucketGoalRow.from_tuple(def_ref, bucket_goal))
+            bulk(
+                session,
+                AxisRow,
+                [{"definition": def_ref, **a._asdict()} for a in readout.iter_axes()],
+            )
+            bulk(
+                session,
+                AxisValueRow,
+                [
+                    {"definition": def_ref, "start": av.start, "value": av.value}
+                    for av in readout.iter_axis_values()
+                ],
+            )
+            bulk(
+                session,
+                GoalRow,
+                [{"definition": def_ref, **g._asdict()} for g in readout.iter_goals()],
+            )
+            bulk(
+                session,
+                BucketGoalRow,
+                [
+                    {"definition": def_ref, **bg._asdict()}
+                    for bg in readout.iter_bucket_goals()
+                ],
+            )
 
             rec_row = RunRow(
                 definition=def_ref,
@@ -226,17 +266,22 @@ class SQLWriter(Writer):
                 source=readout.get_source(),
                 source_key=readout.get_source_key(),
             )
-            self.session.add(rec_row)
-            self.session.commit()
+            session.add(rec_row)
+            session.flush()
             rec_ref = rec_row.run
 
-            for point_hit in readout.iter_point_hits():
-                self.session.add(PointHitRow.from_tuple(rec_ref, point_hit))
+            bulk(
+                session,
+                PointHitRow,
+                [{"run": rec_ref, **ph._asdict()} for ph in readout.iter_point_hits()],
+            )
+            bulk(
+                session,
+                BucketHitRow,
+                [{"run": rec_ref, **bh._asdict()} for bh in readout.iter_bucket_hits()],
+            )
 
-            for bucket_hit in readout.iter_bucket_hits():
-                self.session.add(BucketHitRow.from_tuple(rec_ref, bucket_hit))
-
-            self.session.commit()
+            session.commit()
 
         return rec_ref
 
