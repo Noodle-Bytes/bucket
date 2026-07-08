@@ -90,7 +90,7 @@ function createReadout(overrides?: {
 }
 
 async function readSingle(bytes: Uint8Array): Promise<Readout> {
-    const readouts = await loadReadoutsFromBytes(Array.from(bytes));
+    const readouts = await loadReadoutsFromBytes(bytes);
     expect(readouts).toHaveLength(1);
     return readouts[0];
 }

@@ -61,7 +61,7 @@ export async function saveExportBytes(
 
     if (isElectron() && window.electronAPI?.saveExportFile) {
         return window.electronAPI.saveExportFile({
-            bytes: Array.from(bytes),
+            bytes,
             format,
             defaultFileName,
         });
@@ -127,8 +127,9 @@ export async function saveCompareReportBytes(
 
     if (isElectron() && window.electronAPI?.saveExportFile) {
         return window.electronAPI.saveExportFile({
-            bytes: Array.from(bytes),
-            format: format === "json" ? "json" : "json",
+            bytes,
+            // Compare reports are text (json/html); the bktgz filter never applies.
+            format: "json",
             defaultFileName,
         });
     }

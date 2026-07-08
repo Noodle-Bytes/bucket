@@ -7,10 +7,10 @@
 
 interface ElectronAPI {
   openFileDialog: () => Promise<string[] | null>;
-  readFile: (filePath: string) => Promise<number[]>;
-  getDroppedFile: (filePath: string) => Promise<number[] | null>;
+  readFile: (filePath: string) => Promise<Uint8Array>;
+  getDroppedFile: (filePath: string) => Promise<Uint8Array | null>;
   saveExportFile: (payload: {
-    bytes: number[];
+    bytes: Uint8Array;
     format: "bktgz" | "json";
     defaultFileName: string;
   }) => Promise<{ canceled: boolean; path?: string }>;
