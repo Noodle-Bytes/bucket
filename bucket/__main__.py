@@ -50,6 +50,9 @@ def _split_spec(spec: str) -> tuple[str | None, str, str]:
         head, tail = spec.split(":", 1)
         if head in _VALID_READERS:
             typ, uri = head, tail
+        elif head == "":
+            # `<record>@:<URI>` form — type omitted, infer it from the URI
+            typ, uri = None, tail
         else:
             typ, uri = None, spec
     else:
