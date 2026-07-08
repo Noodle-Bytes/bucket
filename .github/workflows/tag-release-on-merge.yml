@@ -108,7 +108,7 @@ jobs:
 
       - name: Checkout main with full history and tags
         if: steps.bump.outputs.bump != 'none'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
