@@ -11,7 +11,7 @@ interface ElectronAPI {
   getDroppedFile: (filePath: string) => Promise<Uint8Array | null>;
   saveExportFile: (payload: {
     bytes: Uint8Array;
-    format: "bktgz" | "json";
+    format: "bktgz" | "json" | "html";
     defaultFileName: string;
   }) => Promise<{ canceled: boolean; path?: string }>;
   onFilesOpened: (callback: (filePaths: string[]) => void) => void;
