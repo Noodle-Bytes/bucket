@@ -32,4 +32,4 @@ export type CoverageSession = {
     loadedRecordIds: string[];
 };
 
-export type ExportFormat = "bktgz" | "json";
+export type ExportFormat = "bktgz" | "json" | "html";

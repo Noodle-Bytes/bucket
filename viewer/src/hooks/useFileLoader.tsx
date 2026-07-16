@@ -25,6 +25,7 @@ import type {
 import { mergeReadoutsStrict } from "@/services/readoutUtils";
 import { serializeReadouts } from "@/services/exportSerializers";
 import { getDefaultExportFileName, saveExportBytes } from "@/services/exportSaver";
+import { buildReadableReportHtml } from "@/services/readableReport";
 
 type FilePickerWindow = Window & {
     showOpenFilePicker?: (options?: {
@@ -757,18 +758,23 @@ export function useFileLoader() {
             const exportReadouts = options.mergeBeforeExport
                 ? [mergeReadoutsStrict(selected.map((record) => record.readout))]
                 : selected.map((record) => record.readout);
-            const bytes = serializeReadouts(exportReadouts, options.format);
+            const bytes =
+                options.format === "html"
+                    ? new TextEncoder().encode(
+                          buildReadableReportHtml(exportReadouts, { results: true }),
+                      )
+                    : serializeReadouts(exportReadouts, options.format);
             const defaultFileName = getDefaultExportFileName(
                 options.format,
                 options.mergeBeforeExport,
             );
-            const defaultBaseName = defaultFileName.replace(/\.(bktgz|json)$/i, "");
+            const defaultBaseName = defaultFileName.replace(/\.(bktgz|json|html)$/i, "");
             const rawBaseName = (options.fileBaseName ?? "").trim();
-            const extension = options.format === "json" ? ".json" : ".bktgz";
+            const extension = `.${options.format === "bktgz" ? "bktgz" : options.format}`;
             const safeBaseName =
                 rawBaseName.length === 0
                     ? defaultBaseName
-                    : rawBaseName.replace(/\.(bktgz|json)$/i, "");
+                    : rawBaseName.replace(/\.(bktgz|json|html)$/i, "");
             const fileName =
                 safeBaseName.length === 0 ? defaultBaseName + extension : `${safeBaseName}${extension}`;
             const result = await saveExportBytes(bytes, options.format, fileName);

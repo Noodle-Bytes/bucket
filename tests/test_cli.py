@@ -143,6 +143,55 @@ class TestCli:
         assert calls["output"] == out
         assert len(calls["readouts"]) == 1
 
+    def test_write_report_uses_report_writer(self, archives, tmp_path, monkeypatch):
+        """The report command wires the output and options into ReportWriter."""
+        import bucket.__main__ as main_module
+
+        path_1, *_ = archives
+        out = tmp_path / "report.html"
+        calls = {}
+
+        class FakeReportWriter:
+            def __init__(self, web_path, output, **options):
+                calls["web_path"] = web_path
+                calls["output"] = output
+                calls["options"] = options
+
+            def write(self, readouts):
+                calls["readouts"] = readouts
+
+        monkeypatch.setattr(main_module, "ReportWriter", FakeReportWriter)
+        result = self.run(
+            "write",
+            "-r",
+            path_1,
+            "report",
+            "-o",
+            out,
+            "--no-axis-values",
+            "--results",
+            "--max-axis-values",
+            "8",
+            "--max-tier",
+            "1",
+            "--tags",
+            "toys, age",
+            "--point",
+            "Pets.dogs*",
+        )
+        assert result.exit_code == 0
+        assert calls["output"] == out
+        assert calls["options"]["axis_values"] is False
+        assert calls["options"]["description"] is True
+        assert calls["options"]["results"] is True
+        assert calls["options"]["max_axis_values"] == 8
+        assert calls["options"]["max_tier"] == 1
+        assert calls["options"]["tags"] == ["toys", "age"]
+        assert calls["options"]["point"] == "Pets.dogs*"
+        # All readouts are passed in one single-use write call.
+        assert isinstance(calls["readouts"], list)
+        assert len(calls["readouts"]) == 1
+
     def test_missing_file_errors(self, tmp_path):
         result = self.run("write", "-r", tmp_path / "missing.bktgz", "console")
         assert result.exit_code != 0

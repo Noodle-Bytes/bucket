@@ -80,6 +80,7 @@ data to humans.
 | `JSONAccessor` | `.json` | Human-readable interchange |
 | `ConsoleWriter` | terminal | Summary and detailed text output |
 | `HTMLWriter` | `.html` | Standalone HTML embedding the viewer |
+| `ReportWriter` | `.html` | Human-readable standalone HTML coverage report |
 
 See [Exporting and merging coverage](export_and_merge.md) for CLI and Python
 examples of reading and writing each format.

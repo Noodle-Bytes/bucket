@@ -6,7 +6,14 @@ from typing import Iterable
 
 import click
 
-from .rw import ArchiveAccessor, ConsoleWriter, HTMLWriter, JSONAccessor, SQLAccessor
+from .rw import (
+    ArchiveAccessor,
+    ConsoleWriter,
+    HTMLWriter,
+    JSONAccessor,
+    ReportWriter,
+    SQLAccessor,
+)
 from .rw.common import MergeReadout, Readout
 
 
@@ -211,6 +218,92 @@ def html(ctx, output: Path):
 
     for readout in readouts:
         writer.write(readout)
+
+
+@write.command()
+@click.pass_context
+@click.option(
+    "--output",
+    "-o",
+    help="Path to output the HTML coverage report",
+    required=True,
+    type=click.Path(path_type=Path),
+)
+@click.option("--description/--no-description", default=True)
+@click.option("--motivation/--no-motivation", default=True)
+@click.option("--tier-tags/--no-tier-tags", "tier_tags", default=True)
+@click.option("--axes/--no-axes", default=True)
+@click.option("--axis-values/--no-axis-values", "axis_values", default=True)
+@click.option("--goals/--no-goals", default=True)
+@click.option("--bucket-counts/--no-bucket-counts", "bucket_counts", default=True)
+@click.option("--summary/--no-summary", default=True)
+@click.option("--results/--no-results", default=False)
+@click.option(
+    "--max-axis-values",
+    "max_axis_values",
+    default=64,
+    type=click.IntRange(min=0),
+    help="Cap on listed values per axis; 0 means unlimited",
+)
+@click.option(
+    "--max-tier",
+    "max_tier",
+    default=None,
+    type=click.IntRange(min=0),
+    help="Only include coverpoints with tier <= this value",
+)
+@click.option(
+    "--tags",
+    default=None,
+    type=str,
+    help="Only include coverpoints with at least one of these comma-separated tags",
+)
+@click.option(
+    "--point",
+    default=None,
+    type=str,
+    help="Only include coverpoints matching this dotted-path glob, e.g. 'Pets.dogs*'",
+)
+def report(
+    ctx,
+    output: Path,
+    description: bool,
+    motivation: bool,
+    tier_tags: bool,
+    axes: bool,
+    axis_values: bool,
+    goals: bool,
+    bucket_counts: bool,
+    summary: bool,
+    results: bool,
+    max_axis_values: int,
+    max_tier: int | None,
+    tags: str | None,
+    point: str | None,
+):
+    readouts = ctx.obj["readouts"]
+    web_path = ctx.obj["web_path"]
+    writer = ReportWriter(
+        web_path,
+        output,
+        description=description,
+        motivation=motivation,
+        tier_tags=tier_tags,
+        axes=axes,
+        axis_values=axis_values,
+        goals=goals,
+        bucket_counts=bucket_counts,
+        summary=summary,
+        results=results,
+        max_axis_values=max_axis_values,
+        max_tier=max_tier,
+        tags=[tag.strip() for tag in tags.split(",") if tag.strip()] if tags else None,
+        point=point,
+    )
+
+    # A single write: the writer is single-use and all readouts belong in
+    # one report document.
+    writer.write(list(readouts))
 
 
 @write.command()

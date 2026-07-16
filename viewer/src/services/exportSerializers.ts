@@ -344,7 +344,12 @@ export function serializeReadoutsToArchiveBytes(readouts: Readout[]): Uint8Array
     return gzipSync(tarBytes);
 }
 
-export function serializeReadouts(readouts: Readout[], format: ExportFormat): Uint8Array {
+export function serializeReadouts(
+    readouts: Readout[],
+    // Markdown export is not a record serialization; it is handled by
+    // services/readableReport.ts.
+    format: Exclude<ExportFormat, "md">,
+): Uint8Array {
     return format === "json"
         ? serializeReadoutsToJsonBytes(readouts)
         : serializeReadoutsToArchiveBytes(readouts);

@@ -823,11 +823,14 @@ ipcMain.handle('save-export-file', async (event, payload) => {
       return { canceled: true };
     }
 
-    const format = payload?.format === 'json' ? 'json' : 'bktgz';
+    const format = ['json', 'html'].includes(payload?.format) ? payload.format : 'bktgz';
     const defaultFileName = payload?.defaultFileName || `bucket_export.${format}`;
-    const filters = format === 'json'
-      ? [{ name: 'JSON Coverage', extensions: ['json'] }, { name: 'All Files', extensions: ['*'] }]
-      : [{ name: 'Bucket Archive', extensions: ['bktgz'] }, { name: 'All Files', extensions: ['*'] }];
+    const filterByFormat = {
+      json: { name: 'JSON Coverage', extensions: ['json'] },
+      html: { name: 'Coverage Report', extensions: ['html'] },
+      bktgz: { name: 'Bucket Archive', extensions: ['bktgz'] },
+    };
+    const filters = [filterByFormat[format], { name: 'All Files', extensions: ['*'] }];
 
     const result = await dialog.showSaveDialog(mainWindow, {
       defaultPath: defaultFileName,
