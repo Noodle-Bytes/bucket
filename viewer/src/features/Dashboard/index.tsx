@@ -67,7 +67,7 @@ import { hexToRgba } from "@/utils/colors";
 import { buildBucketAntModalTheme } from "@/utils/bucketAntModalTheme";
 import type { CoverageRecord, CoverageSourceRef, ExportFormat } from "@/types/coverageSession";
 import { getDefaultExportFileName } from "@/services/exportSaver";
-import { checkVersionCompat } from "@/utils/versionCompat";
+import { checkFormatCompat } from "@/utils/versionCompat";
 import CompareToolbar from "./components/CompareToolbar";
 import type { PointData, PointNode } from "./lib/coveragetree";
 import { getPointNodeCompareCounts, getPointNodeCoverageMetrics } from "./lib/coveragemetrics";
@@ -98,6 +98,7 @@ type RootCoverageInfo = {
     defSha: string | null;
     recSha: string | null;
     bucketVersion: string | null;
+    formatVersion: number | null;
 };
 
 type TopLevelCoverageCounts = {
@@ -189,6 +190,7 @@ function getTopLevelCoverageInfo(
         defSha: getReadoutValue(readout, "get_def_sha"),
         recSha: getReadoutValue(readout, "get_rec_sha"),
         bucketVersion: readout.get_bucket_version?.() || null,
+        formatVersion: readout.get_format_version?.() ?? null,
     };
 }
 
@@ -321,7 +323,7 @@ function TopLevelCoverageInfoPanel({
         setVersionAlertDismissed(false);
     }, [treeSelectionKey]);
 
-    const compat = checkVersionCompat(info.bucketVersion, __APP_VERSION__);
+    const compat = checkFormatCompat(info.formatVersion);
 
     const dismissVersionAlert = useCallback(() => {
         setVersionAlertDismissed(true);
@@ -367,21 +369,14 @@ function TopLevelCoverageInfoPanel({
                         colors={colors}
                         caution
                         onDismiss={dismissVersionAlert}
-                        text={`This file was created with bucket ${compat.fileVersion}, which is newer than this viewer (${compat.viewerVersion}).`}
+                        text={`This file uses coverage storage format v${compat.fileFormat}, which is newer than this viewer supports (up to v${compat.supportedFormat}). Some data may not display correctly — try updating the viewer.`}
                     />
                 ) : compat.status === "file_older" ? (
                     <BucketVersionCompatAlert
                         colors={colors}
-                        caution={false}
-                        onDismiss={dismissVersionAlert}
-                        text={`This file was created with an older bucket (${compat.fileVersion}). The viewer is broadly backwards compatible.`}
-                    />
-                ) : compat.status === "unknown" ? (
-                    <BucketVersionCompatAlert
-                        colors={colors}
                         caution
                         onDismiss={dismissVersionAlert}
-                        text="This file doesn’t say which bucket release created it. The viewer is broadly backwards compatible."
+                        text={`This file uses coverage storage format v${compat.fileFormat}, which this viewer no longer supports (minimum v${compat.minSupportedFormat}). Some data may not display correctly.`}
                     />
                 ) : null;
                 const chromeColors = {
@@ -470,6 +465,15 @@ function TopLevelCoverageInfoPanel({
                                                 <CoverageInfoField
                                                     label="Bucket Version"
                                                     value={info.bucketVersion}
+                                                    colors={colors}
+                                                />
+                                                <CoverageInfoField
+                                                    label="Storage Format"
+                                                    value={
+                                                        info.formatVersion === null
+                                                            ? null
+                                                            : `v${info.formatVersion}`
+                                                    }
                                                     colors={colors}
                                                 />
                                             </div>

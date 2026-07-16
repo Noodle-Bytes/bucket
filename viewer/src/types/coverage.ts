@@ -68,6 +68,8 @@ type Readout = {
     get_source: () => string | null;
     get_source_key: () => string | null;
     get_bucket_version: () => string;
+    /** Storage format the record was written with; null when not stated. */
+    get_format_version?: () => number | null;
     iter_points: (
         start?: number,
         end?: number | null,

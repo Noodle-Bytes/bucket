@@ -4,11 +4,12 @@
 import csv
 import tarfile
 import tempfile
-import warnings
 from pathlib import Path
 from typing import Iterable, NamedTuple, overload
 
 from .common import (
+    ARCHIVE_FORMAT_VERSION,
+    LEGACY_FORMAT_VERSION,
     Accessor,
     AxisTuple,
     AxisValueTuple,
@@ -21,22 +22,9 @@ from .common import (
     Reader,
     Readout,
     Writer,
-    _get_bucket_version,
+    check_format_version,
     point_tuple_from_row,
 )
-
-
-def _parse_version(v: str) -> tuple[int, ...]:
-    """Parse a version string into a tuple of ints for comparison."""
-    parts = []
-    for p in v.split(".")[:3]:
-        try:
-            parts.append(int(p))
-        except ValueError:
-            parts.append(0)
-    while len(parts) < 3:
-        parts.append(0)
-    return tuple(parts)
 
 
 class ArchiveDefinitionTuple(NamedTuple):
@@ -63,6 +51,9 @@ class ArchiveRecordTuple(NamedTuple):
     source: str  # Stored as "" in CSV, always a string
     source_key: str  # Stored as "" in CSV, always a string
     bucket_version: str = ""  # Version of bucket that wrote this record
+    # Storage format the record was written with; rows predating format
+    # versioning omit the column and default to the legacy format.
+    format_version: int = LEGACY_FORMAT_VERSION
 
 
 DEFINITION_PATH = "definition"
@@ -158,28 +149,9 @@ class ArchiveReadout(Readout):
         )
         self.definition = ArchiveDefinitionTuple(*definition_row)
 
-        file_version = self.record.bucket_version or ""
-        if file_version:
-            installed = _get_bucket_version()
-            if installed != "unknown":
-                fv = _parse_version(file_version)
-                iv = _parse_version(installed)
-                if fv > iv:
-                    warnings.warn(
-                        f"Coverage file was generated with bucket v{file_version}, which is "
-                        f"newer than the installed version (v{installed}). "
-                        "Some data may not be read correctly.",
-                        UserWarning,
-                        stacklevel=2,
-                    )
-                elif fv < iv:
-                    warnings.warn(
-                        f"Coverage file was generated with an older version of bucket "
-                        f"(v{file_version}); installed version is v{installed}. "
-                        "The reader is broadly backwards compatible.",
-                        UserWarning,
-                        stacklevel=2,
-                    )
+        self._format_version = check_format_version(
+            self.record.format_version, ARCHIVE_FORMAT_VERSION
+        )
 
     def get_def_sha(self) -> str:
         return self.definition.def_sha
@@ -195,6 +167,9 @@ class ArchiveReadout(Readout):
 
     def get_bucket_version(self) -> str:
         return self.record.bucket_version or ""
+
+    def get_format_version(self) -> int:
+        return self._format_version
 
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
@@ -377,6 +352,10 @@ class ArchiveWriter(Writer):
                         source,
                         source_key,
                         bucket_version,
+                        # Always stamp the writer's own format, not the
+                        # readout's: it describes how these bytes are laid
+                        # out, not where the data came from.
+                        ARCHIVE_FORMAT_VERSION,
                     )
                 ],
             )

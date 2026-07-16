@@ -2,6 +2,7 @@
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 import json
+import warnings
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError as _PKGNotFound
 from importlib.metadata import version as _pkg_version
@@ -16,6 +17,70 @@ def _get_bucket_version() -> str:
         return _pkg_version("bucket")
     except _PKGNotFound:
         return "unknown"
+
+
+# Version of the on-disk storage formats, independent of the bucket package
+# version. Bump ONLY when a serialized layout changes (columns added or
+# removed, encodings changed, etc.) — never for feature releases that leave
+# the stored bytes untouched. Readers warn based on this value alone, so a
+# bump is a signal to users that a file and their installed reader may not
+# fully understand each other.
+#
+# The archive (.bktgz) and JSON formats each carry their own version field
+# and are checked by their own reader, but by policy the two counters always
+# bump in LOCKSTEP: a change to either layout moves both constants to the
+# same new value (recorded in the shared history below). This keeps "format
+# vN" meaning one thing across the project while still letting each file
+# type be checked independently.
+#
+# Keep in sync with SUPPORTED_FORMAT_VERSION in
+# viewer/src/utils/versionCompat.ts.
+#
+# Format history:
+#   1: original layout; archive record rows may omit the trailing
+#      bucket_version and format_version columns, JSON records carry no
+#      version keys
+#   2: archive record rows carry the format_version column; JSON records
+#      carry the bucket_version and format_version keys
+FORMAT_VERSION = 2
+ARCHIVE_FORMAT_VERSION = FORMAT_VERSION
+JSON_FORMAT_VERSION = FORMAT_VERSION
+
+# Oldest format the readers still fully support.
+MIN_FORMAT_VERSION = 1
+
+# Files written before format versioning was introduced are format 1.
+LEGACY_FORMAT_VERSION = 1
+
+
+def check_format_version(raw_version, current: int) -> int:
+    """
+    Coerce a stored format version to an int and warn if it falls outside
+    the range this reader supports. Returns the coerced version.
+    """
+    try:
+        file_format = int(raw_version)
+    except (TypeError, ValueError):
+        file_format = LEGACY_FORMAT_VERSION
+
+    if file_format > current:
+        warnings.warn(
+            f"Coverage file uses storage format v{file_format}, which is "
+            f"newer than this version of bucket supports (up to v{current}). "
+            "Some data may not be read correctly; update bucket to fully "
+            "support this file.",
+            UserWarning,
+            stacklevel=3,
+        )
+    elif file_format < MIN_FORMAT_VERSION:
+        warnings.warn(
+            f"Coverage file uses storage format v{file_format}, which is "
+            f"older than the minimum this version of bucket supports "
+            f"(v{MIN_FORMAT_VERSION}). Some data may not be read correctly.",
+            UserWarning,
+            stacklevel=3,
+        )
+    return file_format
 
 
 ###############################################################################
@@ -232,6 +297,7 @@ class Readout(Protocol):
     def get_source(self) -> str: ...
     def get_source_key(self) -> str: ...
     def get_bucket_version(self) -> str: ...
+    def get_format_version(self) -> int: ...
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
     ) -> Iterable[PointTuple]: ...
@@ -635,6 +701,7 @@ class PuppetReadout(Readout):
         self._source: str = ""
         self._source_key: str = ""
         self.bucket_version: str = ""
+        self.format_version: int = FORMAT_VERSION
 
     def get_def_sha(self) -> str:
         if self.def_sha is None:
@@ -670,6 +737,9 @@ class PuppetReadout(Readout):
 
     def get_bucket_version(self) -> str:
         return self.bucket_version
+
+    def get_format_version(self) -> int:
+        return self.format_version
 
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0
@@ -749,6 +819,11 @@ class MergeReadout(Readout):
 
     def get_bucket_version(self) -> str:
         return self._bucket_version
+
+    def get_format_version(self) -> int:
+        # Merged data is held in memory, so it is (re)serialized at whatever
+        # format the writer that stores it uses.
+        return FORMAT_VERSION
 
     def iter_points(
         self, start: int = 0, end: int | None = None, depth: int = 0

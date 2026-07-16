@@ -5,6 +5,8 @@
 
 import { gunzipSync } from "fflate";
 
+import { LEGACY_FORMAT_VERSION } from "@/utils/versionCompat";
+
 type JSONDefinition = {
     sha: string,
 } & {[key:string]: (string | number | null)[][]};
@@ -14,6 +16,8 @@ type JSONRecord = {
     sha: string,
     source?: string | null,
     source_key?: string | null,
+    bucket_version?: string | null,
+    format_version?: number | string | null,
 } & {[key:string]: (string | number | null)[][]};
 
 type JSONTables = Record<string, string[]>;
@@ -47,7 +51,14 @@ export class JSONReadout implements Readout {
         return this.record.source_key ?? null;
     }
     get_bucket_version(): string {
-        return "";
+        return this.record.bucket_version == null
+            ? ""
+            : String(this.record.bucket_version);
+    }
+    get_format_version(): number {
+        // Records predating format versioning have no key and read as the
+        // legacy format.
+        return toFormatVersion(this.record.format_version ?? null);
     }
     private *iter_def_table<T extends Record<string, unknown>>(table: string, start: number=0, end: number | null=null): Generator<T> {
         const keys = this.tables[table];
@@ -172,6 +183,7 @@ type ArchiveRecord = {
     source: string | null;  // Stored as "" in CSV, converted to null when reading
     source_key: string | null;  // Stored as "" in CSV, converted to null when reading
     bucket_version: string;  // Version of bucket that wrote this record ("" if unknown)
+    format_version: number;  // Storage format of the record (legacy rows omit the column)
 };
 
 type ArchiveTableMap = Record<ArchiveTableName, ArchiveTable>;
@@ -275,6 +287,10 @@ export class ArchiveReadout implements Readout {
 
     get_bucket_version(): string {
         return this.record.bucket_version;
+    }
+
+    get_format_version(): number {
+        return this.record.format_version;
     }
 
     *iter_points(
@@ -523,6 +539,7 @@ function toArchiveRecord(row: (string | number)[]): ArchiveRecord {
         source: source === "" ? null : toString(source),
         source_key: source_key === "" ? null : toString(source_key),
         bucket_version: row.length > 8 ? toString(row[8]) : "",
+        format_version: toFormatVersion(row.length > 9 ? row[9] : null),
     };
 }
 
@@ -858,6 +875,14 @@ function toNumber(value: string | number): number {
 
 function toString(value: string | number): string {
     return typeof value === "string" ? value : String(value);
+}
+
+function toFormatVersion(value: string | number | null): number {
+    if (value === null || value === "") {
+        return LEGACY_FORMAT_VERSION;
+    }
+    const parsed = toNumber(value);
+    return Number.isFinite(parsed) ? parsed : LEGACY_FORMAT_VERSION;
 }
 
 export function readJsonBytes(buffer: Uint8Array): JSONReader {

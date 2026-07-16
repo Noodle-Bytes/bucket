@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Iterable, overload
 
 from .common import (
+    JSON_FORMAT_VERSION,
     Accessor,
     AxisTuple,
     AxisValueTuple,
@@ -19,6 +20,7 @@ from .common import (
     Reader,
     Readout,
     Writer,
+    check_format_version,
     point_tuple_from_row,
 )
 
@@ -80,6 +82,11 @@ class JSONWriter(Writer):
                 "sha": readout.get_rec_sha(),
                 "source": readout.get_source(),
                 "source_key": readout.get_source_key(),
+                "bucket_version": readout.get_bucket_version(),
+                # Always stamp the writer's own format, not the readout's:
+                # it describes how this record is laid out, not where the
+                # data came from.
+                "format_version": JSON_FORMAT_VERSION,
                 "point_hit": [list(it) for it in readout.iter_point_hits()],
                 "bucket_hit": [list(it) for it in readout.iter_bucket_hits()],
             }
@@ -113,6 +120,12 @@ class JSONReader(Reader):
         readout.rec_sha = record["sha"]
         readout.source = record.get("source", "")
         readout.source_key = record.get("source_key", "")
+        readout.bucket_version = record.get("bucket_version") or ""
+        # Records predating format versioning have no key and read as the
+        # legacy format.
+        readout.format_version = check_format_version(
+            record.get("format_version"), JSON_FORMAT_VERSION
+        )
         readout.def_sha = definition["sha"]
 
         readout.points = [point_tuple_from_row(p) for p in definition["point"]]

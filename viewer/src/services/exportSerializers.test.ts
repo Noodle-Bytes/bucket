@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from "vitest";
 import { InMemoryReadout, mergeReadoutsStrict } from "@/services/readoutUtils";
+import { SUPPORTED_FORMAT_VERSION } from "@/utils/versionCompat";
 import {
     serializeReadoutsToArchiveBytes,
     serializeReadoutsToJsonBytes,
@@ -158,6 +159,7 @@ describe("export serializers", () => {
         expect(Array.from(restored.iter_bucket_hits(0, null)).map((value) => value.hits)).toEqual(
             [5, 6],
         );
+        expect(restored.get_format_version?.()).toBe(SUPPORTED_FORMAT_VERSION);
     });
 
     test("round-trips archive serialization through reader", async () => {
@@ -183,5 +185,6 @@ describe("export serializers", () => {
         expect(Array.from(restored.iter_bucket_hits(0, null)).map((value) => value.hits)).toEqual(
             [7, 8],
         );
+        expect(restored.get_format_version?.()).toBe(SUPPORTED_FORMAT_VERSION);
     });
 });
