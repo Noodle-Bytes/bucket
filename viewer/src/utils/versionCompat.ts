@@ -25,61 +25,53 @@ export function compareVersions(a: string, b: string): -1 | 0 | 1 {
 }
 
 /**
- * Compare major.minor only (patch is ignored).
- * Used for viewer/file compatibility warnings so patch drift does not alert.
+ * Storage format versions the viewer understands. The format version is
+ * independent of the bucket/viewer release version and is only bumped when
+ * the on-disk layout of coverage files actually changes.
+ *
+ * The archive (.bktgz) and JSON formats each carry their own version field,
+ * but by policy their counters always bump in lockstep (see the format
+ * history in bucket/rw/common.py), so a single supported range covers both.
+ *
+ * Keep in sync with FORMAT_VERSION / MIN_FORMAT_VERSION in
+ * bucket/rw/common.py.
  */
-function compareMajorMinor(a: string, b: string): -1 | 0 | 1 {
-    const parseTwo = (v: string) => {
-        const parts = v.split(".").slice(0, 2);
-        const maj = parseInt(parts[0] ?? "", 10) || 0;
-        const min = parseInt(parts[1] ?? "", 10) || 0;
-        return [maj, min] as const;
-    };
+export const SUPPORTED_FORMAT_VERSION = 2;
+export const MIN_SUPPORTED_FORMAT_VERSION = 1;
 
-    const [aMaj, aMin] = parseTwo(a);
-    const [bMaj, bMin] = parseTwo(b);
+/** Files written before format versioning are format 1. */
+export const LEGACY_FORMAT_VERSION = 1;
 
-    if (aMaj !== bMaj) return aMaj > bMaj ? 1 : -1;
-    if (aMin !== bMin) return aMin > bMin ? 1 : -1;
-    return 0;
-}
-
-export type VersionCompatResult =
-    | { status: "unknown" }
+export type FormatCompatResult =
     | { status: "match" }
-    | { status: "file_older"; fileVersion: string; viewerVersion: string }
-    | { status: "file_newer"; fileVersion: string; viewerVersion: string };
-
-/** Trimmed value missing or a placeholder — treat as unknown embedding (warn like compat gap). */
-function isUnsetTrimmedBucketVersion(t: string): boolean {
-    if (!t) {
-        return true;
-    }
-    return /^(unknown|unversioned|n\/a|na|none)$/i.test(t);
-}
+    | { status: "file_newer"; fileFormat: number; supportedFormat: number }
+    | { status: "file_older"; fileFormat: number; minSupportedFormat: number };
 
 /**
- * Determine compatibility between the version embedded in a coverage file
- * and the version of the viewer.
- *
- * Only **major** and **minor** are compared for mismatch warnings; differing
- * **patch** alone is treated as compatible (no banner).
+ * Determine compatibility between the storage format of a coverage file and
+ * the range of formats this viewer supports. A missing format version means
+ * the file predates format versioning and is treated as the legacy format.
  */
-export function checkVersionCompat(
-    fileVersion: string | null | undefined,
-    viewerVersion: string,
-): VersionCompatResult {
-    const raw =
-        typeof fileVersion === "string" ? fileVersion.trim() : "";
-    if (isUnsetTrimmedBucketVersion(raw)) {
-        return { status: "unknown" };
+export function checkFormatCompat(
+    fileFormat: number | null | undefined,
+): FormatCompatResult {
+    const format =
+        typeof fileFormat === "number" && Number.isFinite(fileFormat)
+            ? fileFormat
+            : LEGACY_FORMAT_VERSION;
+    if (format > SUPPORTED_FORMAT_VERSION) {
+        return {
+            status: "file_newer",
+            fileFormat: format,
+            supportedFormat: SUPPORTED_FORMAT_VERSION,
+        };
     }
-    const cmp = compareMajorMinor(raw, viewerVersion);
-    if (cmp === 0) {
-        return { status: "match" };
+    if (format < MIN_SUPPORTED_FORMAT_VERSION) {
+        return {
+            status: "file_older",
+            fileFormat: format,
+            minSupportedFormat: MIN_SUPPORTED_FORMAT_VERSION,
+        };
     }
-    if (cmp < 0) {
-        return { status: "file_older", fileVersion: raw, viewerVersion };
-    }
-    return { status: "file_newer", fileVersion: raw, viewerVersion };
+    return { status: "match" };
 }

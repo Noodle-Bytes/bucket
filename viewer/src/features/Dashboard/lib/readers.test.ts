@@ -5,8 +5,15 @@
 
 import { describe, expect, test } from "vitest";
 
-import { parseCsvTable, parseCsvTableBytes, readJsonBytes } from "./readers";
 import {
+    ArchiveReader,
+    ParsedArchiveTables,
+    parseCsvTable,
+    parseCsvTableBytes,
+    readJsonBytes,
+} from "./readers";
+import {
+    BASE_POINT_COLUMNS,
     JsonPayload,
     createBaseDefinition,
     createBaseRecord,
@@ -220,5 +227,80 @@ describe("parseCsvTable", () => {
         const bytes = parseCsvTableBytes(data);
         expect(fast.rows).toEqual(bytes.rows);
         expect(Array.from(fast.offsets)).toEqual(Array.from(bytes.offsets));
+    });
+});
+
+describe("archive record format version", () => {
+    const emptyTable = () => ({ rows: [], offsets: [] });
+
+    function buildTables(recordRows: (string | number)[][]): ParsedArchiveTables {
+        return {
+            definition: {
+                rows: [["defsha", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+                offsets: [0],
+            },
+            record: {
+                rows: recordRows,
+                offsets: recordRows.map((_, idx) => idx),
+            },
+            point: emptyTable(),
+            axis: emptyTable(),
+            axis_value: emptyTable(),
+            goal: emptyTable(),
+            bucket_goal: emptyTable(),
+            point_hit: emptyTable(),
+            bucket_hit: emptyTable(),
+        };
+    }
+
+    test("reads the format version column when present", async () => {
+        const reader = ArchiveReader.fromParsedTables(
+            buildTables([["recsha", 0, 0, 0, 0, 0, "", "", "1.2.3", 2]]),
+        );
+        const readout = await reader.read(0);
+        expect(readout.get_format_version?.()).toBe(2);
+        expect(readout.get_bucket_version()).toBe("1.2.3");
+    });
+
+    test("legacy rows without the column default to format 1", async () => {
+        const legacyRows = [
+            // pre-bucket_version row
+            ["recsha", 0, 0, 0, 0, 0, "", ""],
+            // bucket_version but no format_version
+            ["recsha", 0, 0, 0, 0, 0, "", "", "0.9.0"],
+        ];
+        const reader = ArchiveReader.fromParsedTables(buildTables(legacyRows));
+        const first = await reader.read(0);
+        const second = await reader.read(1);
+        expect(first.get_format_version?.()).toBe(1);
+        expect(second.get_format_version?.()).toBe(1);
+    });
+});
+
+describe("json record format version", () => {
+    test("reads the version keys when present", async () => {
+        const payload: JsonPayload = {
+            tables: createCommonTables(BASE_POINT_COLUMNS),
+            definitions: [createBaseDefinition([
+                0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, "root", "point",
+            ])],
+            records: [createBaseRecord({ bucket_version: "1.2.3", format_version: 2 })],
+        };
+        const readout = await readSingle(payload);
+        expect(readout.get_format_version?.()).toBe(2);
+        expect(readout.get_bucket_version()).toBe("1.2.3");
+    });
+
+    test("legacy records without version keys default to format 1", async () => {
+        const payload: JsonPayload = {
+            tables: createCommonTables(BASE_POINT_COLUMNS),
+            definitions: [createBaseDefinition([
+                0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, "root", "point",
+            ])],
+            records: [createBaseRecord()],
+        };
+        const readout = await readSingle(payload);
+        expect(readout.get_format_version?.()).toBe(1);
+        expect(readout.get_bucket_version()).toBe("");
     });
 });

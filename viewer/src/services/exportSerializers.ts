@@ -6,6 +6,7 @@
 import { gzipSync } from "fflate";
 import type { ExportFormat } from "@/types/coverageSession";
 import { materializeReadout } from "@/services/readoutUtils";
+import { SUPPORTED_FORMAT_VERSION } from "@/utils/versionCompat";
 
 type JsonCoverageData = {
     tables: Record<string, string[]>;
@@ -201,6 +202,10 @@ export function serializeReadoutsToJsonBytes(readouts: Readout[]): Uint8Array {
             sha: data.recSha,
             source: data.source,
             source_key: data.sourceKey,
+            bucket_version: data.bucketVersion ?? "",
+            // Always stamp the serializer's own format, not the source
+            // readout's: it describes how this record is laid out.
+            format_version: SUPPORTED_FORMAT_VERSION,
             point_hit: data.pointHits.map((pointHit) => [
                 pointHit.start,
                 pointHit.depth,
@@ -316,6 +321,10 @@ export function serializeReadoutsToArchiveBytes(readouts: Readout[]): Uint8Array
                 bucketHitSpan.end,
                 data.source ?? "",
                 data.sourceKey ?? "",
+                data.bucketVersion ?? "",
+                // Always stamp the serializer's own format, not the source
+                // readout's: it describes how this record row is laid out.
+                SUPPORTED_FORMAT_VERSION,
             ],
         ]);
     }
