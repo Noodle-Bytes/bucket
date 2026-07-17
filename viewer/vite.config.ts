@@ -106,5 +106,11 @@ export default defineConfig((env) => {
         tsconfigPaths(),
         getPluginPWA(env)
         ],
+        // Web workers are bundled separately and do not inherit `plugins`,
+        // so "@/..." imports inside the worker graph (archiveWorker ->
+        // readers -> versionCompat) need their own tsconfig-paths instance.
+        worker: {
+            plugins: () => [tsconfigPaths()],
+        },
     }
 });

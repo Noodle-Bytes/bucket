@@ -34,6 +34,12 @@ export default defineConfig(async () => {
         define: {
             __BUCKET_CVG_JSON: coverage,
             __APP_VERSION__: JSON.stringify(resolveBucketVersion()),
-        }
+        },
+        // Web workers are bundled separately and do not inherit `plugins`,
+        // so "@/..." imports inside the worker graph (archiveWorker ->
+        // readers -> versionCompat) need their own tsconfig-paths instance.
+        worker: {
+            plugins: () => [tsconfigPaths()],
+        },
     }
 });
