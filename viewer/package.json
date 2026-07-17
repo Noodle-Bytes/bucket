@@ -7,6 +7,7 @@
     "dev": "vite --port 4000 --config vite.config.ts",
     "build": "vite build",
     "bundle": "BUCKET_CVG_JSON=$BUCKET_CVG_JSON vite build --config vite-bundle.config.ts",
+    "report": "vite-node --config vite-node.config.ts scripts/report.ts --",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "test": "vitest run --coverage",
@@ -45,6 +46,7 @@
     "globals": "^16.2.0",
     "typescript": "^5.2.2",
     "typescript-eslint": "^8.58.2",
+    "vite-node": "^3.2.4",
     "vite-plugin-pwa": "^1.2.0",
     "vite-tsconfig-paths": "^4.3.1",
     "vitest": "^3.1.4"

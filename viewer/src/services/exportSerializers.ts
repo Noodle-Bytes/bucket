@@ -344,7 +344,12 @@ export function serializeReadoutsToArchiveBytes(readouts: Readout[]): Uint8Array
     return gzipSync(tarBytes);
 }
 
-export function serializeReadouts(readouts: Readout[], format: ExportFormat): Uint8Array {
+export function serializeReadouts(
+    readouts: Readout[],
+    // The HTML coverage report is not a record serialization; it is handled by
+    // services/readableReport.ts, so it is excluded here.
+    format: Exclude<ExportFormat, "html">,
+): Uint8Array {
     return format === "json"
         ? serializeReadoutsToJsonBytes(readouts)
         : serializeReadoutsToArchiveBytes(readouts);

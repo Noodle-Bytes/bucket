@@ -22,11 +22,29 @@ type SaveFilePickerWindow = Window & {
 };
 
 function getMimeType(format: ExportFormat): string {
-    return format === "json" ? "application/json" : "application/gzip";
+    switch (format) {
+        case "json":
+            return "application/json";
+        case "html":
+            return "text/html";
+        default:
+            return "application/gzip";
+    }
 }
 
 function getExtension(format: ExportFormat): string {
-    return format === "json" ? "json" : "bktgz";
+    return format === "bktgz" ? "bktgz" : format;
+}
+
+function getFormatDescription(format: ExportFormat): string {
+    switch (format) {
+        case "json":
+            return "JSON Coverage";
+        case "html":
+            return "Coverage Report";
+        default:
+            return "Bucket Archive";
+    }
 }
 
 /** User closed the save picker without choosing a file — not a write failure. */
@@ -74,7 +92,7 @@ export async function saveExportBytes(
                 suggestedName: defaultFileName,
                 types: [
                     {
-                        description: format === "json" ? "JSON Coverage" : "Bucket Archive",
+                        description: getFormatDescription(format),
                         accept: {
                             [getMimeType(format)]: [`.${getExtension(format)}`],
                         },

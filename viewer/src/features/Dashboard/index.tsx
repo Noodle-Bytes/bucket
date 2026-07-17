@@ -709,7 +709,7 @@ function getReadoutLabel(
 }
 
 function stripExportExtension(fileName: string): string {
-    return fileName.replace(/\.(bktgz|json)$/i, "");
+    return fileName.replace(/\.(bktgz|json|html)$/i, "");
 }
 
 const MAX_VIEW_NAVIGATION_HISTORY = 50;
@@ -1849,7 +1849,7 @@ export default function Dashboard({
                                                 <Select<ExportFormat>
                                                     variant="borderless"
                                                     popupMatchSelectWidth={88}
-                                                    listHeight={88}
+                                                    listHeight={132}
                                                     suffixIcon={
                                                         <DownOutlined
                                                             style={{
@@ -1869,6 +1869,7 @@ export default function Dashboard({
                                                     options={[
                                                         { value: "bktgz", label: ".bktgz" },
                                                         { value: "json", label: ".json" },
+                                                        { value: "html", label: ".html" },
                                                     ]}
                                                     style={{
                                                         width: 88,
@@ -2188,6 +2189,7 @@ export default function Dashboard({
                             options={[
                                 { value: "bktgz", label: ".bktgz (Bucket Archive)" },
                                 { value: "json", label: ".json" },
+                                { value: "html", label: ".html (Coverage Report)" },
                             ]}
                         />
                     </div>
@@ -2208,7 +2210,7 @@ export default function Dashboard({
                             value={exportFileName}
                             onChange={(event) => setExportFileName(event.target.value)}
                             placeholder="coverage_export"
-                            addonAfter={exportFormat === "json" ? ".json" : ".bktgz"}
+                            addonAfter={`.${exportFormat === "bktgz" ? "bktgz" : exportFormat}`}
                         />
                     </div>
                 </Flex>
