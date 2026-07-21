@@ -805,7 +805,9 @@ function getFullColumns(
             ),
             dataIndex: "key",
             key: "key",
-            width: compare ? 90 : 1,
+            // Virtualized tables lay columns out at their literal pixel
+            // widths, so every column needs a real width (no auto-fit).
+            width: 90,
             onCell: getNowrapCellProps,
         },
         {
@@ -843,7 +845,7 @@ function getFullColumns(
                     ),
                     dataIndex: axis.name,
                     key: axis.name,
-                    ...(compare ? { width: 160 } : {}),
+                    width: 160,
                     filters: axisValueSlice.map((axisValue) => ({
                         text: axisValue.value,
                         value: axisValue.value,
@@ -897,6 +899,7 @@ function getFullColumns(
                     ),
                     dataIndex: "goal_name",
                     key: "goal_name",
+                    width: 180,
                     filters: model.goals.map((goal) => ({
                         text: `${goal.name} - ${goal.description}`,
                         value: goal.name,
@@ -938,6 +941,7 @@ function getFullColumns(
                     ),
                     dataIndex: "target",
                     key: "target",
+                    width: 120,
                 },
                 {
                     title: (
@@ -972,6 +976,7 @@ function getFullColumns(
                     ),
                     dataIndex: "hits",
                     key: "hits",
+                    width: 100,
                 },
                 {
                     title: (
@@ -1007,6 +1012,7 @@ function getFullColumns(
                     ),
                     dataIndex: "hit_ratio",
                     key: "hit_ratio",
+                    width: 120,
                     filters: [
                         { text: "Full", value: "full" },
                         { text: "Partial", value: "partial" },
@@ -1959,9 +1965,12 @@ export function PointGrid({ node, compare }: PointGridProps) {
         ) : null;
 
         if (isLargeMode) {
+            // Virtual tables require a numeric scroll.x (strings such as
+            // "max-content" are clamped to 1px, collapsing the layout), so
+            // sum the explicit column widths for each mode.
             const largeScrollX = compare
                 ? 90 + model.axisModels.length * 160 + 244
-                : "max-content";
+                : 72 + model.axisModels.length * 140 + 460;
             return (
                 <>
                     {pointMetadata}
@@ -1986,9 +1995,10 @@ export function PointGrid({ node, compare }: PointGridProps) {
             );
         }
 
+        // See largeScrollX: virtual tables require a numeric scroll.x.
         const fullScrollX = compare
             ? 90 + model.axisModels.length * 160 + 244
-            : "max-content";
+            : 90 + model.axisModels.length * 160 + 520;
 
         return (
             <>
@@ -1998,7 +2008,7 @@ export function PointGrid({ node, compare }: PointGridProps) {
                 <Table<CoverageRecord>
                     {...(view.body.content.table.props as unknown as TableProps<CoverageRecord>)}
                     key={`${node.key}-${compare ? "compare" : "normal"}`}
-                    tableLayout={compare ? "fixed" : "auto"}
+                    tableLayout="fixed"
                     columns={fullColumns}
                     dataSource={sortedFullDataSource}
                     onRow={(record) => ({
