@@ -36,6 +36,10 @@ def _get_bucket_version() -> str:
 # Keep in sync with SUPPORTED_FORMAT_VERSION in
 # viewer/src/utils/versionCompat.ts.
 #
+# After bumping, generate the frozen backwards-compat fixture for the new
+# format with 'python tools/gen_format_fixtures.py' and commit it — see
+# tests/format_fixtures/README.md.
+#
 # Format history:
 #   1: original layout; archive record rows may omit the trailing
 #      bucket_version and format_version columns, JSON records carry no
