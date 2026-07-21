@@ -34,7 +34,10 @@ export function compareVersions(a: string, b: string): -1 | 0 | 1 {
  * history in bucket/rw/common.py), so a single supported range covers both.
  *
  * Keep in sync with FORMAT_VERSION / MIN_FORMAT_VERSION in
- * bucket/rw/common.py.
+ * bucket/rw/common.py. Every version in the supported range has a frozen
+ * fixture under tests/format_fixtures/ (repo root) that the compat tests
+ * open and fully process — see tests/format_fixtures/README.md for the
+ * bump / drop-support workflow.
  */
 export const SUPPORTED_FORMAT_VERSION = 2;
 export const MIN_SUPPORTED_FORMAT_VERSION = 1;

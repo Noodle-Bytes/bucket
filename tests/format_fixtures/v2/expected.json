@@ -1,0 +1,1669 @@
+{
+ "format_version": 2,
+ "records": [
+  {
+   "axis": [
+    {
+     "description": "0",
+     "name": "0",
+     "start": 0,
+     "value_end": 2,
+     "value_start": 0
+    },
+    {
+     "description": "1",
+     "name": "1",
+     "start": 1,
+     "value_end": 4,
+     "value_start": 2
+    },
+    {
+     "description": "2",
+     "name": "2",
+     "start": 2,
+     "value_end": 6,
+     "value_start": 4
+    },
+    {
+     "description": "3",
+     "name": "3",
+     "start": 3,
+     "value_end": 8,
+     "value_start": 6
+    },
+    {
+     "description": "4",
+     "name": "4",
+     "start": 4,
+     "value_end": 10,
+     "value_start": 8
+    },
+    {
+     "description": "5",
+     "name": "5",
+     "start": 5,
+     "value_end": 13,
+     "value_start": 10
+    },
+    {
+     "description": "6",
+     "name": "6",
+     "start": 6,
+     "value_end": 16,
+     "value_start": 13
+    },
+    {
+     "description": "7",
+     "name": "7",
+     "start": 7,
+     "value_end": 19,
+     "value_start": 16
+    },
+    {
+     "description": "8",
+     "name": "8",
+     "start": 8,
+     "value_end": 21,
+     "value_start": 19
+    },
+    {
+     "description": "9",
+     "name": "9",
+     "start": 9,
+     "value_end": 24,
+     "value_start": 21
+    },
+    {
+     "description": "10",
+     "name": "10",
+     "start": 10,
+     "value_end": 27,
+     "value_start": 24
+    }
+   ],
+   "axis_value": [
+    {
+     "start": 0,
+     "value": "0"
+    },
+    {
+     "start": 1,
+     "value": "1"
+    },
+    {
+     "start": 2,
+     "value": "2"
+    },
+    {
+     "start": 3,
+     "value": "3"
+    },
+    {
+     "start": 4,
+     "value": "4"
+    },
+    {
+     "start": 5,
+     "value": "5"
+    },
+    {
+     "start": 6,
+     "value": "6"
+    },
+    {
+     "start": 7,
+     "value": "7"
+    },
+    {
+     "start": 8,
+     "value": "8"
+    },
+    {
+     "start": 9,
+     "value": "9"
+    },
+    {
+     "start": 10,
+     "value": "10"
+    },
+    {
+     "start": 11,
+     "value": "11"
+    },
+    {
+     "start": 12,
+     "value": "12"
+    },
+    {
+     "start": 13,
+     "value": "13"
+    },
+    {
+     "start": 14,
+     "value": "14"
+    },
+    {
+     "start": 15,
+     "value": "15"
+    },
+    {
+     "start": 16,
+     "value": "16"
+    },
+    {
+     "start": 17,
+     "value": "17"
+    },
+    {
+     "start": 18,
+     "value": "18"
+    },
+    {
+     "start": 19,
+     "value": "19"
+    },
+    {
+     "start": 20,
+     "value": "20"
+    },
+    {
+     "start": 21,
+     "value": "21"
+    },
+    {
+     "start": 22,
+     "value": "22"
+    },
+    {
+     "start": 23,
+     "value": "23"
+    },
+    {
+     "start": 24,
+     "value": "24"
+    },
+    {
+     "start": 25,
+     "value": "25"
+    },
+    {
+     "start": 26,
+     "value": "26"
+    }
+   ],
+   "bucket_goal": [
+    {
+     "goal": 0,
+     "start": 0
+    },
+    {
+     "goal": 1,
+     "start": 1
+    },
+    {
+     "goal": 0,
+     "start": 2
+    },
+    {
+     "goal": 1,
+     "start": 3
+    },
+    {
+     "goal": 2,
+     "start": 4
+    },
+    {
+     "goal": 2,
+     "start": 5
+    },
+    {
+     "goal": 2,
+     "start": 6
+    },
+    {
+     "goal": 2,
+     "start": 7
+    },
+    {
+     "goal": 4,
+     "start": 8
+    },
+    {
+     "goal": 4,
+     "start": 9
+    },
+    {
+     "goal": 4,
+     "start": 10
+    },
+    {
+     "goal": 4,
+     "start": 11
+    },
+    {
+     "goal": 3,
+     "start": 12
+    },
+    {
+     "goal": 3,
+     "start": 13
+    },
+    {
+     "goal": 5,
+     "start": 14
+    },
+    {
+     "goal": 5,
+     "start": 15
+    },
+    {
+     "goal": 5,
+     "start": 16
+    },
+    {
+     "goal": 6,
+     "start": 17
+    },
+    {
+     "goal": 6,
+     "start": 18
+    },
+    {
+     "goal": 6,
+     "start": 19
+    },
+    {
+     "goal": 6,
+     "start": 20
+    },
+    {
+     "goal": 6,
+     "start": 21
+    },
+    {
+     "goal": 6,
+     "start": 22
+    },
+    {
+     "goal": 8,
+     "start": 23
+    },
+    {
+     "goal": 8,
+     "start": 24
+    },
+    {
+     "goal": 7,
+     "start": 25
+    },
+    {
+     "goal": 10,
+     "start": 26
+    },
+    {
+     "goal": 10,
+     "start": 27
+    },
+    {
+     "goal": 9,
+     "start": 28
+    }
+   ],
+   "bucket_hit": [
+    {
+     "hits": 7,
+     "start": 0
+    },
+    {
+     "hits": 8,
+     "start": 1
+    },
+    {
+     "hits": 12,
+     "start": 2
+    },
+    {
+     "hits": 7,
+     "start": 3
+    },
+    {
+     "hits": 7,
+     "start": 4
+    },
+    {
+     "hits": 8,
+     "start": 5
+    },
+    {
+     "hits": 9,
+     "start": 6
+    },
+    {
+     "hits": 3,
+     "start": 7
+    },
+    {
+     "hits": 2,
+     "start": 8
+    },
+    {
+     "hits": 12,
+     "start": 9
+    },
+    {
+     "hits": 8,
+     "start": 10
+    },
+    {
+     "hits": 7,
+     "start": 11
+    },
+    {
+     "hits": 10,
+     "start": 12
+    },
+    {
+     "hits": 9,
+     "start": 13
+    },
+    {
+     "hits": 12,
+     "start": 14
+    },
+    {
+     "hits": 2,
+     "start": 15
+    },
+    {
+     "hits": 1,
+     "start": 16
+    },
+    {
+     "hits": 7,
+     "start": 17
+    },
+    {
+     "hits": 4,
+     "start": 18
+    },
+    {
+     "hits": 2,
+     "start": 19
+    },
+    {
+     "hits": 1,
+     "start": 20
+    },
+    {
+     "hits": 8,
+     "start": 21
+    },
+    {
+     "hits": 12,
+     "start": 22
+    },
+    {
+     "hits": 11,
+     "start": 23
+    },
+    {
+     "hits": 10,
+     "start": 24
+    },
+    {
+     "hits": 0,
+     "start": 25
+    },
+    {
+     "hits": 9,
+     "start": 26
+    },
+    {
+     "hits": 6,
+     "start": 27
+    },
+    {
+     "hits": 7,
+     "start": 28
+    }
+   ],
+   "bucket_version": {
+    "archive": "",
+    "json": ""
+   },
+   "def_sha": "def-sha-20260721",
+   "format_version": 2,
+   "goal": [
+    {
+     "description": "0",
+     "name": "0",
+     "start": 0,
+     "target": -1
+    },
+    {
+     "description": "1",
+     "name": "1",
+     "start": 1,
+     "target": 2
+    },
+    {
+     "description": "2",
+     "name": "2",
+     "start": 2,
+     "target": 8
+    },
+    {
+     "description": "3",
+     "name": "3",
+     "start": 3,
+     "target": 7
+    },
+    {
+     "description": "4",
+     "name": "4",
+     "start": 4,
+     "target": -1
+    },
+    {
+     "description": "5",
+     "name": "5",
+     "start": 5,
+     "target": 0
+    },
+    {
+     "description": "6",
+     "name": "6",
+     "start": 6,
+     "target": 0
+    },
+    {
+     "description": "7",
+     "name": "7",
+     "start": 7,
+     "target": 7
+    },
+    {
+     "description": "8",
+     "name": "8",
+     "start": 8,
+     "target": 7
+    },
+    {
+     "description": "9",
+     "name": "9",
+     "start": 9,
+     "target": -1
+    },
+    {
+     "description": "10",
+     "name": "10",
+     "start": 10,
+     "target": 3
+    }
+   ],
+   "point": [
+    {
+     "axis_end": 11,
+     "axis_start": 0,
+     "axis_value_end": 27,
+     "axis_value_start": 0,
+     "bucket_end": 29,
+     "bucket_start": 0,
+     "depth": 0,
+     "description": "Group №0 - \"quoted, commas\" ✓",
+     "end": 12,
+     "goal_end": 11,
+     "goal_start": 0,
+     "motivation": "Motivation №0",
+     "name": "S0D0E12",
+     "start": 0,
+     "tags": "",
+     "target": 77,
+     "target_buckets": 13,
+     "tier": null
+    },
+    {
+     "axis_end": 7,
+     "axis_start": 0,
+     "axis_value_end": 16,
+     "axis_value_start": 0,
+     "bucket_end": 17,
+     "bucket_start": 0,
+     "depth": 1,
+     "description": "Group №1 - \"quoted, commas\" ✓",
+     "end": 6,
+     "goal_end": 6,
+     "goal_start": 0,
+     "motivation": "",
+     "name": "S0D1E6",
+     "start": 0,
+     "tags": "[\"fmt\",\"smoke\"]",
+     "target": 50,
+     "target_buckets": 8,
+     "tier": 0
+    },
+    {
+     "axis_end": 2,
+     "axis_start": 0,
+     "axis_value_end": 4,
+     "axis_value_start": 0,
+     "bucket_end": 4,
+     "bucket_start": 0,
+     "depth": 2,
+     "description": "Point №2 - \"quoted, commas\" ✓",
+     "end": 1,
+     "goal_end": 2,
+     "goal_start": 0,
+     "motivation": "",
+     "name": "S0D2E1",
+     "start": 0,
+     "tags": "legacy,comma tags",
+     "target": 4,
+     "target_buckets": 2,
+     "tier": 1
+    },
+    {
+     "axis_end": 6,
+     "axis_start": 2,
+     "axis_value_end": 13,
+     "axis_value_start": 4,
+     "bucket_end": 14,
+     "bucket_start": 4,
+     "depth": 2,
+     "description": "Group №3 - \"quoted, commas\" ✓",
+     "end": 4,
+     "goal_end": 5,
+     "goal_start": 2,
+     "motivation": "Motivation №3",
+     "name": "S1D2E4",
+     "start": 1,
+     "tags": "",
+     "target": 46,
+     "target_buckets": 6,
+     "tier": 2
+    },
+    {
+     "axis_end": 4,
+     "axis_start": 2,
+     "axis_value_end": 8,
+     "axis_value_start": 4,
+     "bucket_end": 8,
+     "bucket_start": 4,
+     "depth": 3,
+     "description": "Point №4 - \"quoted, commas\" ✓",
+     "end": 2,
+     "goal_end": 3,
+     "goal_start": 2,
+     "motivation": "",
+     "name": "S1D3E2",
+     "start": 1,
+     "tags": "[\"fmt\",\"smoke\"]",
+     "target": 32,
+     "target_buckets": 4,
+     "tier": null
+    },
+    {
+     "axis_end": 6,
+     "axis_start": 4,
+     "axis_value_end": 13,
+     "axis_value_start": 8,
+     "bucket_end": 14,
+     "bucket_start": 8,
+     "depth": 3,
+     "description": "Point №5 - \"quoted, commas\" ✓",
+     "end": 3,
+     "goal_end": 5,
+     "goal_start": 3,
+     "motivation": "",
+     "name": "S2D3E3",
+     "start": 2,
+     "tags": "legacy,comma tags",
+     "target": 14,
+     "target_buckets": 2,
+     "tier": 0
+    },
+    {
+     "axis_end": 7,
+     "axis_start": 6,
+     "axis_value_end": 16,
+     "axis_value_start": 13,
+     "bucket_end": 17,
+     "bucket_start": 14,
+     "depth": 2,
+     "description": "Point №6 - \"quoted, commas\" ✓",
+     "end": 5,
+     "goal_end": 6,
+     "goal_start": 5,
+     "motivation": "Motivation №6",
+     "name": "S4D2E5",
+     "start": 4,
+     "tags": "",
+     "target": 0,
+     "target_buckets": 0,
+     "tier": 1
+    },
+    {
+     "axis_end": 11,
+     "axis_start": 7,
+     "axis_value_end": 27,
+     "axis_value_start": 16,
+     "bucket_end": 29,
+     "bucket_start": 17,
+     "depth": 1,
+     "description": "Group №7 - \"quoted, commas\" ✓",
+     "end": 11,
+     "goal_end": 11,
+     "goal_start": 6,
+     "motivation": "",
+     "name": "S6D1E11",
+     "start": 6,
+     "tags": "[\"fmt\",\"smoke\"]",
+     "target": 27,
+     "target_buckets": 5,
+     "tier": 2
+    },
+    {
+     "axis_end": 10,
+     "axis_start": 7,
+     "axis_value_end": 24,
+     "axis_value_start": 16,
+     "bucket_end": 26,
+     "bucket_start": 17,
+     "depth": 2,
+     "description": "Group №8 - \"quoted, commas\" ✓",
+     "end": 9,
+     "goal_end": 9,
+     "goal_start": 6,
+     "motivation": "",
+     "name": "S6D2E9",
+     "start": 6,
+     "tags": "legacy,comma tags",
+     "target": 21,
+     "target_buckets": 3,
+     "tier": null
+    },
+    {
+     "axis_end": 9,
+     "axis_start": 7,
+     "axis_value_end": 21,
+     "axis_value_start": 16,
+     "bucket_end": 23,
+     "bucket_start": 17,
+     "depth": 3,
+     "description": "Point №9 - \"quoted, commas\" ✓",
+     "end": 7,
+     "goal_end": 7,
+     "goal_start": 6,
+     "motivation": "Motivation №9",
+     "name": "S6D3E7",
+     "start": 6,
+     "tags": "",
+     "target": 0,
+     "target_buckets": 0,
+     "tier": 0
+    },
+    {
+     "axis_end": 10,
+     "axis_start": 9,
+     "axis_value_end": 24,
+     "axis_value_start": 21,
+     "bucket_end": 26,
+     "bucket_start": 23,
+     "depth": 3,
+     "description": "Point №10 - \"quoted, commas\" ✓",
+     "end": 8,
+     "goal_end": 9,
+     "goal_start": 7,
+     "motivation": "",
+     "name": "S7D3E8",
+     "start": 7,
+     "tags": "[\"fmt\",\"smoke\"]",
+     "target": 21,
+     "target_buckets": 3,
+     "tier": 1
+    },
+    {
+     "axis_end": 11,
+     "axis_start": 10,
+     "axis_value_end": 27,
+     "axis_value_start": 24,
+     "bucket_end": 29,
+     "bucket_start": 26,
+     "depth": 2,
+     "description": "Point №11 - \"quoted, commas\" ✓",
+     "end": 10,
+     "goal_end": 11,
+     "goal_start": 9,
+     "motivation": "",
+     "name": "S9D2E10",
+     "start": 9,
+     "tags": "legacy,comma tags",
+     "target": 6,
+     "target_buckets": 2,
+     "tier": 2
+    }
+   ],
+   "point_hit": [
+    {
+     "depth": 0,
+     "full_buckets": 10,
+     "hit_buckets": 12,
+     "hits": 64,
+     "start": 0
+    },
+    {
+     "depth": 1,
+     "full_buckets": 6,
+     "hit_buckets": 8,
+     "hits": 44,
+     "start": 0
+    },
+    {
+     "depth": 2,
+     "full_buckets": 2,
+     "hit_buckets": 2,
+     "hits": 4,
+     "start": 0
+    },
+    {
+     "depth": 2,
+     "full_buckets": 4,
+     "hit_buckets": 6,
+     "hits": 40,
+     "start": 1
+    },
+    {
+     "depth": 3,
+     "full_buckets": 2,
+     "hit_buckets": 4,
+     "hits": 26,
+     "start": 1
+    },
+    {
+     "depth": 3,
+     "full_buckets": 2,
+     "hit_buckets": 2,
+     "hits": 14,
+     "start": 2
+    },
+    {
+     "depth": 2,
+     "full_buckets": 0,
+     "hit_buckets": 0,
+     "hits": 0,
+     "start": 4
+    },
+    {
+     "depth": 1,
+     "full_buckets": 4,
+     "hit_buckets": 4,
+     "hits": 20,
+     "start": 6
+    },
+    {
+     "depth": 2,
+     "full_buckets": 2,
+     "hit_buckets": 2,
+     "hits": 14,
+     "start": 6
+    },
+    {
+     "depth": 3,
+     "full_buckets": 0,
+     "hit_buckets": 0,
+     "hits": 0,
+     "start": 6
+    },
+    {
+     "depth": 3,
+     "full_buckets": 2,
+     "hit_buckets": 2,
+     "hits": 14,
+     "start": 7
+    },
+    {
+     "depth": 2,
+     "full_buckets": 2,
+     "hit_buckets": 2,
+     "hits": 6,
+     "start": 9
+    }
+   ],
+   "rec_sha": "rec-sha-20260721",
+   "source": "format_fixture",
+   "source_key": "rec_0"
+  },
+  {
+   "axis": [
+    {
+     "description": "0",
+     "name": "0",
+     "start": 0,
+     "value_end": 2,
+     "value_start": 0
+    },
+    {
+     "description": "1",
+     "name": "1",
+     "start": 1,
+     "value_end": 4,
+     "value_start": 2
+    },
+    {
+     "description": "2",
+     "name": "2",
+     "start": 2,
+     "value_end": 6,
+     "value_start": 4
+    },
+    {
+     "description": "3",
+     "name": "3",
+     "start": 3,
+     "value_end": 8,
+     "value_start": 6
+    },
+    {
+     "description": "4",
+     "name": "4",
+     "start": 4,
+     "value_end": 10,
+     "value_start": 8
+    },
+    {
+     "description": "5",
+     "name": "5",
+     "start": 5,
+     "value_end": 13,
+     "value_start": 10
+    },
+    {
+     "description": "6",
+     "name": "6",
+     "start": 6,
+     "value_end": 16,
+     "value_start": 13
+    },
+    {
+     "description": "7",
+     "name": "7",
+     "start": 7,
+     "value_end": 19,
+     "value_start": 16
+    },
+    {
+     "description": "8",
+     "name": "8",
+     "start": 8,
+     "value_end": 21,
+     "value_start": 19
+    },
+    {
+     "description": "9",
+     "name": "9",
+     "start": 9,
+     "value_end": 24,
+     "value_start": 21
+    },
+    {
+     "description": "10",
+     "name": "10",
+     "start": 10,
+     "value_end": 27,
+     "value_start": 24
+    }
+   ],
+   "axis_value": [
+    {
+     "start": 0,
+     "value": "0"
+    },
+    {
+     "start": 1,
+     "value": "1"
+    },
+    {
+     "start": 2,
+     "value": "2"
+    },
+    {
+     "start": 3,
+     "value": "3"
+    },
+    {
+     "start": 4,
+     "value": "4"
+    },
+    {
+     "start": 5,
+     "value": "5"
+    },
+    {
+     "start": 6,
+     "value": "6"
+    },
+    {
+     "start": 7,
+     "value": "7"
+    },
+    {
+     "start": 8,
+     "value": "8"
+    },
+    {
+     "start": 9,
+     "value": "9"
+    },
+    {
+     "start": 10,
+     "value": "10"
+    },
+    {
+     "start": 11,
+     "value": "11"
+    },
+    {
+     "start": 12,
+     "value": "12"
+    },
+    {
+     "start": 13,
+     "value": "13"
+    },
+    {
+     "start": 14,
+     "value": "14"
+    },
+    {
+     "start": 15,
+     "value": "15"
+    },
+    {
+     "start": 16,
+     "value": "16"
+    },
+    {
+     "start": 17,
+     "value": "17"
+    },
+    {
+     "start": 18,
+     "value": "18"
+    },
+    {
+     "start": 19,
+     "value": "19"
+    },
+    {
+     "start": 20,
+     "value": "20"
+    },
+    {
+     "start": 21,
+     "value": "21"
+    },
+    {
+     "start": 22,
+     "value": "22"
+    },
+    {
+     "start": 23,
+     "value": "23"
+    },
+    {
+     "start": 24,
+     "value": "24"
+    },
+    {
+     "start": 25,
+     "value": "25"
+    },
+    {
+     "start": 26,
+     "value": "26"
+    }
+   ],
+   "bucket_goal": [
+    {
+     "goal": 0,
+     "start": 0
+    },
+    {
+     "goal": 1,
+     "start": 1
+    },
+    {
+     "goal": 0,
+     "start": 2
+    },
+    {
+     "goal": 1,
+     "start": 3
+    },
+    {
+     "goal": 2,
+     "start": 4
+    },
+    {
+     "goal": 2,
+     "start": 5
+    },
+    {
+     "goal": 2,
+     "start": 6
+    },
+    {
+     "goal": 2,
+     "start": 7
+    },
+    {
+     "goal": 4,
+     "start": 8
+    },
+    {
+     "goal": 4,
+     "start": 9
+    },
+    {
+     "goal": 4,
+     "start": 10
+    },
+    {
+     "goal": 4,
+     "start": 11
+    },
+    {
+     "goal": 3,
+     "start": 12
+    },
+    {
+     "goal": 3,
+     "start": 13
+    },
+    {
+     "goal": 5,
+     "start": 14
+    },
+    {
+     "goal": 5,
+     "start": 15
+    },
+    {
+     "goal": 5,
+     "start": 16
+    },
+    {
+     "goal": 6,
+     "start": 17
+    },
+    {
+     "goal": 6,
+     "start": 18
+    },
+    {
+     "goal": 6,
+     "start": 19
+    },
+    {
+     "goal": 6,
+     "start": 20
+    },
+    {
+     "goal": 6,
+     "start": 21
+    },
+    {
+     "goal": 6,
+     "start": 22
+    },
+    {
+     "goal": 8,
+     "start": 23
+    },
+    {
+     "goal": 8,
+     "start": 24
+    },
+    {
+     "goal": 7,
+     "start": 25
+    },
+    {
+     "goal": 10,
+     "start": 26
+    },
+    {
+     "goal": 10,
+     "start": 27
+    },
+    {
+     "goal": 9,
+     "start": 28
+    }
+   ],
+   "bucket_hit": [
+    {
+     "hits": 2,
+     "start": 0
+    },
+    {
+     "hits": 3,
+     "start": 1
+    },
+    {
+     "hits": 0,
+     "start": 2
+    },
+    {
+     "hits": 9,
+     "start": 3
+    },
+    {
+     "hits": 7,
+     "start": 4
+    },
+    {
+     "hits": 2,
+     "start": 5
+    },
+    {
+     "hits": 11,
+     "start": 6
+    },
+    {
+     "hits": 1,
+     "start": 7
+    },
+    {
+     "hits": 11,
+     "start": 8
+    },
+    {
+     "hits": 10,
+     "start": 9
+    },
+    {
+     "hits": 5,
+     "start": 10
+    },
+    {
+     "hits": 12,
+     "start": 11
+    },
+    {
+     "hits": 1,
+     "start": 12
+    },
+    {
+     "hits": 3,
+     "start": 13
+    },
+    {
+     "hits": 4,
+     "start": 14
+    },
+    {
+     "hits": 0,
+     "start": 15
+    },
+    {
+     "hits": 5,
+     "start": 16
+    },
+    {
+     "hits": 9,
+     "start": 17
+    },
+    {
+     "hits": 2,
+     "start": 18
+    },
+    {
+     "hits": 8,
+     "start": 19
+    },
+    {
+     "hits": 10,
+     "start": 20
+    },
+    {
+     "hits": 11,
+     "start": 21
+    },
+    {
+     "hits": 6,
+     "start": 22
+    },
+    {
+     "hits": 11,
+     "start": 23
+    },
+    {
+     "hits": 0,
+     "start": 24
+    },
+    {
+     "hits": 9,
+     "start": 25
+    },
+    {
+     "hits": 0,
+     "start": 26
+    },
+    {
+     "hits": 9,
+     "start": 27
+    },
+    {
+     "hits": 4,
+     "start": 28
+    }
+   ],
+   "bucket_version": {
+    "archive": "",
+    "json": ""
+   },
+   "def_sha": "def-sha-20260721",
+   "format_version": 2,
+   "goal": [
+    {
+     "description": "0",
+     "name": "0",
+     "start": 0,
+     "target": -1
+    },
+    {
+     "description": "1",
+     "name": "1",
+     "start": 1,
+     "target": 2
+    },
+    {
+     "description": "2",
+     "name": "2",
+     "start": 2,
+     "target": 8
+    },
+    {
+     "description": "3",
+     "name": "3",
+     "start": 3,
+     "target": 7
+    },
+    {
+     "description": "4",
+     "name": "4",
+     "start": 4,
+     "target": -1
+    },
+    {
+     "description": "5",
+     "name": "5",
+     "start": 5,
+     "target": 0
+    },
+    {
+     "description": "6",
+     "name": "6",
+     "start": 6,
+     "target": 0
+    },
+    {
+     "description": "7",
+     "name": "7",
+     "start": 7,
+     "target": 7
+    },
+    {
+     "description": "8",
+     "name": "8",
+     "start": 8,
+     "target": 7
+    },
+    {
+     "description": "9",
+     "name": "9",
+     "start": 9,
+     "target": -1
+    },
+    {
+     "description": "10",
+     "name": "10",
+     "start": 10,
+     "target": 3
+    }
+   ],
+   "point": [
+    {
+     "axis_end": 11,
+     "axis_start": 0,
+     "axis_value_end": 27,
+     "axis_value_start": 0,
+     "bucket_end": 29,
+     "bucket_start": 0,
+     "depth": 0,
+     "description": "Group №0 - \"quoted, commas\" ✓",
+     "end": 12,
+     "goal_end": 11,
+     "goal_start": 0,
+     "motivation": "Motivation №0",
+     "name": "S0D0E12",
+     "start": 0,
+     "tags": "",
+     "target": 77,
+     "target_buckets": 13,
+     "tier": null
+    },
+    {
+     "axis_end": 7,
+     "axis_start": 0,
+     "axis_value_end": 16,
+     "axis_value_start": 0,
+     "bucket_end": 17,
+     "bucket_start": 0,
+     "depth": 1,
+     "description": "Group №1 - \"quoted, commas\" ✓",
+     "end": 6,
+     "goal_end": 6,
+     "goal_start": 0,
+     "motivation": "",
+     "name": "S0D1E6",
+     "start": 0,
+     "tags": "[\"fmt\",\"smoke\"]",
+     "target": 50,
+     "target_buckets": 8,
+     "tier": 0
+    },
+    {
+     "axis_end": 2,
+     "axis_start": 0,
+     "axis_value_end": 4,
+     "axis_value_start": 0,
+     "bucket_end": 4,
+     "bucket_start": 0,
+     "depth": 2,
+     "description": "Point №2 - \"quoted, commas\" ✓",
+     "end": 1,
+     "goal_end": 2,
+     "goal_start": 0,
+     "motivation": "",
+     "name": "S0D2E1",
+     "start": 0,
+     "tags": "legacy,comma tags",
+     "target": 4,
+     "target_buckets": 2,
+     "tier": 1
+    },
+    {
+     "axis_end": 6,
+     "axis_start": 2,
+     "axis_value_end": 13,
+     "axis_value_start": 4,
+     "bucket_end": 14,
+     "bucket_start": 4,
+     "depth": 2,
+     "description": "Group №3 - \"quoted, commas\" ✓",
+     "end": 4,
+     "goal_end": 5,
+     "goal_start": 2,
+     "motivation": "Motivation №3",
+     "name": "S1D2E4",
+     "start": 1,
+     "tags": "",
+     "target": 46,
+     "target_buckets": 6,
+     "tier": 2
+    },
+    {
+     "axis_end": 4,
+     "axis_start": 2,
+     "axis_value_end": 8,
+     "axis_value_start": 4,
+     "bucket_end": 8,
+     "bucket_start": 4,
+     "depth": 3,
+     "description": "Point №4 - \"quoted, commas\" ✓",
+     "end": 2,
+     "goal_end": 3,
+     "goal_start": 2,
+     "motivation": "",
+     "name": "S1D3E2",
+     "start": 1,
+     "tags": "[\"fmt\",\"smoke\"]",
+     "target": 32,
+     "target_buckets": 4,
+     "tier": null
+    },
+    {
+     "axis_end": 6,
+     "axis_start": 4,
+     "axis_value_end": 13,
+     "axis_value_start": 8,
+     "bucket_end": 14,
+     "bucket_start": 8,
+     "depth": 3,
+     "description": "Point №5 - \"quoted, commas\" ✓",
+     "end": 3,
+     "goal_end": 5,
+     "goal_start": 3,
+     "motivation": "",
+     "name": "S2D3E3",
+     "start": 2,
+     "tags": "legacy,comma tags",
+     "target": 14,
+     "target_buckets": 2,
+     "tier": 0
+    },
+    {
+     "axis_end": 7,
+     "axis_start": 6,
+     "axis_value_end": 16,
+     "axis_value_start": 13,
+     "bucket_end": 17,
+     "bucket_start": 14,
+     "depth": 2,
+     "description": "Point №6 - \"quoted, commas\" ✓",
+     "end": 5,
+     "goal_end": 6,
+     "goal_start": 5,
+     "motivation": "Motivation №6",
+     "name": "S4D2E5",
+     "start": 4,
+     "tags": "",
+     "target": 0,
+     "target_buckets": 0,
+     "tier": 1
+    },
+    {
+     "axis_end": 11,
+     "axis_start": 7,
+     "axis_value_end": 27,
+     "axis_value_start": 16,
+     "bucket_end": 29,
+     "bucket_start": 17,
+     "depth": 1,
+     "description": "Group №7 - \"quoted, commas\" ✓",
+     "end": 11,
+     "goal_end": 11,
+     "goal_start": 6,
+     "motivation": "",
+     "name": "S6D1E11",
+     "start": 6,
+     "tags": "[\"fmt\",\"smoke\"]",
+     "target": 27,
+     "target_buckets": 5,
+     "tier": 2
+    },
+    {
+     "axis_end": 10,
+     "axis_start": 7,
+     "axis_value_end": 24,
+     "axis_value_start": 16,
+     "bucket_end": 26,
+     "bucket_start": 17,
+     "depth": 2,
+     "description": "Group №8 - \"quoted, commas\" ✓",
+     "end": 9,
+     "goal_end": 9,
+     "goal_start": 6,
+     "motivation": "",
+     "name": "S6D2E9",
+     "start": 6,
+     "tags": "legacy,comma tags",
+     "target": 21,
+     "target_buckets": 3,
+     "tier": null
+    },
+    {
+     "axis_end": 9,
+     "axis_start": 7,
+     "axis_value_end": 21,
+     "axis_value_start": 16,
+     "bucket_end": 23,
+     "bucket_start": 17,
+     "depth": 3,
+     "description": "Point №9 - \"quoted, commas\" ✓",
+     "end": 7,
+     "goal_end": 7,
+     "goal_start": 6,
+     "motivation": "Motivation №9",
+     "name": "S6D3E7",
+     "start": 6,
+     "tags": "",
+     "target": 0,
+     "target_buckets": 0,
+     "tier": 0
+    },
+    {
+     "axis_end": 10,
+     "axis_start": 9,
+     "axis_value_end": 24,
+     "axis_value_start": 21,
+     "bucket_end": 26,
+     "bucket_start": 23,
+     "depth": 3,
+     "description": "Point №10 - \"quoted, commas\" ✓",
+     "end": 8,
+     "goal_end": 9,
+     "goal_start": 7,
+     "motivation": "",
+     "name": "S7D3E8",
+     "start": 7,
+     "tags": "[\"fmt\",\"smoke\"]",
+     "target": 21,
+     "target_buckets": 3,
+     "tier": 1
+    },
+    {
+     "axis_end": 11,
+     "axis_start": 10,
+     "axis_value_end": 27,
+     "axis_value_start": 24,
+     "bucket_end": 29,
+     "bucket_start": 26,
+     "depth": 2,
+     "description": "Point №11 - \"quoted, commas\" ✓",
+     "end": 10,
+     "goal_end": 11,
+     "goal_start": 9,
+     "motivation": "",
+     "name": "S9D2E10",
+     "start": 9,
+     "tags": "legacy,comma tags",
+     "target": 6,
+     "target_buckets": 2,
+     "tier": 2
+    }
+   ],
+   "point_hit": [
+    {
+     "depth": 0,
+     "full_buckets": 6,
+     "hit_buckets": 11,
+     "hits": 43,
+     "start": 0
+    },
+    {
+     "depth": 1,
+     "full_buckets": 3,
+     "hit_buckets": 8,
+     "hits": 26,
+     "start": 0
+    },
+    {
+     "depth": 2,
+     "full_buckets": 2,
+     "hit_buckets": 2,
+     "hits": 4,
+     "start": 0
+    },
+    {
+     "depth": 2,
+     "full_buckets": 1,
+     "hit_buckets": 6,
+     "hits": 22,
+     "start": 1
+    },
+    {
+     "depth": 3,
+     "full_buckets": 1,
+     "hit_buckets": 4,
+     "hits": 18,
+     "start": 1
+    },
+    {
+     "depth": 3,
+     "full_buckets": 0,
+     "hit_buckets": 2,
+     "hits": 4,
+     "start": 2
+    },
+    {
+     "depth": 2,
+     "full_buckets": 0,
+     "hit_buckets": 0,
+     "hits": 0,
+     "start": 4
+    },
+    {
+     "depth": 1,
+     "full_buckets": 3,
+     "hit_buckets": 3,
+     "hits": 17,
+     "start": 6
+    },
+    {
+     "depth": 2,
+     "full_buckets": 2,
+     "hit_buckets": 2,
+     "hits": 14,
+     "start": 6
+    },
+    {
+     "depth": 3,
+     "full_buckets": 0,
+     "hit_buckets": 0,
+     "hits": 0,
+     "start": 6
+    },
+    {
+     "depth": 3,
+     "full_buckets": 2,
+     "hit_buckets": 2,
+     "hits": 14,
+     "start": 7
+    },
+    {
+     "depth": 2,
+     "full_buckets": 1,
+     "hit_buckets": 1,
+     "hits": 3,
+     "start": 9
+    }
+   ],
+   "rec_sha": "rec-sha-20260721",
+   "source": "format_fixture",
+   "source_key": "rec_1"
+  }
+ ]
+}
