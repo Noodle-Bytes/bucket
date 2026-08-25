@@ -3,15 +3,153 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-/* Hide scrollbars globally, but keep Ant Table scroll containers measurable.
- * Safari can misalign sticky/grouped table headers when table scrollbars are forced off. */
-*:not(.ant-table-body):not(.ant-table-content):not(.ant-table-header):not(.ant-table-sticky-scroll)::-webkit-scrollbar {
-  display: none;
+/*
+ * SPDX-License-Identifier: MIT
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+ */
+
+/*
+ * Virtual Ant tables (rc-virtual-list) paint a CUSTOM scrollbar div — not a
+ * native OS scrollbar. Default thumb is colorSplit / rgba(0,0,0,0.5) at 8px and
+ * visibility:hidden when idle, which is why bars looked invisible in Electron.
+ */
+.ant-table-wrapper {
+  --rc-virtual-list-scrollbar-bg: #d6d6d6;
 }
-/* Hide scrollbars for IE, Edge and Firefox (same Ant Table exclusions as above). */
-*:not(.ant-table-body):not(.ant-table-content):not(.ant-table-header):not(.ant-table-sticky-scroll) {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+
+html[data-bucket-theme="light"] .ant-table-wrapper,
+html[data-bucket-theme="odd"] .ant-table-wrapper {
+  --rc-virtual-list-scrollbar-bg: #5a5a5a;
+}
+
+.ant-table-tbody-virtual-scrollbar,
+.rc-virtual-list-scrollbar {
+  /* Inline style sets visibility:hidden when idle — force it on. */
+  visibility: visible !important;
+  opacity: 1 !important;
+  background: #2a2a2a !important;
+}
+
+.ant-table-tbody-virtual-scrollbar-vertical,
+.rc-virtual-list-scrollbar-vertical {
+  width: 14px !important;
+}
+
+.ant-table-tbody-virtual-scrollbar-horizontal,
+.rc-virtual-list-scrollbar-horizontal {
+  height: 14px !important;
+}
+
+.ant-table-tbody-virtual-scrollbar-thumb,
+.rc-virtual-list-scrollbar-thumb {
+  background: var(--rc-virtual-list-scrollbar-bg, #d6d6d6) !important;
+  border-radius: 8px !important;
+  opacity: 1 !important;
+}
+
+html[data-bucket-theme="light"] .ant-table-tbody-virtual-scrollbar,
+html[data-bucket-theme="light"] .rc-virtual-list-scrollbar,
+html[data-bucket-theme="odd"] .ant-table-tbody-virtual-scrollbar,
+html[data-bucket-theme="odd"] .rc-virtual-list-scrollbar {
+  background: #e2e2e2 !important;
+}
+
+/* Sticky horizontal fake scrollbar (non-virtual + sticky tables). */
+.ant-table-sticky-scroll {
+  opacity: 1 !important;
+  height: 14px !important;
+  background: #2a2a2a !important;
+}
+
+.ant-table-sticky-scroll-bar {
+  height: 10px !important;
+  background-color: #d6d6d6 !important;
+  border-radius: 8px !important;
+}
+
+.ant-table-sticky-scroll-bar:hover,
+.ant-table-sticky-scroll-bar-active {
+  background-color: #f0f0f0 !important;
+}
+
+html[data-bucket-theme="light"] .ant-table-sticky-scroll,
+html[data-bucket-theme="odd"] .ant-table-sticky-scroll {
+  background: #e2e2e2 !important;
+}
+
+html[data-bucket-theme="light"] .ant-table-sticky-scroll-bar,
+html[data-bucket-theme="odd"] .ant-table-sticky-scroll-bar {
+  background-color: #5a5a5a !important;
+}
+
+html[data-bucket-theme="light"] .ant-table-sticky-scroll-bar:hover,
+html[data-bucket-theme="light"] .ant-table-sticky-scroll-bar-active,
+html[data-bucket-theme="odd"] .ant-table-sticky-scroll-bar:hover,
+html[data-bucket-theme="odd"] .ant-table-sticky-scroll-bar-active {
+  background-color: #333333 !important;
+}
+
+/* Native scrollbars (sider, modals, non-virtual overflow). */
+*::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #2a2a2a;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #d6d6d6;
+  border-radius: 8px;
+  border: 2px solid #2a2a2a;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #f0f0f0;
+}
+
+* {
+  scrollbar-width: auto;
+  scrollbar-color: #d6d6d6 #2a2a2a;
+}
+
+html[data-bucket-theme="light"] *::-webkit-scrollbar-track,
+html[data-bucket-theme="odd"] *::-webkit-scrollbar-track {
+  background: #e2e2e2;
+}
+
+html[data-bucket-theme="light"] *::-webkit-scrollbar-thumb,
+html[data-bucket-theme="odd"] *::-webkit-scrollbar-thumb {
+  background: #5a5a5a;
+  border-color: #e2e2e2;
+}
+
+html[data-bucket-theme="light"] *::-webkit-scrollbar-thumb:hover,
+html[data-bucket-theme="odd"] *::-webkit-scrollbar-thumb:hover {
+  background: #333333;
+}
+
+html[data-bucket-theme="light"],
+html[data-bucket-theme="odd"],
+html[data-bucket-theme="light"] *,
+html[data-bucket-theme="odd"] * {
+  scrollbar-color: #5a5a5a #e2e2e2;
+}
+
+/* Disabled default buttons: Ant's light-theme disabled greys are unreadable on dark. */
+.ant-btn-default:disabled,
+.ant-btn-default.ant-btn-disabled {
+  opacity: 1 !important;
+  color: var(--colors-desaturatedtxt) !important;
+  background: var(--colors-tertiarybg) !important;
+  border-color: var(--colors-lowlightbg) !important;
+}
+
+.ant-btn-default:disabled .anticon,
+.ant-btn-default.ant-btn-disabled .anticon {
+  color: inherit !important;
 }
 
 /* Donut grid title below each donut in grid view */
@@ -126,6 +264,7 @@
   min-height: 32px;
   padding-top: 6px !important;
   padding-bottom: 6px !important;
+  border-radius: 8px 8px 0 0 !important;
 }
 
 .point-metadata-collapse .ant-collapse-expand-icon,

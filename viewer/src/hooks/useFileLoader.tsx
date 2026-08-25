@@ -899,11 +899,33 @@ export function useFileLoader() {
 
         }
 
+        const onOpenShortcut = (event: KeyboardEvent) => {
+            if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) {
+                return;
+            }
+            if (event.key.toLowerCase() !== "o") {
+                return;
+            }
+            // Electron File → Open already handles Cmd/Ctrl+O.
+            if (isElectron()) {
+                return;
+            }
+            const target = event.target as HTMLElement | null;
+            const tag = target?.tagName?.toLowerCase();
+            if (tag === "input" || tag === "textarea" || target?.isContentEditable) {
+                return;
+            }
+            event.preventDefault();
+            void openFileDialog();
+        };
+        window.addEventListener("keydown", onOpenShortcut);
+
         return () => {
             rootElement.removeEventListener("drop", handleDrop);
             rootElement.removeEventListener("dragover", handleDragOver);
             rootElement.removeEventListener("dragenter", handleDragEnter);
             rootElement.removeEventListener("dragleave", handleDragLeave);
+            window.removeEventListener("keydown", onOpenShortcut);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

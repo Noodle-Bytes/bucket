@@ -8,13 +8,13 @@
  * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
  */
 
-import { Layout, Tree as AntTree, Input, Typography } from "antd";
+import { Layout, Tree as AntTree, Input } from "antd";
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
-declare const __APP_VERSION__: string;
 import { view } from "../../theme";
 import Tree, { TreeKey, TreeNode } from "../../lib/tree";
 import Theme from "@/providers/Theme";
+import { hexToRgba } from "@/utils/colors";
 
 export const MIN_SIDEBAR_WIDTH = 180;
 export const MAX_SIDEBAR_WIDTH = 520;
@@ -30,6 +30,7 @@ function treeTitleFormatter(
     tree: Tree,
     nodeTitleFormatter: (treeNode: TreeNode) => ReactNode,
     compareBadge?: (treeNode: TreeNode) => number | null,
+    badgeColors?: { background: string; color: string },
 ) {
     const callback = (treeNode: TreeNode): TreeNode => {
         const title = nodeTitleFormatter(treeNode);
@@ -43,8 +44,9 @@ function treeTitleFormatter(
                             fontSize: 11,
                             fontWeight: 600,
                             padding: "0 6px",
-                            borderRadius: 10,
-                            background: "rgba(37, 99, 235, 0.15)",
+                            borderRadius: 8,
+                            background: badgeColors?.background ?? "rgba(110, 110, 192, 0.18)",
+                            color: badgeColors?.color,
                         }}
                     >
                         {badgeCount}
@@ -117,11 +119,20 @@ export default function Sider({
     setExpandedTreeKeys,
     compareBadge,
 }: SiderProps) {
+    const { theme } = Theme.useContext();
     const [searchValue, setSearchValue] = useState("");
     const [isResizing, setIsResizing] = useState(false);
     const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
     const effectiveWidth = sidebarVisible ? sidebarWidth : 0;
+
+    const compareBadgeColors = useMemo(
+        () => ({
+            background: hexToRgba(theme.theme.colors.accentbg.value, 0.18),
+            color: theme.theme.colors.saturatedtxt.value,
+        }),
+        [theme],
+    );
 
     const onExpand = (newExpandedKeys: React.Key[]) => {
         setExpandedTreeKeys(newExpandedKeys as TreeKey[]);
@@ -171,8 +182,9 @@ export default function Sider({
             tree,
             searchNodeTitleFormatterFactory(searchValue),
             compareBadge,
+            compareBadgeColors,
         );
-    }, [searchValue, tree, compareBadge]);
+    }, [searchValue, tree, compareBadge, compareBadgeColors]);
 
     const onResizeMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
         if (!sidebarVisible) {
@@ -269,22 +281,6 @@ export default function Sider({
                         treeData={formattedTreeData}
                     />
                 </div>
-                <Theme.Consumer>
-                    {({ theme }) => (
-                        <Typography.Text
-                            style={{
-                                display: "block",
-                                textAlign: "center",
-                                fontSize: 11,
-                                padding: "8px 0 4px",
-                                color: theme.theme.colors.primarytxt.value,
-                                flexShrink: 0,
-                            }}
-                        >
-                            v{__APP_VERSION__}
-                        </Typography.Text>
-                    )}
-                </Theme.Consumer>
             </div>
             {sidebarVisible && (
                 <div

@@ -12,6 +12,7 @@ import {
     Checkbox,
     Collapse,
     ConfigProvider,
+    Dropdown,
     Flex,
     Input,
     Layout,
@@ -25,6 +26,7 @@ import {
     Alert,
     Tooltip,
 } from "antd";
+import type { MenuProps } from "antd";
 import {
     ArrowLeftOutlined,
     ClearOutlined,
@@ -34,6 +36,7 @@ import {
     FileAddOutlined,
     MenuFoldOutlined,
     MenuUnfoldOutlined,
+    MoreOutlined,
     PieChartOutlined,
     ReloadOutlined,
     SettingOutlined,
@@ -1131,7 +1134,7 @@ export default function Dashboard({
 
     const selectedViewContent = useMemo(() => {
         if (isEmpty) {
-            return <EmptyState logoSrc={logoSrc} onOpenFile={onOpenFile} />;
+            return <EmptyState logoSrc={logoSrc} onOpenFile={onOpenFile} isDragging={isDragging} />;
         }
 
         const currentNode = tree.getNodeByKey(viewKey);
@@ -1191,6 +1194,7 @@ export default function Dashboard({
         isEmpty,
         onOpenFile,
         logoSrc,
+        isDragging,
         summaryViewMode,
         onSelect,
         topLevelCoverageInfo,
@@ -1500,35 +1504,9 @@ export default function Dashboard({
                                                             icon={<FileAddOutlined />}
                                                             onClick={onOpenFile}
                                                             size="small"
-                                                            type="primary">
+                                                            type="primary"
+                                                            title="Load coverage archives">
                                                             Load
-                                                        </Button>
-                                                    )}
-                                                    {onSetLoadedRecords && (
-                                                        <Button
-                                                            icon={<EditOutlined />}
-                                                            onClick={() => {
-                                                                setEditModalOpen(true);
-                                                                setMergeSelectedIds([]);
-                                                            }}
-                                                            size="small">
-                                                            Edit
-                                                        </Button>
-                                                    )}
-                                                    {onRefreshRecords && isElectronRuntime && (
-                                                        <Button
-                                                            icon={<ReloadOutlined />}
-                                                            onClick={() => onRefreshRecords()}
-                                                            size="small">
-                                                            Refresh
-                                                        </Button>
-                                                    )}
-                                                    {onExportRecords && (
-                                                        <Button
-                                                            icon={<ExportOutlined />}
-                                                            onClick={() => setExportModalOpen(true)}
-                                                            size="small">
-                                                            Export
                                                         </Button>
                                                     )}
                                                     {compare && (
@@ -1547,26 +1525,93 @@ export default function Dashboard({
                                                                 size="small"
                                                                 type={compare.active ? "primary" : "default"}
                                                                 disabled={!compare.canCompare}
+                                                                title={
+                                                                    compare.canCompare
+                                                                        ? compare.active
+                                                                            ? "Exit compare mode"
+                                                                            : "Enter compare mode"
+                                                                        : undefined
+                                                                }
                                                             >
                                                                 Compare
                                                             </Button>
                                                         </Tooltip>
                                                     )}
-                                                    {onClearCoverage && (
-                                                        <Button
-                                                            icon={<ClearOutlined />}
-                                                            onClick={() => setClearModalOpen(true)}
-                                                            size="small"
-                                                            type="primary"
-                                                            danger>
-                                                            Clear
-                                                        </Button>
-                                                    )}
+                                                    {(() => {
+                                                        const moreItems: MenuProps["items"] = [];
+                                                        if (onSetLoadedRecords) {
+                                                            moreItems.push({
+                                                                key: "edit",
+                                                                icon: <EditOutlined />,
+                                                                label: "Edit records",
+                                                                onClick: () => {
+                                                                    setEditModalOpen(true);
+                                                                    setMergeSelectedIds([]);
+                                                                },
+                                                            });
+                                                        }
+                                                        if (onRefreshRecords && isElectronRuntime) {
+                                                            moreItems.push({
+                                                                key: "refresh",
+                                                                icon: <ReloadOutlined />,
+                                                                label: "Refresh from disk",
+                                                                onClick: () => {
+                                                                    void onRefreshRecords();
+                                                                },
+                                                            });
+                                                        }
+                                                        if (onExportRecords) {
+                                                            moreItems.push({
+                                                                key: "export",
+                                                                icon: <ExportOutlined />,
+                                                                label: "Export…",
+                                                                onClick: () => setExportModalOpen(true),
+                                                            });
+                                                        }
+                                                        if (onClearCoverage) {
+                                                            if (moreItems.length > 0) {
+                                                                moreItems.push({ type: "divider" });
+                                                            }
+                                                            moreItems.push({
+                                                                key: "clear",
+                                                                icon: <ClearOutlined />,
+                                                                label: "Clear coverage",
+                                                                danger: true,
+                                                                onClick: () => setClearModalOpen(true),
+                                                            });
+                                                        }
+                                                        if (moreItems.length === 0) {
+                                                            return null;
+                                                        }
+                                                        return (
+                                                            <Dropdown
+                                                                menu={{ items: moreItems }}
+                                                                trigger={["click"]}
+                                                                placement="bottomRight"
+                                                            >
+                                                                <Button
+                                                                    icon={<MoreOutlined />}
+                                                                    size="small"
+                                                                    title="More actions"
+                                                                    aria-label="More actions"
+                                                                />
+                                                            </Dropdown>
+                                                        );
+                                                    })()}
                                                     <Button
                                                         icon={<SettingOutlined />}
                                                         onClick={() => setSettingsModalOpen(true)}
                                                         size="small"
+                                                        type="text"
                                                         title="Settings"
+                                                        aria-label="Settings"
+                                                        style={{
+                                                            width: 28,
+                                                            minWidth: 28,
+                                                            paddingInline: 0,
+                                                            display: "inline-flex",
+                                                            justifyContent: "center",
+                                                        }}
                                                     />
                                                 </Flex>
                                             </Flex>

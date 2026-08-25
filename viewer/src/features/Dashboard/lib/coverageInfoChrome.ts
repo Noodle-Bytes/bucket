@@ -20,7 +20,7 @@ export type CoverageInfoChromeColors = {
 };
 
 /** Shared rounding — Collapse headers / outer boxes */
-export const COVERAGE_INFO_SURFACE_RADIUS = 2;
+export const COVERAGE_INFO_SURFACE_RADIUS = 8;
 
 function mixBaseAccent(baseHex: string, accentHex: string, accentRatio: number): string {
     const base = new Color(baseHex);

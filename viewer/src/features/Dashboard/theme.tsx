@@ -46,7 +46,7 @@ const sider = {
     } as SiderProps,
     search: {
         props: {
-            placeholder: "Search",
+            placeholder: "Search coverage tree…",
             variant: "outlined",
         } as SearchProps,
     },
@@ -80,7 +80,7 @@ const body = {
     header: {
         props: {
             style: {
-                boxShadow: `0 0 2px 2px ${cl.secondarybg}`,
+                borderBottom: `1px solid ${cl.secondarybg}`,
                 height: "auto",
             },
         } as LayoutProps,
@@ -157,6 +157,10 @@ export function antTheme(activeTheme: AppTheme): ThemeConfig {
             colorTextSecondary: colors.primarytxt.value,
             colorTextTertiary: colors.desaturatedtxt.value,
             colorTextPlaceholder: colors.desaturatedtxt.value,
+            // Disabled controls must stay readable in dark themes (Ant defaults are light-theme greys).
+            colorTextDisabled: colors.desaturatedtxt.value,
+            colorBgContainerDisabled: colors.tertiarybg.value,
+            colorBorder: colors.lowlightbg.value,
             // These tokens are used in the breadcrumb menu
             colorBgElevated: colors.secondarybg.value,
             controlItemBgHover: colors.highlightbg.value,
@@ -179,15 +183,16 @@ export function antTheme(activeTheme: AppTheme): ThemeConfig {
                 colorBorder: colors.primarytxt.value,
                 nodeSelectedBg: colors.highlightbg.value,
                 nodeHoverBg: colors.lowlightbg.value,
-                borderRadius: 0,
+                borderRadius: 4,
             },
             Input: {
-                borderRadius: 0,
+                borderRadius: 4,
                 colorBorder: colors.secondarybg.value,
                 colorBgContainer: colors.tertiarybg.value,
                 colorTextPlaceholder: colors.desaturatedtxt.value,
             },
             Select: {
+                borderRadius: 4,
                 selectorBg: colors.tertiarybg.value,
                 clearBg: colors.tertiarybg.value,
                 optionActiveBg: colors.lowlightbg.value,
@@ -211,8 +216,11 @@ export function antTheme(activeTheme: AppTheme): ThemeConfig {
                 itemHoverBg: colors.lowlightbg.value,
                 itemSelectedBg: colors.highlightbg.value,
                 trackPadding: 0,
+                borderRadius: 8,
+                borderRadiusSM: 6,
             },
             Button: {
+                borderRadius: 4,
                 // Keep default (non-primary/non-danger) buttons readable in dark themes.
                 defaultBg: colors.tertiarybg.value,
                 defaultColor: colors.saturatedtxt.value,
@@ -231,18 +239,24 @@ export function antTheme(activeTheme: AppTheme): ThemeConfig {
                 headerBg: colors.tertiarybg.value,
                 colorBgContainer: colors.primarybg.value,
                 borderColor: colors.secondarybg.value,
-                headerBorderRadius: 0,
+                headerBorderRadius: 4,
                 rowHoverBg: colors.secondarybg.value,
                 headerSortHoverBg: colors.secondarybg.value,
                 headerSortActiveBg: colors.primarybg.value,
                 bodySortBg: colors.tertiarybg.value,
             },
             Modal: {
+                borderRadiusLG: 12,
                 titleColor: colors.saturatedtxt.value,
                 titleFontSize: 15,
                 contentBg: colors.tertiarybg.value,
                 headerBg: colors.tertiarybg.value,
                 footerBg: colors.tertiarybg.value,
+            },
+            Dropdown: {
+                borderRadiusLG: 8,
+                controlItemBgHover: colors.lowlightbg.value,
+                controlItemBgActive: colors.highlightbg.value,
             },
         },
     };
