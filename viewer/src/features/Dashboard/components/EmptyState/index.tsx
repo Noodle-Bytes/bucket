@@ -57,12 +57,13 @@ export default function EmptyState({ logoSrc, onOpenFile, isDragging = false }: 
                         >
                             <img
                                 src={logoSrc}
-                                alt="Bucket Logo"
+                                alt="Bucket"
                                 style={{
-                                    width: '96px',
-                                    height: '96px',
+                                    width: '128px',
+                                    height: '128px',
                                     marginBottom: '28px',
-                                    display: 'block'
+                                    display: 'block',
+                                    objectFit: 'contain',
                                 }}
                             />
                             <Typography.Title

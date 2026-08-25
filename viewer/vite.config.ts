@@ -70,6 +70,7 @@ const getPluginPWA = ((env) => {
     const includeAssets = [
         'favicon.ico',
         'logo.svg',
+        'noodle_a.svg',
         'pwa-64x64.png',
         'apple-touch-icon-180x180.png',
         'maskable-icon-512x512.png'

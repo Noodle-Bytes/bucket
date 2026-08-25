@@ -1107,10 +1107,10 @@ export default function Dashboard({
     const isFileProtocol =
         typeof window !== "undefined" && window.location.protocol === "file:";
     const logoSrc = isElectronProduction
-        ? "app://logo.svg"
+        ? "app://noodle_a.svg"
         : isFileProtocol
-          ? "./logo.svg"
-          : `${import.meta.env.BASE_URL}logo.svg`;
+          ? "./noodle_a.svg"
+          : `${import.meta.env.BASE_URL}noodle_a.svg`;
 
     const topLevelCoverageCountsByKey = useMemo(
         () => getTopLevelCoverageCountsByKey(tree),

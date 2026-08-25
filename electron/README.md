@@ -75,6 +75,20 @@ npm run build:mac
 
 This will create a `.app` bundle in the `electron/dist/mac-arm64` directory that can be used directly (no code signing required).
 
+## App icon
+
+The official Bucket mark lives in [`branding/`](../branding/). The Dock icon is the filled plate in `branding/logo-macos.svg`; the transparent mark is `branding/logo.svg`. After changing either, regenerate derived assets with:
+
+```bash
+./branding/apply.sh
+```
+
+Or just rebuild `electron/bucket.icns` from the existing PNG:
+
+```bash
+./electron/make-macos-icon.sh
+```
+
 **Note**: The built app is completely standalone and does not require a web server to run. It loads the viewer from the bundled files.
 
 ## Features
