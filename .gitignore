@@ -25,6 +25,7 @@ dev-dist/
 
 # macOS
 .DS_Store
+*.iconset/
 
 # Node modules
 electron/node_modules/
