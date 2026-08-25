@@ -17,6 +17,10 @@ const appVersion = packageJson.version !== '0.0.0'
   ? packageJson.version
   : (process.env.BUCKET_VERSION || packageJson.version);
 
+// macOS overlay scrollbars are nearly invisible on dark coverage tables.
+// Disable them before ready so Chromium uses classic, CSS-styleable bars.
+app.commandLine.appendSwitch('disable-features', 'OverlayScrollbar');
+
 // Register app:// as a secure, standard scheme before the app is ready.
 // This lets us keep webSecurity enabled while serving the viewer from a
 // custom protocol.

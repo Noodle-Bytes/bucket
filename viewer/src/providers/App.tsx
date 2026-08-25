@@ -67,8 +67,20 @@ function ErrorFallback({ error, resetErrorBoundary }: { error?: Error; resetErro
                 return (
                     <div style={styles.container} role="alert">
                         <h2 style={styles.heading}>
-                            Ooops, something went wrong :(
+                            Something went wrong
                         </h2>
+                        <p style={{
+                            margin: 0,
+                            marginBottom: '0.75rem',
+                            maxWidth: '28rem',
+                            textAlign: 'center' as const,
+                            color: theme.theme.colors.primarytxt.value,
+                            fontSize: '0.95rem',
+                            lineHeight: 1.45,
+                        }}>
+                            The viewer hit an unexpected error. You can try again,
+                            or reload if the problem continues.
+                        </p>
                         {error && (
                             <div style={styles.errorBox}>
                                 <p style={styles.errorMessage}>
@@ -76,8 +88,8 @@ function ErrorFallback({ error, resetErrorBoundary }: { error?: Error; resetErro
                                 </p>
                                 {error.stack && (
                                     <details style={{ marginTop: '0.5rem' }}>
-                                        <summary style={{ cursor: 'pointer', fontSize: '0.875rem', color: theme.theme.colors.negativebg.value }}>
-                                            Stack trace
+                                        <summary style={{ cursor: 'pointer', fontSize: '0.875rem', color: theme.theme.colors.desaturatedtxt.value }}>
+                                            Technical details
                                         </summary>
                                         <pre style={{
                                             marginTop: '0.5rem',
@@ -101,7 +113,7 @@ function ErrorFallback({ error, resetErrorBoundary }: { error?: Error; resetErro
                                     window.location.reload();
                                 }
                             }}>
-                            Refresh
+                            Try again
                         </button>
                     </div>
                 );
@@ -112,8 +124,18 @@ function ErrorFallback({ error, resetErrorBoundary }: { error?: Error; resetErro
 
 export default function AppProvider({ children }: PropsWithChildren) {
     const loadFallback = (
-        <div className="flex items-center justify-center w-screen h-screen">
-            pending...
+        <div
+            style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "100vw",
+                height: "100vh",
+                fontFamily: "system-ui, -apple-system, sans-serif",
+                color: "#565B61",
+            }}
+        >
+            Loading…
         </div>
     );
     return (

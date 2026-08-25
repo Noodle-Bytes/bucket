@@ -79,10 +79,9 @@ export function CoverageLoadingOverlay({ open, loadingProgress }: CoverageLoadin
                             style={{
                                 width: "min(420px, 100%)",
                                 padding: "28px 32px 26px",
-                                borderRadius: 20,
+                                borderRadius: 12,
                                 backgroundColor: panel,
                                 border: `1px solid ${border}`,
-                                boxShadow: `0 16px 48px rgba(0, 0, 0, 0.08)`,
                             }}>
                             <Typography.Title
                                 level={4}

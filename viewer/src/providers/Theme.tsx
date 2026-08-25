@@ -3,7 +3,7 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-import { PropsWithChildren, createContext, useContext, useState } from "react";
+import { PropsWithChildren, createContext, useContext, useEffect, useState } from "react";
 import * as themes from "@/theme";
 import { getThemePreference, setStoredThemePreference } from "@/utils/themePreference";
 
@@ -50,12 +50,38 @@ const ThemeContext = createContext({
     },
 });
 
+const THEME_CLASS_PREFIX = "t-";
+
 /**
  * Theme context for using and setting the theme
  */
 const Theme = {
     Provider: ({ children }: PropsWithChildren) => {
         const [theme, setTheme] = useTheme();
+
+        // Mirror stitches tokens onto <html> so Ant portals (filter/select dropdowns)
+        // inherit --colors-* and scrollbars stay themed outside the app wrapper.
+        useEffect(() => {
+            const root = document.documentElement;
+            const nextClass = theme.theme.className;
+            for (const className of Array.from(root.classList)) {
+                if (className === nextClass) {
+                    continue;
+                }
+                if (className.startsWith(THEME_CLASS_PREFIX)) {
+                    root.classList.remove(className);
+                }
+            }
+            root.classList.add(nextClass);
+            root.dataset.bucketTheme = theme.name;
+            root.style.colorScheme = theme.name === "dark" ? "dark" : "light";
+            return () => {
+                root.classList.remove(nextClass);
+                delete root.dataset.bucketTheme;
+                root.style.colorScheme = "";
+            };
+        }, [theme]);
+
         return (
             <ThemeContext.Provider value={{ theme, setTheme }}>
                 <div className={theme.theme.className}>{children}</div>
