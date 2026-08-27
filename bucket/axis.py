@@ -146,6 +146,7 @@ class Axis:
                 if self._scalar_keys_are_str_values
                 else self._resolve_scalar_str_priority
             )
+            self._resolve_index = self._index_from_resolved_name
             return
 
         # Validate that ranges do not overlap. Gaps are allowed, but overlaps
@@ -209,9 +210,11 @@ class Axis:
                 else:
                     self._exact_lookup.setdefault(resolved_value, key)
             self._resolve = self._resolve_ranges
+            self._resolve_index = self._index_from_resolved_name
             return
 
         self._resolve = lru_cache(maxsize=4096)(self._resolve_generic)
+        self._resolve_index = self._index_from_resolved_name
 
     def chain(self, start: OpenLink[CovDef] | None = None) -> Link[CovDef]:
         start = start or OpenLink(CovDef())
@@ -358,3 +361,6 @@ class Axis:
                 f'Unrecognised value for axis "{self.name}": {value}',
             )
         return self.other_name
+
+    def _index_from_resolved_name(self, value: str | int) -> int:
+        return self._name_to_index[self._resolve(value)]

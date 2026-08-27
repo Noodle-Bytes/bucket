@@ -82,11 +82,11 @@ class TestCoverpointShouldSample:
         cvg.sample({"value": 0})
         cvg.sample({"value": 1})
         cvg.sample({"value": 2})
-        total_hits = sum(cp._cvg_hits.values())
+        total_hits = sum(cp._hits)
         assert total_hits == 3
-        assert cp._cvg_hits[("0",)] == 1
-        assert cp._cvg_hits[("1",)] == 1
-        assert cp._cvg_hits[("2",)] == 1
+        assert cp._hit_count("0") == 1
+        assert cp._hit_count("1") == 1
+        assert cp._hit_count("2") == 1
 
     def test_override_should_sample_return_false_skips_sampling(self):
         """When should_sample returns False, sample() is not called and no hits are recorded."""
@@ -94,7 +94,7 @@ class TestCoverpointShouldSample:
         cp = cvg.NeverCP
         cvg.sample({"value": 0})
         cvg.sample({"value": 1})
-        total_hits = sum(cp._cvg_hits.values())
+        total_hits = sum(cp._hits)
         assert total_hits == 0
 
     def test_override_should_sample_conditional_only_sampled_traces_record_hits(self):
@@ -104,11 +104,11 @@ class TestCoverpointShouldSample:
         cvg.sample({"value": 0, "sample_me": True})
         cvg.sample({"value": 1, "sample_me": False})
         cvg.sample({"value": 2, "sample_me": True})
-        total_hits = sum(cp._cvg_hits.values())
+        total_hits = sum(cp._hits)
         assert total_hits == 2
-        assert cp._cvg_hits[("0",)] == 1
-        assert cp._cvg_hits[("1",)] == 0
-        assert cp._cvg_hits[("2",)] == 1
+        assert cp._hit_count("0") == 1
+        assert cp._hit_count("1") == 0
+        assert cp._hit_count("2") == 1
 
     def test_should_sample_receives_trace(self):
         """should_sample is called with the same trace object passed to the coverage tree."""
