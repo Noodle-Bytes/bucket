@@ -200,6 +200,7 @@ class Axis:
             self._range_starts = [it[0] for it in sorted_ranges]
             self._range_ends = [it[1] for it in sorted_ranges]
             self._range_keys = [it[2] for it in sorted_ranges]
+            self._range_indices = [self._name_to_index[key] for key in self._range_keys]
             self._exact_lookup = {}
             self._unhashable_exact_values = []
             for _order, key, resolved_value in scalar_entries:
@@ -209,8 +210,8 @@ class Axis:
                     self._unhashable_exact_values.append((key, resolved_value))
                 else:
                     self._exact_lookup.setdefault(resolved_value, key)
-            self._resolve = self._resolve_ranges
-            self._resolve_index = self._index_from_resolved_name
+            self._resolve = lru_cache(maxsize=4096)(self._resolve_ranges)
+            self._resolve_index = lru_cache(maxsize=4096)(self._resolve_index_ranges)
             return
 
         self._resolve = lru_cache(maxsize=4096)(self._resolve_generic)
@@ -364,3 +365,19 @@ class Axis:
 
     def _index_from_resolved_name(self, value: str | int) -> int:
         return self._name_to_index[self._resolve(value)]
+
+    def _resolve_index_ranges(self, value: str | int) -> int:
+        if isinstance(value, str) and value in self._name_to_index:
+            return self._name_to_index[value]
+        try:
+            return self._name_to_index[self._exact_lookup[value]]
+        except (KeyError, TypeError):
+            pass
+        for key, resolved_value in self._unhashable_exact_values:
+            if value == resolved_value:
+                return self._name_to_index[key]
+        if isinstance(value, int) and self._range_starts:
+            idx = bisect_right(self._range_starts, value) - 1
+            if idx >= 0 and value <= self._range_ends[idx]:
+                return self._range_indices[idx]
+        return self._name_to_index[self._unrecognised(value)]
