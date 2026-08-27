@@ -275,13 +275,14 @@ class Covergroup(CoverBase):
         """Call sample for all children if active"""
 
         if self._active and self.should_sample(trace):
-            for child in self.iter_children():
+            for child in self._children():
                 child._sample(trace)
 
-    def iter_children(self) -> Iterable[CoverBase]:
-        # We maintain a cache for the ordered sequence of children (coverpoints then
-        # covergroups, each sorted by name) to avoid repeated sorting on every iteration.
-        # The cache is invalidated when add_coverpoint or add_covergroup is called.
+    def _children(self) -> tuple[CoverBase, ...]:
+        # Cached ordered sequence of children (coverpoints then covergroups,
+        # each sorted by name). Invalidated when add_coverpoint/add_covergroup
+        # is called. Returned as a tuple so the sample path can iterate without
+        # a generator round-trip per child.
         if self._ordered_children_cache is None:
             self._ordered_children_cache = tuple(
                 itertools.chain(
@@ -289,7 +290,10 @@ class Covergroup(CoverBase):
                     (v for _, v in sorted(self._covergroups.items())),
                 )
             )
-        yield from self._ordered_children_cache
+        return self._ordered_children_cache
+
+    def iter_children(self) -> Iterable[CoverBase]:
+        yield from self._children()
 
     def _chain_def(self, start: OpenLink[CovDef] | None = None) -> Link[CovDef]:
         start = start or OpenLink(CovDef())

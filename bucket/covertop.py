@@ -50,13 +50,58 @@ class Covertop(Covergroup):
                 verbosity = getattr(logging, verbosity)
             self.log.setLevel(verbosity)
         self._init(self.log, config=self.config)
+        self._live_samplers = None
+
+    def _apply_filter(self, matcher, match_state, mismatch_state):
+        self._live_samplers = None
+        return super()._apply_filter(matcher, match_state, mismatch_state)
+
+    def _set_tier_level(self, tier: int):
+        self._live_samplers = None
+        return super()._set_tier_level(tier)
+
+    def _live_sample_list(self):
+        if self._live_samplers is None:
+            self._live_samplers = self._collect_live_samplers()
+        return self._live_samplers
+
+    def _collect_live_samplers(self):
+        # Flatten coverpoints that filters/tier have left active. Trace-dependent
+        # should_sample overrides (covergroup or coverpoint) stay as guards so
+        # Covertop.sample does not walk inactive subtrees every cycle.
+        from .coverpoint import Coverpoint
+
+        result = []
+
+        def walk(node, guards: tuple):
+            if isinstance(node, Coverpoint):
+                if node._active and node._tier_active:
+                    if type(node).should_sample is not Coverpoint.should_sample:
+                        guards = (*guards, node.should_sample)
+                    result.append((node, guards))
+                return
+            if not node._active:
+                return
+            if type(node).should_sample is not Covergroup.should_sample:
+                guards = (*guards, node.should_sample)
+            for child in node._children():
+                walk(child, guards)
+
+        for child in self._children():
+            walk(child, ())
+        return tuple(result)
 
     def sample(self, trace):
         """Go through the coverage tree and recursively call sample, passing in trace"""
         processed_trace = self.process_trace(trace)
-        if processed_trace is not None and self.should_sample(processed_trace):
-            for child in self.iter_children():
-                child._sample(processed_trace)
+        if processed_trace is None or not self.should_sample(processed_trace):
+            return
+        for coverpoint, guards in self._live_sample_list():
+            for guard in guards:
+                if not guard(processed_trace):
+                    break
+            else:
+                coverpoint.sample(processed_trace)
 
     def process_trace(self, trace):
         """

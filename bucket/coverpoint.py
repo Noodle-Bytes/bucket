@@ -7,7 +7,6 @@
 import hashlib
 import itertools
 import logging
-from collections import defaultdict
 from enum import Enum
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Callable
@@ -93,12 +92,14 @@ class Coverpoint(CoverBase):
 
         # List of axes used by this coverpoint
         self._axes: list[Axis] = []  # TODO make a dict
-        # Number of hits for each bucket
-        self._cvg_hits = defaultdict(int)
+        # Hit count per bucket, indexed in itertools.product order
+        self._hits: list[int] = []
         # Dictionary of defined goals
         self._goal_dict = {"DEFAULT": GoalItem()}
-        # Dictionary of goals for each bucket
+        # Dictionary of goals for each bucket (name-tuple keys; setup/debug)
         self._cvg_goals = {}
+        # Goal object per bucket index; default-filled then overridden
+        self._goal_items: list[GoalItem] = []
         # Instance of Bucket class to increment hit count for a bucket
         self.bucket = Bucket(parent=self, log=log)
 
@@ -120,12 +121,23 @@ class Coverpoint(CoverBase):
         self._sha = hashlib.sha256(
             (self._name + self._description + self._motivation).encode()
         )
-        self._axis_names = [x.name for x in self._axes]
-        self._axis_resolvers = tuple(
-            (axis.name, axis.get_named_value) for axis in self._axes
+        self._axis_count = len(self._axes)
+        n_axes = self._axis_count
+        strides = [1] * n_axes
+        running = 1
+        for idx in range(n_axes - 1, -1, -1):
+            strides[idx] = running
+            running *= self._axes[idx].size
+        self._axis_strides = tuple(strides)
+        self._bucket_count = running if n_axes else 1
+        self._hits = [0] * self._bucket_count
+        self._goal_items = [self._default_goal] * self._bucket_count
+        self._hit_spec = tuple(
+            (axis.name, axis._resolve_index, stride)
+            for axis, stride in zip(self._axes, self._axis_strides, strict=True)
         )
-        self._axis_count = len(self._axis_resolvers)
         goals = SimpleNamespace(**self._goal_dict)
+        bucket_index = 0
         for combination in self._all_axis_value_combinations():
             # Create bucket with both name and value for each axis
             bucket_dict = {}
@@ -135,9 +147,11 @@ class Coverpoint(CoverBase):
             bucket = SimpleNamespace(**bucket_dict)
             if goal := self.apply_goals(bucket, goals):
                 self._cvg_goals[combination] = goal
+                self._goal_items[bucket_index] = goal
             else:
                 goal = self._goal_dict["DEFAULT"]
             self._sha.update(goal.sha.digest())
+            bucket_index += 1
 
         self.debug(f"Coverpoint created: {self._name}: {self._description}")
 
@@ -267,10 +281,28 @@ class Coverpoint(CoverBase):
 
     def _get_goal(self, bucket: tuple):
         """
-        Retrieve goal for a given bucket.
-        Note Bucket.hit() inlines this lookup for speed — keep them in sync.
+        Retrieve goal for a given bucket (name-tuple form used at setup).
         """
         return self._cvg_goals.get(bucket, self._default_goal)
+
+    def _hit_count(self, *names: str) -> int:
+        """Hit count for a bucket identified by axis value names (test helper)."""
+        return self._hits[self._index_from_names(names)]
+
+    def _index_from_names(self, names: tuple[str, ...]) -> int:
+        index = 0
+        for name, axis, stride in zip(
+            names, self._axes, self._axis_strides, strict=True
+        ):
+            index += axis._name_to_index[name] * stride
+        return index
+
+    def _names_from_index(self, index: int) -> dict[str, str]:
+        names = {}
+        for axis, stride in zip(self._axes, self._axis_strides, strict=True):
+            axis_idx = (index // stride) % axis.size
+            names[axis.name] = axis._index_to_name[axis_idx]
+        return names
 
     def _chain_def(self, start: OpenLink[CovDef] | None = None) -> Link[CovDef]:
         start = start or OpenLink(CovDef())
@@ -286,15 +318,14 @@ class Coverpoint(CoverBase):
             child_close = goal.chain(child_start)
             child_start = child_close.link_across()
 
-        buckets = 0
+        buckets = self._bucket_count
         target = 0
         target_buckets = 0
-        for bucket in self._all_axis_value_combinations():
-            bucket_target = self._get_goal(bucket).target
+        for goal in self._goal_items:
+            bucket_target = goal.target
             if bucket_target > 0:
                 target += bucket_target
                 target_buckets += 1
-            buckets += 1
 
         link = CovDef(
             point=1,
@@ -309,13 +340,12 @@ class Coverpoint(CoverBase):
     def _chain_run(self, start: OpenLink[CovRun] | None = None) -> Link[CovRun]:
         start = start or OpenLink(CovRun())
 
-        buckets = 0
+        buckets = self._bucket_count
         hits = 0
         hit_buckets = 0
         full_buckets = 0
-        for bucket in self._all_axis_value_combinations():
-            bucket_target = self._get_goal(bucket).target
-            bucket_hits = self._cvg_hits[bucket]
+        for goal, bucket_hits in zip(self._goal_items, self._hits, strict=True):
+            bucket_target = goal.target
 
             if bucket_target > 0:
                 bucket_hits = min(bucket_target, bucket_hits)
@@ -324,7 +354,6 @@ class Coverpoint(CoverBase):
                     if bucket_hits == bucket_target:
                         full_buckets += 1
                     hits += bucket_hits
-            buckets += 1
 
         link = CovRun(
             point=1,
@@ -340,15 +369,14 @@ class Coverpoint(CoverBase):
         """
         Get goals for each bucket
         """
-        for bucket in self._all_axis_value_combinations():
-            yield self._get_goal(bucket).name
+        for goal in self._goal_items:
+            yield goal.name
 
     def _bucket_hits(self):
         """
         Get hits for each bucket
         """
-        for bucket in self._all_axis_value_combinations():
-            yield self._cvg_hits[bucket]
+        yield from self._hits
 
     def should_sample(self, trace) -> bool:
         """
