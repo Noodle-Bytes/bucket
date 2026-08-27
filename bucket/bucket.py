@@ -20,7 +20,7 @@ class Bucket:
     def __init__(self, parent: "Coverpoint", log: logging.Logger):
         self.parent = parent
         self.log = log
-        self.clear()
+        self.axis_values = {}
 
     def __call__(self): ...
 
@@ -28,7 +28,7 @@ class Bucket:
         """
         This function clears the bucket. No values will be retained for any axis
         """
-        self.axis_values = {}
+        self.axis_values.clear()
 
     def __enter__(self):
         # 'with' allows the bucket to be wiped before use

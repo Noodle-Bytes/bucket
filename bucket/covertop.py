@@ -55,7 +55,7 @@ class Covertop(Covergroup):
         """Go through the coverage tree and recursively call sample, passing in trace"""
         processed_trace = self.process_trace(trace)
         if processed_trace is not None and self.should_sample(processed_trace):
-            for child in self.iter_children():
+            for child in self._children():
                 child._sample(processed_trace)
 
     def process_trace(self, trace):
