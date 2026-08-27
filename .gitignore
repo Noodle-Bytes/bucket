@@ -39,3 +39,6 @@ electron/node_modules/
 
 # Example coverage files (do not check in)
 example*.bktgz
+
+# Stress example local output
+/output/
