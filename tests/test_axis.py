@@ -403,14 +403,8 @@ class TestGetNamedValue:
         )
 
         test_stimuli = [1, 4, 5, 6]
-        for count, test_stimulus in enumerate(test_stimuli, start=1):
+        for test_stimulus in test_stimuli:
             result_1 = axis.get_named_value(test_stimulus)
             result_2 = axis.get_named_value(test_stimulus)
 
             assert result_1 == result_2
-
-            # Verify that a cache hit occurred
-            cache_info = axis.get_named_value.cache_info()
-            # The first call doesn't count as a hit,
-            # but the second call should be a hit.
-            assert cache_info.hits == count

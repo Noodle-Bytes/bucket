@@ -115,6 +115,20 @@ class Axis:
                     )
                 hashable_exact_values[resolved_value] = key
 
+        self._name_to_index = {key: idx for idx, key in enumerate(self.values)}
+        self._index_to_name = tuple(self.values.keys())
+        self._scalar_keys_are_str_values = True
+        for _order, key, resolved_value in scalar_entries:
+            if resolved_value is None:
+                continue
+            try:
+                if key != str(resolved_value):
+                    self._scalar_keys_are_str_values = False
+                    break
+            except (TypeError, ValueError):
+                self._scalar_keys_are_str_values = False
+                break
+
         # Fast path: only scalar values.
         if range_entries == []:
             self._lookup_mode = AxisLookupMode.SCALAR_ONLY
@@ -127,6 +141,11 @@ class Axis:
                     self._unhashable_exact_values.append((key, resolved_value))
                 else:
                     self._exact_lookup.setdefault(resolved_value, key)
+            self._resolve = (
+                self._resolve_scalar_direct
+                if self._scalar_keys_are_str_values
+                else self._resolve_scalar_str_priority
+            )
             return
 
         # Validate that ranges do not overlap. Gaps are allowed, but overlaps
@@ -189,7 +208,10 @@ class Axis:
                     self._unhashable_exact_values.append((key, resolved_value))
                 else:
                     self._exact_lookup.setdefault(resolved_value, key)
+            self._resolve = self._resolve_ranges
             return
+
+        self._resolve = lru_cache(maxsize=4096)(self._resolve_generic)
 
     def chain(self, start: OpenLink[CovDef] | None = None) -> Link[CovDef]:
         start = start or OpenLink(CovDef())
@@ -268,51 +290,69 @@ class Axis:
 
         return values_dict
 
-    @lru_cache(maxsize=4096)  # noqa: B019
     def get_named_value(self, value: str | int):
         """
         Retrieve the name of the value/range for a given value
         """
+        return self._resolve(value)
+
+    def _resolve_scalar_direct(self, value: str | int):
+        # Keys are str(resolved_value), so an int sample maps through
+        # _exact_lookup without allocating str(value).
+        try:
+            return self._exact_lookup[value]
+        except (KeyError, TypeError):
+            pass
+        if isinstance(value, str) and value in self.values:
+            return value
+        return self._resolve_scalar_fallback(value)
+
+    def _resolve_scalar_str_priority(self, value: str | int):
+        # Preserve "str(value) is a key" winning over an exact-value match
+        # (e.g. values={"1": 99, "apple": 1} → sample 1 is "1", not "apple").
+        value_str = value if isinstance(value, str) else str(value)
+        if value_str in self.values:
+            return value_str
+        try:
+            return self._exact_lookup[value]
+        except (KeyError, TypeError):
+            pass
+        return self._resolve_scalar_fallback(value)
+
+    def _resolve_scalar_fallback(self, value: str | int):
+        for key, resolved_value in self._unhashable_exact_values:
+            if value == resolved_value:
+                return key
+        return self._unrecognised(value)
+
+    def _resolve_ranges(self, value: str | int):
+        if isinstance(value, str) and value in self.values:
+            return value
+        try:
+            return self._exact_lookup[value]
+        except (KeyError, TypeError):
+            pass
+        for key, resolved_value in self._unhashable_exact_values:
+            if value == resolved_value:
+                return key
+        if isinstance(value, int) and self._range_starts:
+            idx = bisect_right(self._range_starts, value) - 1
+            if idx >= 0 and value <= self._range_ends[idx]:
+                return self._range_keys[idx]
+        return self._unrecognised(value)
+
+    def _resolve_generic(self, value: str | int):
         if (value_str := str(value)) in self.values:
             return value_str
-
-        if self._lookup_mode == AxisLookupMode.SCALAR_ONLY:
-            try:
-                return self._exact_lookup[value]
-            except (KeyError, TypeError):
-                pass
-
-            for key, resolved_value in self._unhashable_exact_values:
-                if value == resolved_value:
-                    return key
-
-        elif self._lookup_mode == AxisLookupMode.RANGES_NON_OVERLAPPING:
-            try:
-                return self._exact_lookup[value]
-            except (KeyError, TypeError):
-                pass
-
-            for key, resolved_value in self._unhashable_exact_values:
-                if value == resolved_value:
-                    return key
-
-            if isinstance(value, int) and self._range_starts:
-                idx = bisect_right(self._range_starts, value) - 1
-                if idx >= 0 and value <= self._range_ends[idx]:
-                    return self._range_keys[idx]
-
-        else:
-            # Generic semantics-preserving path.
-            # Must be named, in a range or 'other'
-            for k, v in self._ordered_values:
-                if value == v:
+        for k, v in self._ordered_values:
+            if value == v:
+                return k
+            elif isinstance(v, (list, tuple)) and isinstance(value, int):
+                if v[0] <= value <= v[1]:
                     return k
-                elif isinstance(v, (list, tuple)) and isinstance(value, int):
-                    if v[0] <= value <= v[1]:
-                        return k
+        return self._unrecognised(value)
 
-        # Value not recognised as user defined
-        # If 'other' category has been enabled, then return other name
+    def _unrecognised(self, value: str | int):
         if not self.enable_other:
             raise AxisUnrecognisedValue(
                 f'Unrecognised value for axis "{self.name}": {value}',

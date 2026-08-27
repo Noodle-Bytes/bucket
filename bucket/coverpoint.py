@@ -121,9 +121,7 @@ class Coverpoint(CoverBase):
             (self._name + self._description + self._motivation).encode()
         )
         self._axis_names = [x.name for x in self._axes]
-        self._axis_resolvers = tuple(
-            (axis.name, axis.get_named_value) for axis in self._axes
-        )
+        self._axis_resolvers = tuple((axis.name, axis._resolve) for axis in self._axes)
         self._axis_count = len(self._axis_resolvers)
         goals = SimpleNamespace(**self._goal_dict)
         for combination in self._all_axis_value_combinations():
