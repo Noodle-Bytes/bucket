@@ -5,7 +5,7 @@
 Tests for Coverpoint.should_sample(): default behaviour and overrides.
 """
 
-from bucket import Coverpoint, Covertop
+from bucket import Covergroup, Coverpoint, Covertop
 
 
 class CoverpointWithValueAxis(Coverpoint):
@@ -136,3 +136,27 @@ class TestCoverpointShouldSample:
         cvg.sample(trace)
         assert len(received_traces) == 1
         assert received_traces[0] is trace
+
+    def test_covergroup_should_sample_skips_children(self):
+        class DogsOnly(Covergroup):
+            def should_sample(self, trace):
+                return trace.get("kind") == "dog"
+
+            def setup(self, ctx):
+                self.add_coverpoint(CoverpointWithValueAxis(), name="cp")
+
+        class Top(Covertop):
+            def setup(self, ctx):
+                self.add_covergroup(DogsOnly(), name="dogs")
+
+        cvg = Top()
+        cvg.sample({"kind": "cat", "value": 0})
+        cvg.sample({"kind": "dog", "value": 1})
+        assert cvg.dogs.cp._hit_count("0") == 0
+        assert cvg.dogs.cp._hit_count("1") == 1
+
+    def test_exclude_by_name_omits_coverpoint_from_sample_list(self):
+        cvg = TopWithDefaultCoverpoint()
+        cvg.exclude_by_name("defaultcp")
+        cvg.sample({"value": 0})
+        assert sum(cvg.DefaultCP._hits) == 0
