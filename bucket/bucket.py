@@ -46,22 +46,26 @@ class Bucket:
         will be generated.
         """
 
-        # If axis values are passed in, set axes
-        axis_values = self.axis_values
-        if kwargs:
-            axis_values.update(kwargs)
-
         parent = self.parent
-        assert (
-            len(axis_values) == parent._axis_count
-        ), "Incorrect number of axes have been set"
+        resolvers = parent._axis_resolvers
+
+        # Fast path: hit(a=..., b=...) with every axis in kwargs. Skip merging
+        # into axis_values and skip the intermediate list before the tuple.
+        if len(kwargs) == parent._axis_count:
+            source = kwargs
+        else:
+            axis_values = self.axis_values
+            if kwargs:
+                axis_values.update(kwargs)
+            assert (
+                len(axis_values) == parent._axis_count
+            ), "Incorrect number of axes have been set"
+            source = axis_values
 
         try:
             axis_value_tuple = tuple(
-                [
-                    axis_resolver(axis_values[axis_name])
-                    for axis_name, axis_resolver in parent._axis_resolvers
-                ]
+                axis_resolver(source[axis_name])
+                for axis_name, axis_resolver in resolvers
             )
         except KeyError as ex:
             raise Exception(f"Axis {ex.args[0]} has not been set") from None
