@@ -242,6 +242,56 @@ jobs:
         # refs/tags/v1.14.2 -> dc37677b2e1c63e2034f94d8a5b11f265b73ba33
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
 
+  # tag-release-on-merge.yml comments "Shipped in vX.Y.Z" when the tag is cut,
+  # which is before this workflow has uploaded anything. This is a second,
+  # separate comment posted only once the upload actually succeeded, so the
+  # link is never dead. Skipped automatically when publish-pypi is skipped.
+  comment-on-pr:
+    needs: [build, publish-pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # Same App as the "Shipped in" comment, so both come from the same bot.
+      - name: Mint noodle-bucket-releases app token
+        id: app_token
+        continue-on-error: true
+        # actions/create-github-app-token v3.1.1 (2026-04-11)
+        # refs/tags/v3.1.1 -> 1b10c78c7865c340bc4f6099eb2f838309f1e8c3
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3
+        with:
+          app-id: ${{ secrets.NOODLE_APP_ID }}
+          private-key: ${{ secrets.NOODLE_APP_PRIVATE_KEY }}
+
+      # Never fail a successful release over a comment.
+      - name: Link the PyPI release on the source PR
+        if: steps.app_token.outputs.token != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.version }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          url="https://pypi.org/project/noodle-bucket/${VERSION}/"
+
+          # The tag points at the squash-merge commit, so this resolves back to
+          # the PR that caused the release. A manual release has no PR.
+          pr="$(gh api "repos/${GH_REPO}/commits/${SHA}/pulls" --jq '.[0].number // empty')"
+          if [ -z "${pr}" ]; then
+            echo "No PR associated with ${SHA}; nothing to comment on."
+            exit 0
+          fi
+
+          # Re-running a dispatch against the same tag must not double-post.
+          if gh pr view "${pr}" --json comments --jq '.comments[].body' | grep -qF "${url}"; then
+            echo "PR #${pr} already links ${url}."
+            exit 0
+          fi
+
+          gh pr comment "${pr}" --body "📦 Published to PyPI: [\`noodle-bucket ${VERSION}\`](${url})"
+
   attach-release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build

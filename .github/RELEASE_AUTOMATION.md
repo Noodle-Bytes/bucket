@@ -119,6 +119,11 @@ number reused, even after deleting it. Fix forward with the next tag.
 Merge a PR titled `[Patch]`, `[Minor]` or `[Major]`. That cuts the tag,
 which uploads to PyPI and deploys the viewer. Nothing else is needed.
 
+The source PR gets two comments from **noodle-bucket-releases**: "Shipped
+in vX.Y.Z" when the tag is cut, and a second linking the PyPI release once
+the upload has actually succeeded. The absence of the second one means the
+publish failed or was skipped.
+
 To retry a release that failed partway, run *Actions → Publish to PyPI →
 Run workflow* with **Use workflow from** set to the tag. Dispatching from a
 branch with the default `pypi` target fails deliberately, naming the most
