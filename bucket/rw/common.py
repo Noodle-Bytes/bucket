@@ -14,7 +14,9 @@ from ..link import CovDef, CovRun
 
 def _get_bucket_version() -> str:
     try:
-        return _pkg_version("bucket")
+        from bucket import DIST_NAME
+
+        return _pkg_version(DIST_NAME)
     except _PKGNotFound:
         return "unknown"
 

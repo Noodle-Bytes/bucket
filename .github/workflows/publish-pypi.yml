@@ -1,0 +1,168 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+#
+# Publish the Python package. Tag pushes upload to TestPyPI only; production
+# PyPI is an explicit promote via workflow_dispatch (target=pypi) on that
+# same tag. Operator setup: .github/RELEASE_AUTOMATION.md.
+
+name: Publish to PyPI
+
+on:
+  push:
+    tags: ["v[0-9]*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Index to publish to. Tag pushes always go to TestPyPI; choose pypi to promote a v* tag to production."
+        type: choice
+        options:
+          - testpypi
+          - pypi
+        default: testpypi
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.target || 'testpypi' }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Full history and tags so hatch-vcs can derive the package version.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Use a throwaway version on untagged TestPyPI runs
+        if: github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.target }}" = "pypi" ]; then
+            echo "::error title=Production requires a tag::Run this workflow against a v* tag to publish to PyPI."
+            exit 1
+          fi
+          # Local versions (+gSHA) are rejected by (Test)PyPI. A unique
+          # 0.0.<run>.dev0 is enough to prove the upload path from main.
+          echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_NOODLE_BUCKET=0.0.${GITHUB_RUN_NUMBER}.dev0" >> "$GITHUB_ENV"
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Check distributions are Python-only
+        run: |
+          python - <<'PY'
+          import tarfile
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          dist = Path("dist")
+          wheels = list(dist.glob("*.whl"))
+          sdists = list(dist.glob("*.tar.gz"))
+          assert len(wheels) == 1, wheels
+          assert len(sdists) == 1, sdists
+
+          wheel_names = ZipFile(wheels[0]).namelist()
+          assert any(n.startswith("bucket/") for n in wheel_names), wheel_names
+          assert not any(n.startswith(("viewer/", "electron/")) for n in wheel_names), wheel_names
+
+          sdist_names = tarfile.open(sdists[0]).getnames()
+          assert not any("/viewer/" in n or n.endswith("/viewer") for n in sdist_names), sdist_names
+          assert not any("/electron/" in n or n.endswith("/electron") for n in sdist_names), sdist_names
+          PY
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+
+  publish-testpypi:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi')
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/noodle-bucket/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        # pypa/gh-action-pypi-publish v1.14.2 (2026-07-29)
+        # refs/tags/v1.14.2 -> dc37677b2e1c63e2034f94d8a5b11f265b73ba33
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+  publish-pypi:
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'pypi'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/noodle-bucket/
+    permissions:
+      id-token: write
+    steps:
+      - name: Require a release tag
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" != refs/tags/v* ]]; then
+            echo "::error title=Production requires a tag::Run this workflow against a v* tag (Use workflow from <tag>)."
+            exit 1
+          fi
+
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        # pypa/gh-action-pypi-publish v1.14.2 (2026-07-29)
+        # refs/tags/v1.14.2 -> dc37677b2e1c63e2034f94d8a5b11f265b73ba33
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
+
+  attach-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+
+      - name: Attach distributions to GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+          else
+            echo "No GitHub release for ${RELEASE_TAG}; skipping asset upload."
+          fi

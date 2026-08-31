@@ -11,8 +11,9 @@
 # Releases are created with a token minted from the noodle-bucket-releases
 # GitHub App (NOODLE_APP_ID / NOODLE_APP_PRIVATE_KEY) rather than
 # github.token, because tags pushed with the workflow token do not trigger
-# downstream workflows — deploy-viewer runs on the tag push. An App private
-# key does not expire, so there is no token to renew or health-check.
+# downstream workflows — deploy-viewer and publish-pypi run on the tag
+# push. An App private key does not expire, so there is no token to renew
+# or health-check.
 
 name: Tag Release On Merge
 

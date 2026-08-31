@@ -1,24 +1,50 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling>=1.27", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-name = "bucket"
+name = "noodle-bucket"
 dynamic = ["version"]
 description = "Functional coverage written in Python"
 authors = [
     {name = "Stuart Alldred", email = "stuartalldred@gmail.com"},
     {name = "Edward Kotarski", email = "edktrsk@gmail.com"},
 ]
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.11"
+keywords = [
+    "functional-coverage",
+    "verification",
+    "cocotb",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = [
     "rich>=13.3.4",
     "sqlalchemy>=2.0.40",
     "click>=8.1.3",
     "pydantic>=2.8.2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Noodle-Bytes/bucket"
+Documentation = "https://noodle-bytes.github.io/bucket/docs/"
+Repository = "https://github.com/Noodle-Bytes/bucket"
+"Coverage viewer" = "https://noodle-bytes.github.io/bucket/"
+Issues = "https://github.com/Noodle-Bytes/bucket/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -34,19 +60,16 @@ bucket = "bucket.__main__:cli"
 [tool.hatch.version]
 source = "vcs"
 
-# The viewer is bundled by `npm run bundle` at report time (bucket/rw/html.py),
-# so distributions ship its sources but never the generated directories.
-# Nested viewer/.gitignore is not consulted by hatchling, so exclude them
-# explicitly here.
-[tool.hatch.build]
-exclude = [
-    "viewer/node_modules",
-    "viewer/dist",
-    "viewer/dev-dist",
-    "viewer/coverage",
-]
-
+# Python-only distributions. The viewer and Electron app are not installed
+# via pip; HTML generation requires a source checkout and Node.js.
 [tool.hatch.build.targets.wheel]
-# `packages` is sugar for `only-include`, which limits traversal to the listed
-# paths; a plain `include` of viewer files would never match. List both roots.
-only-include = ["bucket", "viewer"]
+only-include = ["bucket"]
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+    "bucket",
+    "LICENSE",
+    "README.md",
+    ".git_archival.txt",
+    ".gitattributes",
+]

@@ -6,6 +6,7 @@ from typing import Iterable
 
 import click
 
+from . import DIST_NAME
 from .rw import (
     ArchiveAccessor,
     ConsoleWriter,
@@ -19,12 +20,15 @@ from .rw.common import MergeReadout, Readout
 
 @click.group()
 @click.pass_context
-@click.version_option(package_name="bucket")
+@click.version_option(package_name=DIST_NAME)
 @click.option(
     "--web-path",
-    help="Path to the web viewer",
+    help="Path to the web viewer (only used by html/report)",
     default=Path(__file__).parent.parent / "viewer",
-    type=click.Path(exists=True, readable=True, path_type=Path),
+    # Not validated: the default resolves inside site-packages, where the
+    # viewer is absent for a pip install. Validating here would fail every
+    # command, including those that never touch the viewer.
+    type=click.Path(path_type=Path),
 )
 def cli(ctx, web_path):
     ctx.obj = {"web_path": web_path}
