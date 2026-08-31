@@ -14,11 +14,9 @@ license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.11"
 keywords = [
-    "coverage",
     "functional-coverage",
     "verification",
     "cocotb",
-    "eda",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
