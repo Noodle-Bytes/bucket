@@ -122,8 +122,9 @@ gate the first few times; leave it off if a dispatch to `pypi` should
 upload immediately.
 
 Optional: under **Deployment branches and tags** on both, restrict to
-tags matching `v*`. Publishing only ever happens from a tag, so this
-costs nothing.
+tags matching `v*`. Real publishing only ever happens from a tag, so this
+costs nothing afterwards — but add it *after* step 4, because the
+rehearsal there runs from `main` and the restriction would block it.
 
 ### 3. Pending trusted publisher (TestPyPI first)
 
@@ -149,21 +150,34 @@ https://pypi.org/manage/account/publishing/ with environment name
 
 ### 4. Prove the pipeline on TestPyPI
 
-Only plain `X.Y.Z` versions are uploaded, so the dry run has to come from
-a tag. An untagged commit builds as `X.Y.Z.devN+gSHA`, and both indexes
-reject that local segment, so a run from `main` builds and verifies the
-artifacts but publishes nothing.
+Only plain `X.Y.Z` versions are uploaded. An untagged commit builds as
+`X.Y.Z.devN+gSHA`, and both indexes reject that local segment, so an
+ordinary run from `main` builds and verifies the artifacts but publishes
+nothing. It reports which tag it *could* publish, and whether the index
+already has it.
 
-The next `[Patch]`/`[Minor]`/`[Major]` merge cuts a tag and uploads that
-exact version to TestPyPI automatically. To rehearse without waiting for a
-merge, cut a tag by hand with **Tag Release On Merge** (see [Manual
-release](#manual-release-immediate-or-exact-version)) and let the tag push
-do the upload.
+**Rehearsal (no tag needed).** *Actions → Publish to PyPI → Run workflow*,
+from `main`, target **testpypi**, and set **test_version** to something
+outside the real release line such as `0.0.1`. That builds and uploads
+that exact version, which is enough to prove the whole path: OIDC, the
+environment, the pending publisher, and the upload itself. The first
+successful upload is also what turns the pending publisher into a real
+TestPyPI project.
+
+`test_version` is rejected with `target=pypi`, so it cannot touch
+production. Delete the throwaway version from TestPyPI afterwards if you
+would rather not leave it there.
+
+Do not cut a throwaway `v*` tag for this. Tag pushes also trigger
+[`deploy-viewer.yml`](workflows/deploy-viewer.yml), so a fake tag would
+publish the viewer site as a side effect.
+
+**The real thing.** The next `[Patch]`/`[Minor]`/`[Major]` merge cuts a tag
+and uploads that exact version to TestPyPI automatically.
 
 Re-running is always safe. The workflow queries the target index first and
-skips the upload if that version is already there, so running *Actions →
-Publish to PyPI → Run workflow* against an already-published tag is a
-no-op rather than an error.
+skips the upload if that version is already there, so running the workflow
+against an already-published tag is a no-op rather than an error.
 
 Then install and smoke-test (dependencies still come from real PyPI):
 

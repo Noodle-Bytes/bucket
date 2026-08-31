@@ -7,7 +7,9 @@
 # as x.y.z.devN+gSHA, and the indexes reject local version segments, so those
 # runs build and verify but skip publishing. Re-running a tag is a no-op: the
 # target index is queried first and the upload is skipped if it already has
-# that version. Operator setup: .github/RELEASE_AUTOMATION.md.
+# that version. To rehearse the upload path without cutting a tag, dispatch
+# with target=testpypi and test_version=0.0.1.
+# Operator setup: .github/RELEASE_AUTOMATION.md.
 
 name: Publish to PyPI
 
@@ -23,6 +25,11 @@ on:
           - testpypi
           - pypi
         default: testpypi
+      test_version:
+        description: "TestPyPI rehearsal only. Build this exact x.y.z (e.g. 0.0.1) instead of the git-derived version, to prove the upload path without cutting a tag. Leave blank for normal runs."
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -56,6 +63,26 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+
+      - name: Apply the rehearsal version override
+        if: github.event_name == 'workflow_dispatch' && inputs.test_version != ''
+        env:
+          TEST_VERSION: ${{ inputs.test_version }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          if [ "${TARGET}" != "testpypi" ]; then
+            echo "::error title=Rehearsal is TestPyPI-only::test_version cannot be combined with target=pypi."
+            exit 1
+          fi
+          if [[ ! "${TEST_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error title=Invalid test_version::Expected a plain x.y.z, got '${TEST_VERSION}'."
+            exit 1
+          fi
+          # hatch-vcs ignores SETUPTOOLS_SCM_PRETEND_VERSION_FOR_<NAME>; only
+          # the bare variable has any effect.
+          echo "SETUPTOOLS_SCM_PRETEND_VERSION=${TEST_VERSION}" >> "$GITHUB_ENV"
+          echo "::notice title=Rehearsal build::Building ${TEST_VERSION} instead of the git-derived version. This is a dry run of the upload path, not a release."
 
       - name: Build sdist and wheel
         run: |
@@ -92,39 +119,64 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           if [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "is_release=true" >> "$GITHUB_OUTPUT"
-            echo "Built ${version}; publishing enabled."
+            echo "Built ${version}, a plain x.y.z release."
           else
             echo "is_release=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Nothing to publish::Built ${version}, which is not a plain x.y.z release. Artifacts are still verified and uploaded to the run. Tag a commit to publish."
+            echo "Built ${version}, which is not a plain x.y.z release."
           fi
 
-      - name: Check whether the target index already has this version
+      - name: Check the target index
         id: published
-        if: steps.version.outputs.is_release == 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          IS_RELEASE: ${{ steps.version.outputs.is_release }}
           TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'testpypi' }}
         run: |
           set -euo pipefail
           if [ "${TARGET}" = "pypi" ]; then host="pypi.org"; else host="test.pypi.org"; fi
+
           # 404 covers both "project does not exist yet" and "version not
-          # uploaded", which are the same answer for our purposes.
-          code="$(curl -sS --retry 3 --max-time 30 -o /dev/null -w '%{http_code}' \
-            "https://${host}/pypi/noodle-bucket/${VERSION}/json")"
-          case "${code}" in
-            404)
-              echo "already_published=false" >> "$GITHUB_OUTPUT"
-              echo "${host} does not have ${VERSION}; publishing."
-              ;;
-            200)
+          # uploaded", which are the same answer for our purposes. Anything
+          # else is a broken check rather than a licence to guess.
+          index_has() {
+            local code
+            code="$(curl -sS --retry 3 --max-time 30 -o /dev/null -w '%{http_code}' \
+              "https://${host}/pypi/noodle-bucket/$1/json")"
+            case "${code}" in
+              200) return 0 ;;
+              404) return 1 ;;
+              *)
+                echo "::error title=Index check failed::Unexpected HTTP ${code} from ${host} while checking $1."
+                exit 1
+                ;;
+            esac
+          }
+
+          if [ "${IS_RELEASE}" = "true" ]; then
+            if index_has "${VERSION}"; then
               echo "already_published=true" >> "$GITHUB_OUTPUT"
               echo "::notice title=Already published::${host} already has noodle-bucket ${VERSION}; skipping the upload."
-              ;;
-            *)
-              echo "::error title=Index check failed::Unexpected HTTP ${code} from ${host} while checking ${VERSION}."
-              exit 1
-              ;;
-          esac
+            else
+              echo "already_published=false" >> "$GITHUB_OUTPUT"
+              echo "${host} does not have ${VERSION}; publishing."
+            fi
+            exit 0
+          fi
+
+          # Not publishable from this ref. Name the tag that could be published
+          # instead, and whether it is already there, so the operator does not
+          # have to go and look it up.
+          tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          if [ -z "${tag}" ]; then
+            echo "::notice title=Nothing to publish::Built ${VERSION} from ${GITHUB_REF}, which is not a plain x.y.z release, and the repository has no tags to fall back on."
+            exit 0
+          fi
+          if index_has "${tag#v}"; then
+            state="already on ${host}"
+          else
+            state="not yet on ${host}"
+          fi
+          echo "::notice title=Nothing to publish::Built ${VERSION} from ${GITHUB_REF}, which is not a plain x.y.z release. The most recent tag is ${tag} (${state}). To publish it, re-run with 'Use workflow from: ${tag}'."
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4
