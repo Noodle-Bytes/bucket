@@ -5,7 +5,22 @@
 
 # Getting Started:
 
-To run the example, which includes a coverage tree along with some randomised data to sample, please run:
+Install the Python library from PyPI:
+
+```bash
+pip install noodle-bucket
+```
+
+This provides `import bucket` and the `bucket` CLI. It is enough to define
+coverpoints, collect coverage, and write `.bktgz` / SQL / JSON / console
+output. View results in the [hosted viewer](https://noodle-bytes.github.io/bucket/)
+or the desktop app — see [Viewing coverage](viewing_coverage.md).
+
+HTML generation (`write html` / `write report`) is not part of the pip
+package; it needs a source checkout of this repository and Node.js.
+
+To run the in-repo example, which includes a coverage tree along with some
+randomised data to sample:
 
 ```
 $ ./bin/shell

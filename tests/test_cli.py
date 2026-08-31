@@ -206,8 +206,23 @@ class TestCli:
         assert isinstance(calls["readouts"], list)
         assert len(calls["readouts"]) == 1
 
-    def test_non_viewer_commands_work_without_a_viewer(self, archives, tmp_path):
-        """A pip install has no viewer directory; only html/report need one."""
+    def test_write_html_without_viewer_errors_cleanly(self, archives, tmp_path):
+        path_1, *_ = archives
+        result = self.run(
+            "--web-path",
+            tmp_path / "no-viewer",
+            "write",
+            "-r",
+            path_1,
+            "html",
+            "-o",
+            tmp_path / "out.html",
+        )
+        assert result.exit_code != 0
+        assert "does not include the viewer" in result.output
+        assert "hosted viewer" in result.output
+
+    def test_write_console_does_not_need_viewer(self, archives, tmp_path):
         path_1, *_ = archives
         result = self.run(
             "--web-path",

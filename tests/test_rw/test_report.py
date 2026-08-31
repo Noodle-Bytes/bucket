@@ -62,6 +62,19 @@ class TestReportWriter:
         with pytest.raises(RuntimeError, match="Viewer not installed"):
             ReportWriter(web_path, "report.html")
 
+    def test_raises_when_viewer_path_missing(self, tmp_path):
+        missing = tmp_path / "no-viewer"
+        with pytest.raises(RuntimeError, match="does not include the viewer"):
+            ReportWriter(missing, "report.html")
+
+    def test_raises_when_npm_missing(self, web_path, monkeypatch):
+        def no_npm(*args, **kwargs):
+            raise FileNotFoundError("npm")
+
+        monkeypatch.setattr(subprocess, "call", no_npm)
+        with pytest.raises(RuntimeError, match="npm was not found"):
+            ReportWriter(web_path, "report.html")
+
     def test_write_produces_report(self, web_path, tmp_path, monkeypatch):
         fake_npm = FakeReportNpm()
         monkeypatch.setattr(subprocess, "call", fake_npm)
