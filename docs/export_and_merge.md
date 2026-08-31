@@ -64,11 +64,9 @@ python -m bucket write -r archive:./run.bktgz json -o run.json
 python -m bucket write -r archive:./run.bktgz console --summary
 
 # Generate standalone HTML with the embedded viewer
-# (needs a source checkout and Node.js; not available from a pip install)
 python -m bucket write -r archive:./run.bktgz html -o index.html
 
 # Generate a human-readable HTML coverage report
-# (same checkout/Node.js requirement as `html`)
 python -m bucket write -r archive:./run.bktgz report -o report.html
 ```
 

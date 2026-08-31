@@ -20,21 +20,6 @@ Bucket is a python library to create nicer functional coverpoints. There are sev
 * No commercial EDA license required
 * Vendor independence - easily collect coverage from multiple tools/sources (eg. models, log parsers, etc)
 
-## Install
-
-```bash
-pip install noodle-bucket
-```
-
-This installs the Python library (`import bucket`) and the `bucket` CLI.
-It is enough to write coverpoints, collect coverage, and export `.bktgz` /
-SQL / JSON / console output. View results in the [hosted viewer](https://noodle-bytes.github.io/bucket/)
-or the desktop app.
-
-Generating standalone HTML (`bucket write html` / `bucket write report`)
-needs a source checkout of this repository and Node.js; it is not part of
-the pip package.
-
 ## Documentation
 
 The user documentation lives in the `docs/` directory and can be read directly on GitHub, starting from [`docs/index.md`](docs/index.md).

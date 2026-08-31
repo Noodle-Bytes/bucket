@@ -7,7 +7,6 @@ import tempfile
 from pathlib import Path
 
 from .common import Readout, Writer
-from .html import DEFAULT_WEB_PATH, require_viewer
 from .json import JSONWriter
 
 
@@ -23,7 +22,7 @@ class ReportWriter(Writer):
 
     def __init__(
         self,
-        web_path: str | Path = DEFAULT_WEB_PATH,
+        web_path: str | Path = Path(__file__).parent.parent.parent / "viewer",
         output: str | Path = "report.html",
         *,
         max_axis_values: int = 64,
@@ -31,7 +30,7 @@ class ReportWriter(Writer):
         tags: list[str] | None = None,
         point: str | None = None,
     ):
-        self.web_path = require_viewer(web_path)
+        self.web_path = Path(web_path)
         self.output = Path(output)
         self.written = False
 
@@ -42,6 +41,16 @@ class ReportWriter(Writer):
             self.report_args += ["--tags", ",".join(str(tag) for tag in tags)]
         if point is not None:
             self.report_args += ["--point", str(point)]
+
+        result = subprocess.call(["npm", "ls"], cwd=web_path, stdout=subprocess.DEVNULL)
+        if result != 0:
+            raise RuntimeError(
+                "Viewer not installed.\n"
+                "If npm is installed: \n"
+                "    You may need to run `npm install` in the viewer directory. \n"
+                "If npm is not installed: \n"
+                "    see https://docs.npmjs.com/downloading-and-installing-node-js-and-npm"
+            )
 
     def write(self, readout: Readout | list[Readout]):
         if self.written:
