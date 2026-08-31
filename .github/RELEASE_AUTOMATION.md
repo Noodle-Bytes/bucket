@@ -130,9 +130,13 @@ Worth doing after any change to `publish-pypi.yml`, since production is now
 tag-triggered and there is no dry run in front of it.
 
 *Actions → Publish to PyPI → Run workflow*, from `main`, target
-**testpypi**, with **test_version** set to something outside the release
-line such as `0.0.1`. That builds and uploads that exact version,
-exercising OIDC, the environment, the publisher and the upload.
+**testpypi**, with **test_version** set to an unused number outside the
+release line. That builds and uploads that exact version, exercising OIDC,
+the environment, the publisher and the upload.
+
+Pick a fresh number each time. The index pre-check skips versions that are
+already present, so reusing one turns the rehearsal into a silent no-op
+that proves nothing. `0.0.1` is already taken.
 
 `test_version` is rejected with `target=pypi`, so it cannot touch
 production. Do not cut a throwaway `v*` tag instead: tag pushes also
@@ -211,9 +215,14 @@ release already exists and refuses to overwrite an existing tag.
 
 ## Required checks on `main` (GitHub settings)
 
-- `PR Title Check / enforce-title-prefix`
+These live in GitHub branch protection, not in this repo, so nothing keeps
+them in sync with the workflows — re-check them whenever the CI matrix
+changes. Verified against the live settings:
+
+- `enforce-title-prefix`
 - `CodeQL`
-- `test (3.11)`, `test (3.12)`
+- `test (3.11)`, `test (3.12)`, `test (3.13)`, `test (3.14)`
+- `test-viewer (22)`, `test-viewer (23)`, `test-viewer (24)`
 - 1 approving review, strict up-to-date requirement
 
 `release-pipeline-gate` must NOT be in this list — it no longer exists and
