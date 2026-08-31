@@ -16,18 +16,17 @@ from .rw import (
     SQLAccessor,
 )
 from .rw.common import MergeReadout, Readout
+from .rw.html import DEFAULT_WEB_PATH
 
 
 @click.group()
 @click.pass_context
-@click.version_option(package_name=DIST_NAME)
+@click.version_option(package_name=DIST_NAME, prog_name="bucket")
 @click.option(
     "--web-path",
     help="Path to the web viewer (only used by html/report)",
-    default=Path(__file__).parent.parent / "viewer",
-    # Not validated: the default resolves inside site-packages, where the
-    # viewer is absent for a pip install. Validating here would fail every
-    # command, including those that never touch the viewer.
+    default=DEFAULT_WEB_PATH,
+    show_default=True,
     type=click.Path(path_type=Path),
 )
 def cli(ctx, web_path):
@@ -218,10 +217,12 @@ def sql(ctx, output: Path):
 def html(ctx, output: Path):
     readouts = ctx.obj["readouts"]
     web_path = ctx.obj["web_path"]
-    writer = HTMLWriter(web_path, output)
-
-    for readout in readouts:
-        writer.write(readout)
+    try:
+        writer = HTMLWriter(web_path, output)
+        for readout in readouts:
+            writer.write(readout)
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @write.command()
@@ -269,18 +270,22 @@ def report(
 ):
     readouts = ctx.obj["readouts"]
     web_path = ctx.obj["web_path"]
-    writer = ReportWriter(
-        web_path,
-        output,
-        max_axis_values=max_axis_values,
-        max_tier=max_tier,
-        tags=[tag.strip() for tag in tags.split(",") if tag.strip()] if tags else None,
-        point=point,
-    )
-
-    # A single write: the writer is single-use and all readouts belong in
-    # one report document.
-    writer.write(list(readouts))
+    try:
+        writer = ReportWriter(
+            web_path,
+            output,
+            max_axis_values=max_axis_values,
+            max_tier=max_tier,
+            tags=[tag.strip() for tag in tags.split(",") if tag.strip()]
+            if tags
+            else None,
+            point=point,
+        )
+        # A single write: the writer is single-use and all readouts belong in
+        # one report document.
+        writer.write(list(readouts))
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @write.command()

@@ -11,6 +11,56 @@ from pathlib import Path
 from .common import Readout, Writer
 from .json import JSONWriter
 
+DEFAULT_WEB_PATH = Path(__file__).parent.parent.parent / "viewer"
+HOSTED_VIEWER_URL = "https://noodle-bytes.github.io/bucket/"
+
+_VIEWER_FALLBACK = (
+    "Export a .bktgz archive and open it in the hosted viewer:\n"
+    f"    {HOSTED_VIEWER_URL}\n"
+    "or in the desktop app.\n"
+    "\n"
+    "To generate HTML locally, clone the Bucket repository, run "
+    "`npm install` in viewer/, and pass that directory as web_path "
+    "(CLI: --web-path)."
+)
+
+
+def require_viewer(web_path: str | Path) -> Path:
+    """
+    Ensure *web_path* is a viewer checkout with Node.js dependencies.
+
+    The pip package does not include the viewer; HTMLWriter and ReportWriter
+    only work from a source checkout (or an explicit --web-path).
+    """
+    path = Path(web_path)
+    if not path.is_dir():
+        raise RuntimeError(
+            f"Viewer not found at {path}.\n"
+            "The pip package (noodle-bucket) does not include the viewer.\n"
+            f"{_VIEWER_FALLBACK}"
+        )
+    try:
+        result = subprocess.call(
+            ["npm", "ls"],
+            cwd=path,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        raise RuntimeError(
+            f"Node.js/npm was not found on PATH.\n{_VIEWER_FALLBACK}"
+        ) from None
+    if result != 0:
+        raise RuntimeError(
+            "Viewer not installed.\n"
+            "If npm is installed: \n"
+            "    You may need to run `npm install` in the viewer directory. \n"
+            "If npm is not installed: \n"
+            "    see https://docs.npmjs.com/downloading-and-installing-node-js-and-npm"
+            f"\n\n{_VIEWER_FALLBACK}"
+        )
+    return path
+
 
 class HTMLWriter(Writer):
     """
@@ -19,22 +69,12 @@ class HTMLWriter(Writer):
 
     def __init__(
         self,
-        web_path: str | Path = Path(__file__).parent.parent.parent / "viewer",
+        web_path: str | Path = DEFAULT_WEB_PATH,
         output: str | Path = "index.html",
     ):
-        self.web_path = Path(web_path)
+        self.web_path = require_viewer(web_path)
         self.output = Path(output)
         self.written = False
-
-        result = subprocess.call(["npm", "ls"], cwd=web_path, stdout=subprocess.DEVNULL)
-        if result != 0:
-            raise RuntimeError(
-                "Viewer not installed.\n"
-                "If npm is installed: \n"
-                "    You may need to run `npm install` in the viewer directory. \n"
-                "If npm is not installed: \n"
-                "    see https://docs.npmjs.com/downloading-and-installing-node-js-and-npm"
-            )
 
     def write(self, readout: Readout | list[Readout]):
         if self.written:
