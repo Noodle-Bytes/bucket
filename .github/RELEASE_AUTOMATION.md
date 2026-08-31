@@ -75,9 +75,12 @@ workflow*:
   [`.git_archival.txt`](../.git_archival.txt) is substituted by GitHub at
   archive time (via `.gitattributes` `export-subst`) and setuptools-scm
   reads it, so archives of tagged commits version correctly.
-- **Escape hatch**: set `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_NOODLE_BUCKET=X.Y.Z`
-  for the Python package, or `BUCKET_VERSION=X.Y.Z` for viewer/Electron
-  builds, to force a version when no git metadata is available.
+- **Escape hatch**: set `SETUPTOOLS_SCM_PRETEND_VERSION=X.Y.Z` for the Python
+  package, or `BUCKET_VERSION=X.Y.Z` for viewer/Electron builds, to force a
+  version when no git metadata is available. The per-distribution form
+  (`SETUPTOOLS_SCM_PRETEND_VERSION_FOR_NOODLE_BUCKET`) is silently ignored:
+  hatch-vcs does not pass the distribution name through to setuptools-scm,
+  so only the bare variable is honoured.
 
 ## Publishing to PyPI (one-time setup)
 
@@ -119,8 +122,9 @@ gate the first few times; leave it off if a dispatch to `pypi` should
 upload immediately.
 
 Optional: under **Deployment branches and tags** on both, restrict to
-tags matching `v*`. If you do that, skip step 4's "from `main`" dry run
-and use an existing `v*` tag instead.
+tags matching `v*`. Real publishing only ever happens from a tag, so this
+costs nothing afterwards — but add it *after* step 4, because the
+rehearsal there runs from `main` and the restriction would block it.
 
 ### 3. Pending trusted publisher (TestPyPI first)
 
@@ -146,17 +150,34 @@ https://pypi.org/manage/account/publishing/ with environment name
 
 ### 4. Prove the pipeline on TestPyPI
 
-Pick one:
+Only plain `X.Y.Z` versions are uploaded. An untagged commit builds as
+`X.Y.Z.devN+gSHA`, and both indexes reject that local segment, so an
+ordinary run from `main` builds and verifies the artifacts but publishes
+nothing. It reports which tag it *could* publish, and whether the index
+already has it.
 
-**From `main` (no tag):** *Actions → Publish to PyPI → Run workflow*,
-workflow from `main`, target **testpypi**. The build uses a throwaway
-version `0.0.<run_number>.dev0` because a local `+gSHA` version is
-rejected by the index.
+**Rehearsal (no tag needed).** *Actions → Publish to PyPI → Run workflow*,
+from `main`, target **testpypi**, and set **test_version** to something
+outside the real release line such as `0.0.1`. That builds and uploads
+that exact version, which is enough to prove the whole path: OIDC, the
+environment, the pending publisher, and the upload itself. The first
+successful upload is also what turns the pending publisher into a real
+TestPyPI project.
 
-**From a tag:** the next `[Patch]`/`[Minor]`/`[Major]` merge uploads that
-exact version to TestPyPI automatically. To retry, run the workflow
-against that tag with target **testpypi** (`skip-existing` is on, so a
-repeat of the same version is a no-op).
+`test_version` is rejected with `target=pypi`, so it cannot touch
+production. Delete the throwaway version from TestPyPI afterwards if you
+would rather not leave it there.
+
+Do not cut a throwaway `v*` tag for this. Tag pushes also trigger
+[`deploy-viewer.yml`](workflows/deploy-viewer.yml), so a fake tag would
+publish the viewer site as a side effect.
+
+**The real thing.** The next `[Patch]`/`[Minor]`/`[Major]` merge cuts a tag
+and uploads that exact version to TestPyPI automatically.
+
+Re-running is always safe. The workflow queries the target index first and
+skips the upload if that version is already there, so running the workflow
+against an already-published tag is a no-op rather than an error.
 
 Then install and smoke-test (dependencies still come from real PyPI):
 
