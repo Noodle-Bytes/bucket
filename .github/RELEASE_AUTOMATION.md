@@ -50,8 +50,8 @@ version is the `0.0.0` fallback (no git metadata at build time).
      with the exact release version and publishes it (plus docs) to GitHub
      Pages.
    - [`publish-pypi.yml`](workflows/publish-pypi.yml) builds the Python
-     sdist and wheel and uploads them to **TestPyPI** as `noodle-bucket`.
-     Production PyPI is a separate, explicit promote (see below).
+     sdist and wheel and uploads them to **production PyPI** as
+     `noodle-bucket`. This is immediate and irreversible (see below).
 
 Two nearly-simultaneous merges are serialized by the release workflow's
 concurrency group (queued, never cancelled), so each computes its version
@@ -82,54 +82,82 @@ workflow*:
   hatch-vcs does not pass the distribution name through to setuptools-scm,
   so only the bare variable is honoured.
 
-## Publishing to PyPI (one-time setup)
+## Publishing to PyPI
 
 The Python library publishes as **`noodle-bucket`** (`import bucket`; the
 CLI remains `bucket`). The name `bucket` is already taken on PyPI.
 
 Uploads use [Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
-— no API token is stored in the repo. **TestPyPI is the default.** A `v*`
-tag uploads there automatically; production is an explicit promote of that
-same tag once the TestPyPI install looks right.
+— no API token is stored in the repo.
 
-TestPyPI (`test.pypi.org`) is a separate site with a separate account and
-separate project. Versions do not copy across.
+**A `v*` tag push uploads straight to production PyPI.** There is no manual
+promote and no approval gate: cutting a release tag publishes it. The
+`[Patch]`/`[Minor]`/`[Major]` label on the merged PR is what decides a
+release happens at all.
 
-### 1. Accounts
+TestPyPI is opt-in, for rehearsing changes to the publish pipeline itself.
+It is a separate site with a separate account and project; versions do not
+copy across.
 
-Create accounts (2FA) on both:
+### What gets published
 
-- https://test.pypi.org/account/register/ — use this first
-- https://pypi.org/account/register/ — only needed when promoting
+Only plain `X.Y.Z` versions. An untagged commit builds as
+`X.Y.Z.devN+gSHA`, and the indexes reject that local segment, so a run from
+a branch builds and verifies the artifacts but publishes nothing — it
+reports which tag it *could* publish, and whether the index already has it.
 
-The first person to register each pending publisher becomes that project's
-owner; add other maintainers afterwards under **Collaborators**.
+Re-running is safe. The workflow queries the target index first and skips
+the upload if that version is already there, so re-running a published tag
+is a no-op rather than an error.
 
-### 2. GitHub environments
+Production versions are immutable. A failed publish that never created the
+version can be retried; a successful one can never be overwritten or the
+number reused, even after deleting it. Fix forward with the next tag.
 
-In the GitHub repo: **Settings → Environments → New environment**. Create
-two:
+### Releasing
 
-| Name | Reviewers | Notes |
-|---|---|---|
-| `testpypi` | none | Automatic on every `v*` tag |
-| `pypi` | optional | Only used by the manual promote |
+Merge a PR titled `[Patch]`, `[Minor]` or `[Major]`. That cuts the tag,
+which uploads to PyPI and deploys the viewer. Nothing else is needed.
 
-Names must match `environment.name` in
-[`publish-pypi.yml`](workflows/publish-pypi.yml). Do **not** add required
-reviewers on `testpypi`. On `pypi`, a required reviewer is a useful extra
-gate the first few times; leave it off if a dispatch to `pypi` should
-upload immediately.
+To retry a release that failed partway, run *Actions → Publish to PyPI →
+Run workflow* with **Use workflow from** set to the tag. Dispatching from a
+branch with the default `pypi` target fails deliberately, naming the most
+recent tag.
 
-Optional: under **Deployment branches and tags** on both, restrict to
-tags matching `v*`. Real publishing only ever happens from a tag, so this
-costs nothing afterwards — but add it *after* step 4, because the
-rehearsal there runs from `main` and the restriction would block it.
+### Rehearsing on TestPyPI
 
-### 3. Pending trusted publisher (TestPyPI first)
+Worth doing after any change to `publish-pypi.yml`, since production is now
+tag-triggered and there is no dry run in front of it.
 
-Until the first successful upload, the project does not exist yet.
-Register a *pending* publisher at
+*Actions → Publish to PyPI → Run workflow*, from `main`, target
+**testpypi**, with **test_version** set to an unused number outside the
+release line. That builds and uploads that exact version, exercising OIDC,
+the environment, the publisher and the upload.
+
+Pick a fresh number each time. The index pre-check skips versions that are
+already present, so reusing one turns the rehearsal into a silent no-op
+that proves nothing. `0.0.1` is already taken.
+
+`test_version` is rejected with `target=pypi`, so it cannot touch
+production. Do not cut a throwaway `v*` tag instead: tag pushes also
+trigger [`deploy-viewer.yml`](workflows/deploy-viewer.yml), so a fake tag
+would publish the viewer site as a side effect.
+
+Install from TestPyPI (dependencies still come from real PyPI):
+
+```bash
+pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple noodle-bucket
+python -c "import bucket; print(bucket.__version__)"
+bucket --version
+```
+
+### One-time setup (already done)
+
+Recorded for recovery. Both trusted publishers are registered and both
+projects exist, so none of this needs repeating unless something is lost.
+
+Each index was registered as a *pending* publisher before the project
+existed, at https://pypi.org/manage/account/publishing/ and
 https://test.pypi.org/manage/account/publishing/:
 
 | Field | Value |
@@ -138,74 +166,20 @@ https://test.pypi.org/manage/account/publishing/:
 | Owner | `Noodle-Bytes` |
 | Repository | `bucket` |
 | Workflow name | `publish-pypi.yml` |
-| Environment name | `testpypi` |
+| Environment name | `pypi` or `testpypi` |
 
-The workflow filename must match exactly (no `workflows/` prefix). After
-the first upload, the pending publisher becomes a regular publisher on
-the live TestPyPI project.
+The workflow filename must match exactly, with no `workflows/` prefix —
+that is the usual misconfiguration. The first successful upload converts a
+pending publisher into a regular one. Whoever registers it becomes the
+project owner; add others under **Collaborators**.
 
-Repeat the same form later at
-https://pypi.org/manage/account/publishing/ with environment name
-`pypi` — not before TestPyPI has been proven.
-
-### 4. Prove the pipeline on TestPyPI
-
-Only plain `X.Y.Z` versions are uploaded. An untagged commit builds as
-`X.Y.Z.devN+gSHA`, and both indexes reject that local segment, so an
-ordinary run from `main` builds and verifies the artifacts but publishes
-nothing. It reports which tag it *could* publish, and whether the index
-already has it.
-
-**Rehearsal (no tag needed).** *Actions → Publish to PyPI → Run workflow*,
-from `main`, target **testpypi**, and set **test_version** to something
-outside the real release line such as `0.0.1`. That builds and uploads
-that exact version, which is enough to prove the whole path: OIDC, the
-environment, the pending publisher, and the upload itself. The first
-successful upload is also what turns the pending publisher into a real
-TestPyPI project.
-
-`test_version` is rejected with `target=pypi`, so it cannot touch
-production. Delete the throwaway version from TestPyPI afterwards if you
-would rather not leave it there.
-
-Do not cut a throwaway `v*` tag for this. Tag pushes also trigger
-[`deploy-viewer.yml`](workflows/deploy-viewer.yml), so a fake tag would
-publish the viewer site as a side effect.
-
-**The real thing.** The next `[Patch]`/`[Minor]`/`[Major]` merge cuts a tag
-and uploads that exact version to TestPyPI automatically.
-
-Re-running is always safe. The workflow queries the target index first and
-skips the upload if that version is already there, so running the workflow
-against an already-published tag is a no-op rather than an error.
-
-Then install and smoke-test (dependencies still come from real PyPI):
-
-```bash
-pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple noodle-bucket
-python -c "import bucket; print(bucket.__version__)"
-bucket --version
-```
-
-### 5. Promote a tag to production
-
-Once step 4 looks right and the production pending publisher from step 3
-is in place:
-
-1. *Actions → Publish to PyPI → Run workflow*
-2. **Use workflow from** the `v*` tag you verified (not `main`)
-3. Target **pypi**
-
-That uploads the exact tagged version to https://pypi.org/project/noodle-bucket/.
-
-Production versions are immutable. A failed publish that never created
-the version can be retried; a successful publish cannot be overwritten.
-Fix forward with the next tag.
-
-Tag pushes do **not** upload to production. After TestPyPI has been
-reliable for a few releases, tag-triggered production can be enabled in
-[`publish-pypi.yml`](workflows/publish-pypi.yml) by adding a tag-push
-condition to the `publish-pypi` job.
+The matching GitHub environments live under **Settings → Environments** and
+must match `environment.name` in
+[`publish-pypi.yml`](workflows/publish-pypi.yml). Neither has required
+reviewers, so a tag push publishes without waiting. Adding one on `pypi`
+would turn every release into an approval prompt. Do not restrict
+**Deployment branches and tags** to `v*`: that would block the TestPyPI
+rehearsal, which runs from `main`.
 
 ## Identities and secrets
 
@@ -220,7 +194,7 @@ condition to the `publish-pypi` job.
 - **PyPI / TestPyPI Trusted Publishers** — `publish-pypi.yml` exchanges a
   GitHub OIDC token for a short-lived upload token against the `testpypi`
   or `pypi` environment. No API token is stored in GitHub secrets. See
-  [Publishing to PyPI](#publishing-to-pypi-one-time-setup).
+  [Publishing to PyPI](#publishing-to-pypi).
 - An App private key does not expire, so there is no token to renew and no
   scheduled health check. If the key is ever compromised, generate a new
   one on the App's settings page and update `NOODLE_APP_PRIVATE_KEY`.
@@ -241,9 +215,14 @@ release already exists and refuses to overwrite an existing tag.
 
 ## Required checks on `main` (GitHub settings)
 
-- `PR Title Check / enforce-title-prefix`
+These live in GitHub branch protection, not in this repo, so nothing keeps
+them in sync with the workflows — re-check them whenever the CI matrix
+changes. Verified against the live settings:
+
+- `enforce-title-prefix`
 - `CodeQL`
-- `test (3.11)`, `test (3.12)`
+- `test (3.11)`, `test (3.12)`, `test (3.13)`, `test (3.14)`
+- `test-viewer (22)`, `test-viewer (23)`, `test-viewer (24)`
 - 1 approving review, strict up-to-date requirement
 
 `release-pipeline-gate` must NOT be in this list — it no longer exists and
