@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 #
-# Publish the Python package. Tag pushes upload to TestPyPI only; production
-# PyPI is an explicit promote via workflow_dispatch (target=pypi) on that
-# same tag. Only plain x.y.z versions are uploaded: an untagged commit builds
-# as x.y.z.devN+gSHA, and the indexes reject local version segments, so those
-# runs build and verify but skip publishing. Re-running a tag is a no-op: the
-# target index is queried first and the upload is skipped if it already has
-# that version. To rehearse the upload path without cutting a tag, dispatch
-# with target=testpypi and test_version=0.0.1.
+# Publish the Python package. A v* tag push uploads to production PyPI;
+# TestPyPI is opt-in via workflow_dispatch (target=testpypi). Only plain
+# x.y.z versions are uploaded: an untagged commit builds as x.y.z.devN+gSHA,
+# and the indexes reject local version segments, so those runs build and
+# verify but skip publishing. Re-running a tag is a no-op: the target index
+# is queried first and the upload is skipped if it already has that version.
+# To rehearse against TestPyPI without cutting a tag, dispatch with
+# target=testpypi and test_version=0.0.1.
 # Operator setup: .github/RELEASE_AUTOMATION.md.
 
 name: Publish to PyPI
@@ -19,12 +19,12 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: "Index to publish to. Tag pushes always go to TestPyPI; choose pypi to promote a v* tag to production."
+        description: "Index to publish to. Tag pushes go to pypi automatically; choose testpypi to re-upload a tag there, or to rehearse with test_version."
         type: choice
         options:
-          - testpypi
           - pypi
-        default: testpypi
+          - testpypi
+        default: pypi
       test_version:
         description: "TestPyPI rehearsal only. Build this exact x.y.z (e.g. 0.0.1) instead of the git-derived version, to prove the upload path without cutting a tag. Leave blank for normal runs."
         type: string
@@ -35,7 +35,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pypi-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.target || 'testpypi' }}
+  group: pypi-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.target || 'pypi' }}
   cancel-in-progress: false
 
 jobs:
@@ -47,17 +47,21 @@ jobs:
       is_release: ${{ steps.version.outputs.is_release }}
       already_published: ${{ steps.published.outputs.already_published }}
     steps:
-      - name: Reject production runs that are not on a tag
-        if: github.event_name == 'workflow_dispatch' && inputs.target == 'pypi' && !startsWith(github.ref, 'refs/tags/v')
-        run: |
-          echo "::error title=Production requires a tag::Run this workflow against a v* tag (Use workflow from <tag>)."
-          exit 1
-
       - name: Checkout
         uses: actions/checkout@v7
         with:
           # Full history and tags so hatch-vcs can derive the package version.
           fetch-depth: 0
+
+      # pypi is the default target, so dispatching from a branch by mistake is
+      # the easy slip. Fail before building, and name the tag they likely meant.
+      - name: Reject production runs that are not on a tag
+        if: github.event_name == 'workflow_dispatch' && inputs.target == 'pypi' && !startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          echo "::error title=Production requires a tag::${GITHUB_REF} is not a v* tag, so there is no releasable version to publish.${tag:+ The most recent tag is ${tag}.} Re-run with 'Use workflow from: ${tag:-<tag>}'."
+          exit 1
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -130,7 +134,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
           IS_RELEASE: ${{ steps.version.outputs.is_release }}
-          TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'testpypi' }}
+          TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'pypi' }}
         run: |
           set -euo pipefail
           if [ "${TARGET}" = "pypi" ]; then host="pypi.org"; else host="test.pypi.org"; fi
@@ -189,8 +193,7 @@ jobs:
     if: >-
       needs.build.outputs.is_release == 'true' &&
       needs.build.outputs.already_published == 'false' &&
-      (github.event_name == 'push' ||
-       (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'))
+      github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
     runs-on: ubuntu-latest
     environment:
       name: testpypi
@@ -214,12 +217,13 @@ jobs:
 
   publish-pypi:
     needs: build
-    # The build job already fails a non-tag run targeting pypi, and only a tag
-    # can produce a plain x.y.z, so reaching here means both hold.
+    # The build job already fails a non-tag dispatch targeting pypi, and only a
+    # tag can produce a plain x.y.z, so reaching here means both hold.
     if: >-
       needs.build.outputs.is_release == 'true' &&
       needs.build.outputs.already_published == 'false' &&
-      github.event_name == 'workflow_dispatch' && inputs.target == 'pypi'
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi'))
     runs-on: ubuntu-latest
     environment:
       name: pypi
