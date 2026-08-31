@@ -11,8 +11,12 @@ from .covergroup import Covergroup
 from .coverpoint import Coverpoint
 from .covertop import Covertop
 
+# PyPI distribution name. The import package remains `bucket`; `bucket` itself
+# is already taken on PyPI (an unrelated Bitbucket CLI).
+DIST_NAME = "noodle-bucket"
+
 try:
-    __version__ = _version("bucket")
+    __version__ = _version(DIST_NAME)
 except PackageNotFoundError:
     __version__ = "unknown"
 

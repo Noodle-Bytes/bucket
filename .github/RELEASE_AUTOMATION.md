@@ -45,10 +45,13 @@ version is the `0.0.0` fallback (no git metadata at build time).
      and creates a GitHub release (tag + auto-generated notes) targeting
      the merge commit, as the **noodle-bucket-releases** App. It also
      comments "🪣 Shipped in vX.Y.Z" on the source PR.
-3. The new tag triggers
-   [`deploy-viewer.yml`](workflows/deploy-viewer.yml), which builds the
-   viewer with the exact release version and publishes it (plus docs) to
-   GitHub Pages.
+3. The new tag triggers two downstream workflows:
+   - [`deploy-viewer.yml`](workflows/deploy-viewer.yml) builds the viewer
+     with the exact release version and publishes it (plus docs) to GitHub
+     Pages.
+   - [`publish-pypi.yml`](workflows/publish-pypi.yml) builds the Python
+     sdist and wheel and uploads them to **TestPyPI** as `noodle-bucket`.
+     Production PyPI is a separate, explicit promote (see below).
 
 Two nearly-simultaneous merges are serialized by the release workflow's
 concurrency group (queued, never cancelled), so each computes its version
@@ -72,9 +75,116 @@ workflow*:
   [`.git_archival.txt`](../.git_archival.txt) is substituted by GitHub at
   archive time (via `.gitattributes` `export-subst`) and setuptools-scm
   reads it, so archives of tagged commits version correctly.
-- **Escape hatch**: set `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_BUCKET=X.Y.Z`
+- **Escape hatch**: set `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_NOODLE_BUCKET=X.Y.Z`
   for the Python package, or `BUCKET_VERSION=X.Y.Z` for viewer/Electron
   builds, to force a version when no git metadata is available.
+
+## Publishing to PyPI (one-time setup)
+
+The Python library publishes as **`noodle-bucket`** (`import bucket`; the
+CLI remains `bucket`). The name `bucket` is already taken on PyPI.
+
+Uploads use [Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
+— no API token is stored in the repo. **TestPyPI is the default.** A `v*`
+tag uploads there automatically; production is an explicit promote of that
+same tag once the TestPyPI install looks right.
+
+TestPyPI (`test.pypi.org`) is a separate site with a separate account and
+separate project. Versions do not copy across.
+
+### 1. Accounts
+
+Create accounts (2FA) on both:
+
+- https://test.pypi.org/account/register/ — use this first
+- https://pypi.org/account/register/ — only needed when promoting
+
+The first person to register each pending publisher becomes that project's
+owner; add other maintainers afterwards under **Collaborators**.
+
+### 2. GitHub environments
+
+In the GitHub repo: **Settings → Environments → New environment**. Create
+two:
+
+| Name | Reviewers | Notes |
+|---|---|---|
+| `testpypi` | none | Automatic on every `v*` tag |
+| `pypi` | optional | Only used by the manual promote |
+
+Names must match `environment.name` in
+[`publish-pypi.yml`](workflows/publish-pypi.yml). Do **not** add required
+reviewers on `testpypi`. On `pypi`, a required reviewer is a useful extra
+gate the first few times; leave it off if a dispatch to `pypi` should
+upload immediately.
+
+Optional: under **Deployment branches and tags** on both, restrict to
+tags matching `v*`. If you do that, skip step 4's "from `main`" dry run
+and use an existing `v*` tag instead.
+
+### 3. Pending trusted publisher (TestPyPI first)
+
+Until the first successful upload, the project does not exist yet.
+Register a *pending* publisher at
+https://test.pypi.org/manage/account/publishing/:
+
+| Field | Value |
+|---|---|
+| PyPI project name | `noodle-bucket` |
+| Owner | `Noodle-Bytes` |
+| Repository | `bucket` |
+| Workflow name | `publish-pypi.yml` |
+| Environment name | `testpypi` |
+
+The workflow filename must match exactly (no `workflows/` prefix). After
+the first upload, the pending publisher becomes a regular publisher on
+the live TestPyPI project.
+
+Repeat the same form later at
+https://pypi.org/manage/account/publishing/ with environment name
+`pypi` — not before TestPyPI has been proven.
+
+### 4. Prove the pipeline on TestPyPI
+
+Pick one:
+
+**From `main` (no tag):** *Actions → Publish to PyPI → Run workflow*,
+workflow from `main`, target **testpypi**. The build uses a throwaway
+version `0.0.<run_number>.dev0` because a local `+gSHA` version is
+rejected by the index.
+
+**From a tag:** the next `[Patch]`/`[Minor]`/`[Major]` merge uploads that
+exact version to TestPyPI automatically. To retry, run the workflow
+against that tag with target **testpypi** (`skip-existing` is on, so a
+repeat of the same version is a no-op).
+
+Then install and smoke-test (dependencies still come from real PyPI):
+
+```bash
+pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple noodle-bucket
+python -c "import bucket; print(bucket.__version__)"
+bucket --version
+```
+
+### 5. Promote a tag to production
+
+Once step 4 looks right and the production pending publisher from step 3
+is in place:
+
+1. *Actions → Publish to PyPI → Run workflow*
+2. **Use workflow from** the `v*` tag you verified (not `main`)
+3. Target **pypi**
+
+That uploads the exact tagged version to https://pypi.org/project/noodle-bucket/.
+
+Production versions are immutable. A failed publish that never created
+the version can be retried; a successful publish cannot be overwritten.
+Fix forward with the next tag.
+
+Tag pushes do **not** upload to production. After TestPyPI has been
+reliable for a few releases, tag-triggered production can be enabled in
+[`publish-pypi.yml`](workflows/publish-pypi.yml) by adding a tag-push
+condition to the `publish-pypi` job.
 
 ## Identities and secrets
 
@@ -84,7 +194,12 @@ workflow*:
   `NOODLE_APP_ID` and `NOODLE_APP_PRIVATE_KEY` repository secrets (App
   installed on this repo with Contents + Pull requests: Read and write). An
   App token is used rather than the default `GITHUB_TOKEN` because tags
-  pushed with `GITHUB_TOKEN` do not trigger `deploy-viewer.yml`.
+  pushed with `GITHUB_TOKEN` do not trigger `deploy-viewer.yml` or
+  `publish-pypi.yml`.
+- **PyPI / TestPyPI Trusted Publishers** — `publish-pypi.yml` exchanges a
+  GitHub OIDC token for a short-lived upload token against the `testpypi`
+  or `pypi` environment. No API token is stored in GitHub secrets. See
+  [Publishing to PyPI](#publishing-to-pypi-one-time-setup).
 - An App private key does not expire, so there is no token to renew and no
   scheduled health check. If the key is ever compromised, generate a new
   one on the App's settings page and update `NOODLE_APP_PRIVATE_KEY`.

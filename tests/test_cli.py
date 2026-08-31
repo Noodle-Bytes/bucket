@@ -5,13 +5,32 @@
 Tests for the `bucket` command line interface.
 """
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
+
 import pytest
 from click.testing import CliRunner
 
+from bucket import DIST_NAME
 from bucket.__main__ import _split_spec, cli
 from bucket.rw import ArchiveAccessor, JSONAccessor, SQLAccessor
 
 from .utils import GeneratedReadout, readouts_are_equal
+
+
+def test_dist_name_matches_the_installed_distribution():
+    """
+    DIST_NAME backs `bucket --version` and the version stamped into archives.
+    If it drifts from the name in pyproject.toml both silently read "unknown"
+    rather than failing, so assert it still resolves.
+    """
+    try:
+        pkg_version(DIST_NAME)
+    except PackageNotFoundError:
+        pytest.fail(
+            f"DIST_NAME {DIST_NAME!r} does not match the installed "
+            "distribution name; keep it in sync with pyproject.toml"
+        )
 
 
 class TestSplitSpec:
@@ -186,6 +205,35 @@ class TestCli:
         # All readouts are passed in one single-use write call.
         assert isinstance(calls["readouts"], list)
         assert len(calls["readouts"]) == 1
+
+    def test_write_html_without_viewer_errors_cleanly(self, archives, tmp_path):
+        path_1, *_ = archives
+        result = self.run(
+            "--web-path",
+            tmp_path / "no-viewer",
+            "write",
+            "-r",
+            path_1,
+            "html",
+            "-o",
+            tmp_path / "out.html",
+        )
+        assert result.exit_code != 0
+        assert "does not include the viewer" in result.output
+        assert "hosted viewer" in result.output
+
+    def test_write_console_does_not_need_viewer(self, archives, tmp_path):
+        path_1, *_ = archives
+        result = self.run(
+            "--web-path",
+            tmp_path / "no-viewer",
+            "write",
+            "-r",
+            path_1,
+            "console",
+        )
+        assert result.exit_code == 0
+        assert "Summary" in result.output
 
     def test_missing_file_errors(self, tmp_path):
         result = self.run("write", "-r", tmp_path / "missing.bktgz", "console")

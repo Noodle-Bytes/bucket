@@ -79,8 +79,8 @@ data to humans.
 | `SQLAccessor` | `.db` | SQLite storage |
 | `JSONAccessor` | `.json` | Human-readable interchange |
 | `ConsoleWriter` | terminal | Summary and detailed text output |
-| `HTMLWriter` | `.html` | Standalone HTML embedding the viewer |
-| `ReportWriter` | `.html` | Human-readable standalone HTML coverage report |
+| `HTMLWriter` | `.html` | Standalone HTML embedding the viewer (source checkout + Node.js) |
+| `ReportWriter` | `.html` | Human-readable standalone HTML coverage report (source checkout + Node.js) |
 
 See [Exporting and merging coverage](export_and_merge.md) for CLI and Python
 examples of reading and writing each format.
