@@ -26,7 +26,10 @@ from .rw.html import DEFAULT_WEB_PATH
     "--web-path",
     help="Path to the web viewer (only used by html/report)",
     default=DEFAULT_WEB_PATH,
-    show_default=True,
+    # On a pip install the default resolves inside site-packages, where the
+    # viewer is never shipped. Printing that path in --help reads like a
+    # broken install, so only advertise it when it is really there.
+    show_default=DEFAULT_WEB_PATH.is_dir(),
     type=click.Path(path_type=Path),
 )
 def cli(ctx, web_path):

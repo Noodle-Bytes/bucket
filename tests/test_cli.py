@@ -79,6 +79,19 @@ class TestCli:
         assert result.exit_code == 0
         assert "version" in result.output
 
+    def test_web_path_default_only_advertised_when_it_exists(self):
+        """
+        The wheel ships no viewer, so on a pip install the --web-path default
+        resolves to a site-packages path that cannot exist. Printing it in
+        --help reads like a broken install. --web-path is the only option here
+        with a default, so `[default:` tracks whether it is advertised.
+        """
+        from bucket.rw.html import DEFAULT_WEB_PATH
+
+        result = self.run("--help")
+        assert result.exit_code == 0
+        assert ("[default:" in result.output) == DEFAULT_WEB_PATH.is_dir()
+
     def test_write_console(self, archives):
         path_1, *_ = archives
         result = self.run("write", "-r", path_1, "console")
