@@ -5,9 +5,10 @@ from __future__ import annotations
 
 import logging
 import random
+from collections import Counter
 from pathlib import Path
 
-from bucket.rw import PointReader
+from bucket.rw import ArchiveAccessor, PointReader
 from bucket.rw.common import (
     BucketHitTuple,
     PointHitTuple,
@@ -16,6 +17,21 @@ from bucket.rw.common import (
 
 from .stress_common import RISCVDataset, build_coverage, context_hash, generate_trace
 from .stress_example import export_readout, merge_format, parse_formats
+
+DEMO_MODULE_COVERAGE = {
+    "arithmetic": 0.92,
+    "compare": 0.70,
+    "control_flow": 0.48,
+    "exceptions": 0.18,
+    "instruction_formats": 0.78,
+    "logical": 0.34,
+    "memory_operations": 0.60,
+    "pipeline": 0.12,
+    "register_file": 0.85,
+    "system": 0.42,
+}
+
+DEMO_COVERPOINT_OFFSETS = (-0.08, 0.0, 0.08)
 
 
 def capture_definition(copies: int = 1, seed: int = 42) -> PuppetReadout:
@@ -112,6 +128,95 @@ def generate_synthetic_readout(
     readout.source = f"synthetic_test_{test_num:03d}"
     readout.source_key = str(rand.randint(1, 1_000_000))
     return readout
+
+
+def _demo_bucket_hits(target: int, coverage: float, rand: random.Random) -> int:
+    """Return a hit count whose expected target ratio is ``coverage``."""
+    if target <= 0:
+        return 0
+    if target == 1:
+        return 1 if rand.random() < coverage else 0
+
+    # A partial bucket contributes half its target. These probabilities make
+    # the expected contribution equal to the requested coverage while keeping
+    # the viewer's hit, partial, and unhit states visible.
+    full_probability = max(0.0, (2 * coverage) - 1)
+    partial_probability = 2 * min(coverage, 1 - coverage)
+    draw = rand.random()
+    if draw < full_probability:
+        return target
+    if draw < full_probability + partial_probability:
+        return max(1, target // 2)
+    return 0
+
+
+def generate_viewer_demo_readout(
+    definition: PuppetReadout,
+    *,
+    seed: int = 42,
+) -> PuppetReadout:
+    """Create presentation-friendly coverage with varied sunburst sectors."""
+    readout = copy_definition(definition)
+    rand = random.Random(seed)
+    points = list(definition.iter_points())
+    goals = list(definition.iter_goals())
+    bucket_goals = list(definition.iter_bucket_goals())
+    bucket_hits = [0] * len(bucket_goals)
+
+    modules = [point for point in points if point.depth == 1]
+    leaves = [
+        point
+        for point in points
+        if point.end == point.start + 1 and point.bucket_end > point.bucket_start
+    ]
+    module_leaf_counts: Counter[str] = Counter()
+
+    for point in leaves:
+        module = next(
+            module
+            for module in modules
+            if module.bucket_start <= point.bucket_start
+            and point.bucket_end <= module.bucket_end
+        )
+        leaf_index = module_leaf_counts[module.name]
+        module_leaf_counts[module.name] += 1
+        base_module_name = module.name
+        if base_module_name not in DEMO_MODULE_COVERAGE:
+            name_without_copy, separator, copy_index = base_module_name.rpartition("_")
+            if separator and copy_index.isdigit():
+                base_module_name = name_without_copy
+        coverage = DEMO_MODULE_COVERAGE.get(base_module_name, 0.5)
+        coverage += DEMO_COVERPOINT_OFFSETS[leaf_index % len(DEMO_COVERPOINT_OFFSETS)]
+        coverage = min(1.0, max(0.0, coverage))
+
+        for bucket_idx in range(point.bucket_start, point.bucket_end):
+            target = goals[bucket_goals[bucket_idx].goal].target
+            bucket_hits[bucket_idx] = _demo_bucket_hits(target, coverage, rand)
+
+    readout.bucket_hits = [
+        BucketHitTuple(start=index, hits=hits) for index, hits in enumerate(bucket_hits)
+    ]
+    readout.point_hits = calculate_point_hits(definition, bucket_hits)
+    readout.source = "riscv_stress_viewer_demo"
+    readout.source_key = str(seed)
+    return readout
+
+
+def generate_viewer_demo(
+    output_path: Path = Path("output/riscv_stress/riscv_stress_viewer_demo.bktgz"),
+    *,
+    seed: int = 42,
+    copies: int = 1,
+) -> Path:
+    """Write one varied RISC-V coverage archive for showing in the viewer."""
+    logging.basicConfig(level=logging.INFO)
+    log = logging.getLogger("stress_demo")
+    definition = capture_definition(copies=copies, seed=seed)
+    readout = generate_viewer_demo_readout(definition, seed=seed)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    ArchiveAccessor(output_path).write(readout)
+    log.info("Viewer demo written to %s", output_path)
+    return output_path
 
 
 def generate(

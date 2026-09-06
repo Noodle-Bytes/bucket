@@ -33,11 +33,19 @@ npm run dev
 The dev server runs at http://127.0.0.1:4000/
 
 To load coverage locally, run the example from the repo root (which writes a
-`.bktgz` archive), then open that file in the viewer:
+`.bktgz` archive), then open that file in the viewer — or click
+**Load example data** on the empty state (bundled RISC-V demo):
 
 ```bash
 ./bin/shell
 python -m example.example
+```
+
+To regenerate the bundled empty-state demo:
+
+```bash
+python -m examples.riscv_stress demo \
+  --output viewer/public/examples/riscv_stress_viewer_demo.bktgz
 ```
 
 ### Other commands

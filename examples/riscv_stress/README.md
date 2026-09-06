@@ -32,6 +32,9 @@ python -m examples.riscv_stress sample --iters 20000 --copies 4
 # Sample, export, and merge a handful of real runs
 python -m examples.riscv_stress run --num-tests 10 --formats archive
 
+# Create one visually varied archive to open in the viewer
+python -m examples.riscv_stress demo
+
 # Synthesize many compatible records and time merging them
 python -m examples.riscv_stress generate --num-tests 200 --formats archive sql
 ```
@@ -50,6 +53,25 @@ for “a really large covertree” without editing the modules.
 
 Reports tree build time, coverpoint count, bucket count, samples/sec, and
 microseconds per sample.
+
+### `demo`
+
+Writes `output/riscv_stress/riscv_stress_viewer_demo.bktgz`. RISC-V modules
+and their leaf coverpoints are assigned different coverage bands, producing
+clearly varied sunburst sectors. The archive also retains fully hit, partially
+hit, and unhit buckets for demonstrating the detailed viewer tables.
+
+Use `--output` to choose another archive path, or `--seed` to produce another
+deterministic variation.
+
+The hosted viewer’s **Load example data** button ships a copy at
+`viewer/public/examples/riscv_stress_viewer_demo.bktgz`. After changing the
+demo generator, refresh that file with:
+
+```bash
+python -m examples.riscv_stress demo \
+  --output viewer/public/examples/riscv_stress_viewer_demo.bktgz
+```
 
 ### `run`
 
@@ -81,6 +103,7 @@ want merge-at-scale without waiting on sampling.
 
 ```
 output/riscv_stress/
+  riscv_stress_viewer_demo.bktgz
   test_outputs/
     archive/test_000.bktgz
     sql/test_000.db

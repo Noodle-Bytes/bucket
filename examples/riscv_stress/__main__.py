@@ -8,7 +8,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .generate_stress_data import generate
+from .generate_stress_data import generate, generate_viewer_demo
 from .stress_example import bench_sample, run
 
 
@@ -76,6 +76,19 @@ def main() -> int:
         help="Fraction of buckets given a non-zero hit count (default: 0.35)",
     )
 
+    demo_p = sub.add_parser(
+        "demo",
+        help="Create one varied coverage archive for showing in the viewer",
+    )
+    demo_p.add_argument(
+        "--output",
+        type=Path,
+        default=Path("output/riscv_stress/riscv_stress_viewer_demo.bktgz"),
+        help="Archive path (default: output/riscv_stress/riscv_stress_viewer_demo.bktgz)",
+    )
+    demo_p.add_argument("--copies", type=int, default=1)
+    demo_p.add_argument("--seed", type=int, default=42)
+
     args = parser.parse_args()
     if args.command == "sample":
         bench_sample(
@@ -93,6 +106,13 @@ def main() -> int:
             export_formats=args.formats,
             samples_per_test=args.samples_per_test,
             copies=args.copies,
+        )
+        return 0
+    if args.command == "demo":
+        generate_viewer_demo(
+            output_path=args.output,
+            copies=args.copies,
+            seed=args.seed,
         )
         return 0
     generate(

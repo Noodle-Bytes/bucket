@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { loadReadoutsFromBytes } from "./fileLoader";
+import { loadReadoutsFromBytes, EXAMPLE_COVERAGE_ARCHIVE } from "./fileLoader";
 import {
     BASE_POINT_COLUMNS,
     createBaseDefinition,
@@ -18,6 +18,12 @@ import {
 const FIXTURE = join(
     __dirname,
     "../features/Dashboard/test/fixtures/two_records.bktgz",
+);
+
+const EXAMPLE_ARCHIVE = join(
+    __dirname,
+    "../../public",
+    EXAMPLE_COVERAGE_ARCHIVE,
 );
 
 describe("loadReadoutsFromBytes", () => {
@@ -58,5 +64,14 @@ describe("loadReadoutsFromBytes", () => {
         await expect(loadReadoutsFromBytes(bytes)).rejects.toThrow(
             "Unsupported file type - not a valid archive or JSON",
         );
+    });
+});
+
+describe("bundled example coverage", () => {
+    test("public RISC-V demo archive loads", async () => {
+        const bytes = new Uint8Array(readFileSync(EXAMPLE_ARCHIVE));
+        const readouts = await loadReadoutsFromBytes(bytes);
+        expect(readouts).toHaveLength(1);
+        expect(readouts[0].get_source()).toBe("riscv_stress_viewer_demo");
     });
 });
