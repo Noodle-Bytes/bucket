@@ -19,6 +19,7 @@ import {
     parseTreeSearchQuery,
     suggestTagsForPrefix,
     suggestTiersForPrefix,
+    summaryFiltersFromTreeSearch,
     treeSearchIsActive,
 } from "./treeSearch";
 
@@ -45,6 +46,41 @@ describe("parsePointTags", () => {
         expect(parsePointTags('["uart","axi"]')).toEqual(["uart", "axi"]);
         expect(parsePointTags("uart, axi")).toEqual(["uart", "axi"]);
         expect(parsePointTags("")).toEqual([]);
+    });
+});
+
+describe("summaryFiltersFromTreeSearch", () => {
+    test("drives Summary filters from completed tag/tier keywords only", () => {
+        expect(summaryFiltersFromTreeSearch(parseTreeSearchQuery("compare"))).toEqual({
+            drives: false,
+            tags: [],
+            tiers: [],
+            tagMatchMode: "any",
+        });
+        expect(summaryFiltersFromTreeSearch(parseTreeSearchQuery("tag:fl"))).toEqual({
+            drives: false,
+            tags: [],
+            tiers: [],
+            tagMatchMode: "any",
+        });
+        expect(
+            summaryFiltersFromTreeSearch(parseTreeSearchQuery("tag:flags tier:2 ")),
+        ).toEqual({
+            drives: true,
+            tags: ["flags"],
+            tiers: [2],
+            tagMatchMode: "any",
+        });
+        expect(
+            summaryFiltersFromTreeSearch(
+                parseTreeSearchQuery("tag:flags tag:compare "),
+            ),
+        ).toEqual({
+            drives: true,
+            tags: ["flags", "compare"],
+            tiers: [],
+            tagMatchMode: "all",
+        });
     });
 });
 

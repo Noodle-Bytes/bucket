@@ -814,6 +814,7 @@ export default function Dashboard({
         {} as { [key: TreeKey]: string | number },
     );
     const [summaryViewMode, setSummaryViewMode] = useState<"table" | "donut">("table");
+    const [treeSearchValue, setTreeSearchValue] = useState("");
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [editLoadedById, setEditLoadedById] = useState<Record<string, boolean>>({});
     const [mergeSelectedIds, setMergeSelectedIds] = useState<string[]>([]);
@@ -966,6 +967,7 @@ export default function Dashboard({
         if (isEmpty) {
             navigationPastRef.current = [];
             setViewNavigationPastLength(0);
+            setTreeSearchValue("");
             if (selectedTreeKeys.length > 0) {
                 setSelectedTreeKeys([]);
                 setExpandedTreeKeys([]);
@@ -1179,6 +1181,7 @@ export default function Dashboard({
                         node={currentNode}
                         setSelectedTreeKeys={onSelect}
                         compare={compareContext}
+                        treeSearchValue={treeSearchValue}
                     />
                 );
                 return withTopLevelInfoPanel({
@@ -1206,6 +1209,7 @@ export default function Dashboard({
         logoSrc,
         isDragging,
         summaryViewMode,
+        treeSearchValue,
         onSelect,
         topLevelCoverageInfo,
         compareContext,
@@ -1321,6 +1325,8 @@ export default function Dashboard({
                                     setSidebarWidth={setSidebarWidth}
                                     autoExpandTreeParent={autoExpandTreeParent}
                                     setAutoExpandTreeParent={setAutoExpandTreeParent}
+                                    searchValue={treeSearchValue}
+                                    onSearchValueChange={setTreeSearchValue}
                                     compareBadge={compareContext ? compareTreeBadge : undefined}
                                 />
                             )}

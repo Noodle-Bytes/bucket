@@ -114,6 +114,8 @@ export type SiderProps = {
     selectedTreeKeys: TreeKey[];
     expandedTreeKeys: TreeKey[];
     autoExpandTreeParent: boolean;
+    searchValue: string;
+    onSearchValueChange: (value: string) => void;
     setSidebarWidth: (width: number) => void;
     setAutoExpandTreeParent: (newValue: boolean) => void;
     setSelectedTreeKeys: (newSelectedKeys: TreeKey[]) => void;
@@ -128,6 +130,8 @@ export default function Sider({
     selectedTreeKeys,
     expandedTreeKeys,
     autoExpandTreeParent,
+    searchValue,
+    onSearchValueChange,
     setSidebarWidth,
     setAutoExpandTreeParent,
     setSelectedTreeKeys,
@@ -135,7 +139,6 @@ export default function Sider({
     compareBadge,
 }: SiderProps) {
     const { theme } = Theme.useContext();
-    const [searchValue, setSearchValue] = useState("");
     const [isResizing, setIsResizing] = useState(false);
     const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
@@ -173,7 +176,7 @@ export default function Sider({
             setExpandedTreeKeys(Array.from(expandKeys));
             setAutoExpandTreeParent(true);
         }
-        setSearchValue(value);
+        onSearchValueChange(value);
     };
 
     const onExpand = (newExpandedKeys: React.Key[]) => {

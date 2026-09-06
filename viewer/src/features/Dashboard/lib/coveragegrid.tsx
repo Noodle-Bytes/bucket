@@ -6,6 +6,10 @@
 import CoverageTree, { PointNode } from "./coveragetree";
 import { getPointNodeCompareCounts, getPointNodeCoverageMetrics } from "./coveragemetrics";
 import {
+    parseTreeSearchQuery,
+    summaryFiltersFromTreeSearch,
+} from "./treeSearch";
+import {
     Alert,
     Button,
     Checkbox,
@@ -53,6 +57,7 @@ import {
     useCallback,
     useEffect,
     useMemo,
+    useRef,
     useState,
 } from "react";
 import {
@@ -2029,6 +2034,8 @@ export type PointSummaryGridProps = {
     node: PointNode;
     setSelectedTreeKeys: (newSelectedKeys: TreeKey[]) => void;
     compare?: CompareViewContext;
+    /** Sidebar tree search text; completed tag:/tier: keywords drive table filters. */
+    treeSearchValue?: string;
 };
 
 function createInitialExpandedSet(tree: CoverageTree, node: PointNode): Set<TreeKey> {
@@ -2051,6 +2058,7 @@ export function PointSummaryGrid({
     node,
     setSelectedTreeKeys,
     compare,
+    treeSearchValue = "",
 }: PointSummaryGridProps) {
     const [expandedCovergroups, setExpandedCovergroups] = useState<Set<TreeKey>>(() =>
         createInitialExpandedSet(tree, node),
@@ -2058,15 +2066,48 @@ export function PointSummaryGrid({
     const [selectedTiers, setSelectedTiers] = useState<number[]>([]);
     const [selectedTags, setSelectedTags] = useState<string[]>([]);
     const [tagMatchMode, setTagMatchMode] = useState<SummaryTagMatchMode>("any");
+    const treeSearchDrivesFiltersRef = useRef(false);
 
     useEffect(() => {
         setExpandedCovergroups(createInitialExpandedSet(tree, node));
     }, [tree, node]);
 
+    // Completed tag:/tier: keywords in the sidebar search drive Summary filters.
     useEffect(() => {
+        const fromSearch = summaryFiltersFromTreeSearch(
+            parseTreeSearchQuery(treeSearchValue),
+        );
+        if (fromSearch.drives) {
+            treeSearchDrivesFiltersRef.current = true;
+            setSelectedTiers(fromSearch.tiers);
+            setSelectedTags(fromSearch.tags);
+            setTagMatchMode(fromSearch.tagMatchMode);
+            return;
+        }
+        if (treeSearchDrivesFiltersRef.current) {
+            treeSearchDrivesFiltersRef.current = false;
+            setSelectedTiers([]);
+            setSelectedTags([]);
+            setTagMatchMode("any");
+        }
+    }, [treeSearchValue]);
+
+    useEffect(() => {
+        const fromSearch = summaryFiltersFromTreeSearch(
+            parseTreeSearchQuery(treeSearchValue),
+        );
+        if (fromSearch.drives) {
+            treeSearchDrivesFiltersRef.current = true;
+            setSelectedTiers(fromSearch.tiers);
+            setSelectedTags(fromSearch.tags);
+            setTagMatchMode(fromSearch.tagMatchMode);
+            return;
+        }
         setSelectedTiers([]);
         setSelectedTags([]);
         setTagMatchMode("any");
+        // Intentionally omit treeSearchValue: name-only edits must not reset filters.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tree, node.key]);
 
     const toggleCovergroup = (key: TreeKey, e: MouseEvent) => {
