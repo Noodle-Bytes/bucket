@@ -126,8 +126,11 @@ hosted viewer.
 #### Loading coverage
 
 On the empty state, use **Open File…** or drag and drop one or more `.bktgz`
-files. While coverage is loading, a progress overlay shows how many archives have
-been read and when the viewer is applying them to the session.
+files. To try the viewer without your own archive, click **Load example data** —
+that opens a bundled RISC-V coverage demo (regenerated with
+`python -m examples.riscv_stress demo`). While coverage is loading, a progress
+overlay shows how many archives have been read and when the viewer is applying
+them to the session.
 
 When more than one archive is selected in a single action, a dialog offers:
 

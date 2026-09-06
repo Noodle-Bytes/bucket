@@ -10,6 +10,7 @@ import { infoThemed } from "@/utils/themedStaticModal";
 import { notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/utils/themedStaticNotification";
 import CoverageTree from "../features/Dashboard/lib/coveragetree";
 import {
+    fetchExampleCoverageFile,
     isElectron,
     loadReadoutsFromElectronPath,
     loadReadoutsFromFileHandle,
@@ -542,6 +543,21 @@ export function useFileLoader() {
         fileInputRef.current?.click();
     };
 
+    const loadExampleData = async (): Promise<void> => {
+        try {
+            const file = await fetchExampleCoverageFile();
+            await loadArchiveBatch([{ kind: "fileObject", file }], false, "replace");
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            setError(errorMessage);
+            notifyError({
+                message: "Failed to Load Example",
+                description: errorMessage,
+                duration: 5,
+            });
+        }
+    };
+
     const clearCoverage = (): void => {
         setSession(getDefaultSession());
         setError(null);
@@ -940,6 +956,7 @@ export function useFileLoader() {
         fileInputRef,
         handleFileInput,
         openFileDialog,
+        loadExampleData,
         clearCoverage,
         setLoadedRecords,
         mergeRecords,

@@ -50,6 +50,26 @@ export async function loadReadoutsFromBytes(bytes: Uint8Array): Promise<Readout[
     return collectReadouts(await readerFromBuffer(bytes));
 }
 
+/** Bundled RISC-V demo archive served from `viewer/public/examples/`. */
+export const EXAMPLE_COVERAGE_ARCHIVE =
+    "examples/riscv_stress_viewer_demo.bktgz";
+
+/**
+ * Fetch the bundled example coverage archive as a File for the normal load path.
+ */
+export async function fetchExampleCoverageFile(): Promise<File> {
+    const url = `${import.meta.env.BASE_URL}${EXAMPLE_COVERAGE_ARCHIVE}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(
+            `Could not load example coverage (HTTP ${response.status}).`,
+        );
+    }
+    const buffer = await response.arrayBuffer();
+    const fileName = EXAMPLE_COVERAGE_ARCHIVE.split("/").pop() ?? "example.bktgz";
+    return new File([buffer], fileName, { type: "application/gzip" });
+}
+
 /**
  * Load readouts from a File object (web browser)
  */

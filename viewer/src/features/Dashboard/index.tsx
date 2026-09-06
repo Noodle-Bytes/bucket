@@ -772,6 +772,7 @@ export type DashboardProps = {
     compare?: UseCoverageCompareResult;
     compareContext?: CompareViewContext;
     onOpenFile?: () => void | Promise<void>;
+    onLoadExample?: () => void | Promise<void>;
     onClearCoverage?: () => void;
     onSetLoadedRecords?: (loadedRecordIds: string[]) => void;
     onMergeRecords?: (recordIds: string[]) => Promise<void> | void;
@@ -792,6 +793,7 @@ export default function Dashboard({
     compare,
     compareContext,
     onOpenFile,
+    onLoadExample,
     onClearCoverage,
     onSetLoadedRecords,
     onMergeRecords,
@@ -1134,7 +1136,14 @@ export default function Dashboard({
 
     const selectedViewContent = useMemo(() => {
         if (isEmpty) {
-            return <EmptyState logoSrc={logoSrc} onOpenFile={onOpenFile} isDragging={isDragging} />;
+            return (
+                <EmptyState
+                    logoSrc={logoSrc}
+                    onOpenFile={onOpenFile}
+                    onLoadExample={onLoadExample}
+                    isDragging={isDragging}
+                />
+            );
         }
 
         const currentNode = tree.getNodeByKey(viewKey);
@@ -1193,6 +1202,7 @@ export default function Dashboard({
         tree,
         isEmpty,
         onOpenFile,
+        onLoadExample,
         logoSrc,
         isDragging,
         summaryViewMode,

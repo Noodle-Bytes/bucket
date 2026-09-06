@@ -4,7 +4,7 @@
  */
 
 import { Button, Typography } from "antd";
-import { FolderOpenOutlined, LockOutlined } from "@ant-design/icons";
+import { ExperimentOutlined, FolderOpenOutlined, LockOutlined } from "@ant-design/icons";
 import Theme from "@/providers/Theme";
 
 declare const __APP_VERSION__: string;
@@ -12,13 +12,19 @@ declare const __APP_VERSION__: string;
 export type EmptyStateProps = {
     logoSrc: string;
     onOpenFile?: () => void | Promise<void>;
+    onLoadExample?: () => void | Promise<void>;
     isDragging?: boolean;
 };
 
 /**
  * Empty state component displayed when no coverage data is loaded
  */
-export default function EmptyState({ logoSrc, onOpenFile, isDragging = false }: EmptyStateProps) {
+export default function EmptyState({
+    logoSrc,
+    onOpenFile,
+    onLoadExample,
+    isDragging = false,
+}: EmptyStateProps) {
     return (
         <Theme.Consumer>
             {({ theme }) => {
@@ -100,6 +106,15 @@ export default function EmptyState({ logoSrc, onOpenFile, isDragging = false }: 
                                         >
                                             Open File...
                                         </Button>
+                                        {onLoadExample && (
+                                            <Button
+                                                icon={<ExperimentOutlined />}
+                                                size="large"
+                                                onClick={onLoadExample}
+                                            >
+                                                Load example data
+                                            </Button>
+                                        )}
                                         <Typography.Text style={{ fontSize: '13px', color: secondaryTextColor }}>
                                             Or drag and drop a `.bktgz` file here
                                         </Typography.Text>

@@ -63,6 +63,7 @@ export const AppRoutes = () => {
         fileInputRef,
         handleFileInput,
         openFileDialog,
+        loadExampleData,
         clearCoverage,
         setLoadedRecords,
         mergeRecords,
@@ -196,6 +197,7 @@ export const AppRoutes = () => {
                         compare={compare}
                         compareContext={compareContext}
                         onOpenFile={openFileDialog}
+                        onLoadExample={loadExampleData}
                         onClearCoverage={clearCoverage}
                         onSetLoadedRecords={setLoadedRecords}
                         onMergeRecords={mergeRecords}

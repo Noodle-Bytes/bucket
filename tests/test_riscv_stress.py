@@ -5,7 +5,11 @@ import random
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from examples.riscv_stress.generate_stress_data import generate
+from bucket.rw import ArchiveAccessor
+from examples.riscv_stress.generate_stress_data import (
+    generate,
+    generate_viewer_demo,
+)
 from examples.riscv_stress.stress_common import (
     RISCVDataset,
     build_coverage,
@@ -78,3 +82,38 @@ def test_generate_synthetic_and_merge():
         )
         merged = output / "riscv_stress" / "riscv_stress_merged.bktgz"
         assert merged.is_file()
+
+
+def test_generate_viewer_demo_has_varied_coverage_states():
+    with TemporaryDirectory() as tmpdir:
+        output = Path(tmpdir) / "riscv_stress_viewer_demo.bktgz"
+        generate_viewer_demo(output_path=output, seed=1)
+
+        readout = next(ArchiveAccessor(output).read_all())
+        points = list(readout.iter_points())
+        point_hits = list(readout.iter_point_hits())
+        goals = list(readout.iter_goals())
+        bucket_goals = list(readout.iter_bucket_goals())
+        bucket_hits = list(readout.iter_bucket_hits())
+
+        states = set()
+        for bucket_goal, bucket_hit in zip(bucket_goals, bucket_hits):
+            target = goals[bucket_goal.goal].target
+            if target <= 0:
+                continue
+            if bucket_hit.hits == 0:
+                states.add("unhit")
+            elif bucket_hit.hits < target:
+                states.add("partial")
+            else:
+                states.add("hit")
+        assert states == {"hit", "partial", "unhit"}
+
+        leaf_ratios = [
+            hit.hits / point.target
+            for point, hit in zip(points, point_hits)
+            if point.end == point.start + 1 and point.target > 0
+        ]
+        assert min(leaf_ratios) < 0.1
+        assert max(leaf_ratios) > 0.9
+        assert len({round(ratio, 1) for ratio in leaf_ratios}) >= 6
