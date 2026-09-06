@@ -34,7 +34,8 @@ The dev server runs at http://127.0.0.1:4000/
 
 To load coverage locally, run the example from the repo root (which writes a
 `.bktgz` archive), then open that file in the viewer — or click
-**Load example data** on the empty state (bundled RISC-V demo):
+**Try with example data** on the empty state (bundled two-record RISC-V demo for
+browse + Compare):
 
 ```bash
 ./bin/shell

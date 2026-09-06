@@ -232,10 +232,66 @@ describe("buildCompareDisplayReadout", () => {
         expect(Array.from(merged.iter_bucket_hits(0, null)).map((entry) => entry.hits)).toEqual([
             3, 2,
         ]);
+        expect(merged.get_source()).toBe("suite");
+        expect(merged.get_source_key()).toBe("test vs test");
 
         const fromA = buildCompareDisplayReadout(readoutA, readoutB, "a_only");
         expect(Array.from(fromA.iter_bucket_hits(0, null)).map((entry) => entry.hits)).toEqual([
             3, 0,
         ]);
     });
+
+    test("labels the shared all-mode tree as both sides of the pair", () => {
+        const readoutA = new InMemoryReadout({
+            ...materializeFixture("baseline", [3, 0]),
+        });
+        const readoutB = new InMemoryReadout({
+            ...materializeFixture("improved", [0, 2]),
+        });
+
+        const display = buildCompareDisplayReadout(readoutA, readoutB, "all");
+        expect(display.get_source()).toBe("riscv_compare");
+        expect(display.get_source_key()).toBe("baseline vs improved");
+        expect(Array.from(display.iter_bucket_hits(0, null)).map((entry) => entry.hits)).toEqual([
+            3, 0,
+        ]);
+    });
 });
+
+function materializeFixture(sourceKey: string, bucketHits: number[]) {
+    return {
+        defSha: "def-a",
+        recSha: `rec-${sourceKey}`,
+        source: "riscv_compare",
+        sourceKey,
+        bucketVersion: "",
+        points: [
+            {
+                start: 0,
+                depth: 0,
+                end: 1,
+                axis_start: 0,
+                axis_end: 1,
+                axis_value_start: 0,
+                axis_value_end: 2,
+                goal_start: 0,
+                goal_end: 1,
+                bucket_start: 0,
+                bucket_end: 2,
+                target: 2,
+                name: "root",
+                description: "",
+                motivation: "",
+            },
+        ],
+        bucketGoals: [
+            { start: 0, goal: 0 },
+            { start: 1, goal: 0 },
+        ],
+        axes: [],
+        axisValues: [],
+        goals: [{ start: 0, name: "g", description: "", target: 1 }],
+        pointHits: [{ start: 0, hits: bucketHits.reduce((a, b) => a + b, 0), hit_buckets: 1, full_buckets: 0 }],
+        bucketHits: bucketHits.map((hits, start) => ({ start, hits })),
+    };
+}

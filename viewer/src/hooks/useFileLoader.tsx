@@ -411,7 +411,7 @@ export function useFileLoader() {
         items: ArchiveFileItem[],
         suppressNotification: boolean = false,
         mode: LoadMode = "append",
-    ): Promise<{ success: boolean }> => {
+    ): Promise<{ success: boolean; recordIds?: string[] }> => {
         if (items.length === 0) {
             return { success: false };
         }
@@ -451,7 +451,7 @@ export function useFileLoader() {
                     throw new Error("No coverage data");
                 }
                 const mergedReadout = mergeReadoutsStrict(allReadouts);
-                setSessionFromSources(
+                const batch = setSessionFromSources(
                     [
                         {
                             readouts: [mergedReadout],
@@ -469,28 +469,29 @@ export function useFileLoader() {
                         "One merged record is in the viewer. Export to .bktgz or JSON if you want to save it.",
                     duration: 5,
                 });
-            } else {
-                const batch = setSessionFromSources(payloads, mode);
-                if (strategy === "compare") {
-                    const activation = resolveCompareActivation(batch);
-                    if (activation) {
-                        setPendingCompareActivation(activation);
-                        notifySuccess({
-                            message: "Compare load complete",
-                            description: "Opening compare mode for the two loaded records.",
-                            duration: 4,
-                        });
-                    } else {
-                        notifyWarning({
-                            message: "Compare unavailable",
-                            description:
-                                "Compare needs one record from each archive. The files were loaded individually instead.",
-                            duration: 5,
-                        });
-                    }
+                return { success: true, recordIds: batch.recordIds };
+            }
+
+            const batch = setSessionFromSources(payloads, mode);
+            if (strategy === "compare") {
+                const activation = resolveCompareActivation(batch);
+                if (activation) {
+                    setPendingCompareActivation(activation);
+                    notifySuccess({
+                        message: "Compare load complete",
+                        description: "Opening compare mode for the two loaded records.",
+                        duration: 4,
+                    });
+                } else {
+                    notifyWarning({
+                        message: "Compare unavailable",
+                        description:
+                            "Compare needs one record from each archive. The files were loaded individually instead.",
+                        duration: 5,
+                    });
                 }
             }
-            return { success: true };
+            return { success: true, recordIds: batch.recordIds };
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err);
             setError(errorMessage);
@@ -546,7 +547,17 @@ export function useFileLoader() {
     const loadExampleData = async (): Promise<void> => {
         try {
             const file = await fetchExampleCoverageFile();
-            await loadArchiveBatch([{ kind: "fileObject", file }], false, "replace");
+            const result = await loadArchiveBatch(
+                [{ kind: "fileObject", file }],
+                false,
+                "replace",
+            );
+            if (result.success && result.recordIds && result.recordIds.length >= 2) {
+                setPendingCompareActivation({
+                    recordIdA: result.recordIds[0],
+                    recordIdB: result.recordIds[1],
+                });
+            }
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err);
             setError(errorMessage);

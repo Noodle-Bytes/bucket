@@ -68,10 +68,14 @@ describe("loadReadoutsFromBytes", () => {
 });
 
 describe("bundled example coverage", () => {
-    test("public RISC-V demo archive loads", async () => {
+    test("public RISC-V demo archive loads two comparable records", async () => {
         const bytes = new Uint8Array(readFileSync(EXAMPLE_ARCHIVE));
         const readouts = await loadReadoutsFromBytes(bytes);
-        expect(readouts).toHaveLength(1);
-        expect(readouts[0].get_source()).toBe("riscv_stress_viewer_demo");
+        expect(readouts).toHaveLength(2);
+        expect(readouts[0].get_def_sha()).toBe(readouts[1].get_def_sha());
+        expect(readouts[0].get_source()).toBe("riscv_compare");
+        expect(readouts[1].get_source()).toBe("riscv_compare");
+        expect(readouts[0].get_source_key()).toBe("baseline");
+        expect(readouts[1].get_source_key()).toBe("improved");
     });
 });

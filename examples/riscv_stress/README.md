@@ -56,15 +56,17 @@ microseconds per sample.
 
 ### `demo`
 
-Writes `output/riscv_stress/riscv_stress_viewer_demo.bktgz`. RISC-V modules
-and their leaf coverpoints are assigned different coverage bands, producing
-clearly varied sunburst sectors. The archive also retains fully hit, partially
-hit, and unhit buckets for demonstrating the detailed viewer tables.
+Writes `output/riscv_stress/riscv_stress_viewer_demo.bktgz` with two compatible
+records (`baseline` / `improved`) so the viewer can browse and open Compare.
+Modules and leaf coverpoints use different coverage bands across the pair.
+`jump_operations` is painted so a jump_type × rd pivot shows clear holes on
+one screen (JALR empty for low return registers in baseline; filled in
+improved).
 
 Use `--output` to choose another archive path, or `--seed` to produce another
 deterministic variation.
 
-The hosted viewer’s **Load example data** button ships a copy at
+The hosted viewer’s **Try with example data** button ships a copy at
 `viewer/public/examples/riscv_stress_viewer_demo.bktgz`. After changing the
 demo generator, refresh that file with:
 
