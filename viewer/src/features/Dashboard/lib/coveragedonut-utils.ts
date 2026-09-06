@@ -147,11 +147,35 @@ export function computeSunburstVisualMidpoint(
     };
 }
 
+/**
+ * SVG annular sector path from startAngle to endAngle (radians).
+ *
+ * A sweep of a full turn makes the arc endpoints coincide; SVG then treats the
+ * arc as empty and the wedge collapses to a radial line. Split full rings into
+ * two half-turns so single-child sunburst nodes still paint a ring.
+ */
 export function arcPath(
     innerRadius: number,
     outerRadius: number,
     startAngle: number,
     endAngle: number
+): string {
+    const sweep = endAngle - startAngle;
+    if (sweep >= 2 * Math.PI - 1e-10) {
+        const mid = startAngle + Math.PI;
+        return [
+            arcPathHalf(innerRadius, outerRadius, startAngle, mid),
+            arcPathHalf(innerRadius, outerRadius, mid, startAngle + 2 * Math.PI),
+        ].join(" ");
+    }
+    return arcPathHalf(innerRadius, outerRadius, startAngle, endAngle);
+}
+
+function arcPathHalf(
+    innerRadius: number,
+    outerRadius: number,
+    startAngle: number,
+    endAngle: number,
 ): string {
     const start = polarToCartesian(innerRadius, startAngle);
     const end = polarToCartesian(innerRadius, endAngle);
@@ -164,8 +188,8 @@ export function arcPath(
         `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${endOuter.x} ${endOuter.y}`,
         `L ${end.x} ${end.y}`,
         `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${start.x} ${start.y}`,
-        'Z',
-    ].join(' ');
+        "Z",
+    ].join(" ");
 }
 
 export function buildNode(node: PointNode): HierarchicalData {

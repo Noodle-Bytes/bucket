@@ -6,7 +6,7 @@
 import { describe, expect, test } from "vitest";
 
 import type { PointNode } from "./coveragetree";
-import { buildNode } from "./coveragedonut-utils";
+import { arcPath, buildNode, flattenData } from "./coveragedonut-utils";
 
 function createLeafNode(
     key: string,
@@ -72,5 +72,41 @@ describe("coveragedonut buildNode", () => {
         expect(built.hits).toBe(0);
         expect(built.coverage).toBe(0);
         expect(built.value).toBe(1);
+    });
+});
+
+describe("coveragedonut arcPath", () => {
+    test("partial wedges produce a single closed subpath", () => {
+        const path = arcPath(40, 80, 0, Math.PI / 2);
+        expect(path.match(/Z/g)).toHaveLength(1);
+        expect(path.match(/ A /g)).toHaveLength(2);
+    });
+
+    test("full rings split into two half-turn subpaths", () => {
+        const path = arcPath(40, 80, 0, 2 * Math.PI);
+        // Degenerate single-arc full circles collapse in SVG; two halves must paint.
+        expect(path.match(/Z/g)).toHaveLength(2);
+        expect(path.match(/ A /g)).toHaveLength(4);
+        expect(path).toContain("M ");
+    });
+
+    test("single-child covergroups flatten to a full-ring child wedge", () => {
+        const leaf = createLeafNode("flag", "flag_generation", 280, 230);
+        const group = {
+            key: "compare_flags",
+            title: "compare_flags",
+            data: {} as unknown,
+            children: [leaf],
+        } as PointNode;
+
+        const built = buildNode(group);
+        const flat = flattenData(built, 0, 0, built.value);
+        const child = flat.find((n) => n.depth === 1);
+
+        expect(child).toBeDefined();
+        expect(child!.endAngle - child!.startAngle).toBeCloseTo(2 * Math.PI, 10);
+
+        const path = arcPath(40, 80, child!.startAngle, child!.endAngle);
+        expect(path.match(/Z/g)).toHaveLength(2);
     });
 });
