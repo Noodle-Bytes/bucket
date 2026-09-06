@@ -116,6 +116,52 @@ function keyFor(record: BucketRecord, axisNames: string[]): string {
     return axisNames.map((name) => record.axes[name] ?? "").join(KEY_SEP);
 }
 
+export type PivotCellInfo = {
+    sumHits: number;
+    sumTargets: number;
+    bucketCount: number;
+};
+
+/** Aggregate bucket metrics into pivot cells keyed by ``row\\tcol``. */
+export function aggregatePivotCells(
+    buckets: BucketRecord[],
+    rowAxes: string[],
+    colAxes: string[],
+): {
+    rowKeys: string[];
+    colKeys: string[];
+    cellMap: Map<string, PivotCellInfo>;
+} {
+    const rowKeySet = new Set<string>();
+    const colKeySet = new Set<string>();
+    for (const b of buckets) {
+        rowKeySet.add(keyFor(b, rowAxes));
+        colKeySet.add(keyFor(b, colAxes));
+    }
+    if (rowAxes.length === 0) rowKeySet.add("");
+    if (colAxes.length === 0) colKeySet.add("");
+    const rowKeys = Array.from(rowKeySet).sort();
+    const colKeys = Array.from(colKeySet).sort();
+
+    const cellMap = new Map<string, PivotCellInfo>();
+    for (const b of buckets) {
+        const rk = rowAxes.length ? keyFor(b, rowAxes) : "";
+        const ck = colAxes.length ? keyFor(b, colAxes) : "";
+        const key = `${rk}\t${ck}`;
+        const cur = cellMap.get(key) ?? {
+            sumHits: 0,
+            sumTargets: 0,
+            bucketCount: 0,
+        };
+        cur.sumHits += b.hitCount;
+        cur.sumTargets += b.goalTarget;
+        cur.bucketCount += 1;
+        cellMap.set(key, cur);
+    }
+
+    return { rowKeys, colKeys, cellMap };
+}
+
 function labelForKey(key: string): string {
     if (!key) return "—";
     return key.split(KEY_SEP).join(" | ");
@@ -395,35 +441,7 @@ export function PointPivotView({ node }: PointPivotViewProps) {
     );
 
     const { rowKeys, colKeys, cellMap, rowKeyToLabel, rowSpans } = useMemo(() => {
-        const rowKeySet = new Set<string>();
-        const colKeySet = new Set<string>();
-        for (const b of buckets) {
-            rowKeySet.add(keyFor(b, rowAxes));
-            colKeySet.add(keyFor(b, colAxes));
-        }
-        if (rowAxes.length === 0) rowKeySet.add("");
-        if (colAxes.length === 0) colKeySet.add("");
-        const rowKeys = Array.from(rowKeySet).sort();
-        const colKeys = Array.from(colKeySet).sort();
-
-        const cellMap = new Map<
-            string,
-            { sumHits: number; sumTargets: number; bucketCount: number }
-        >();
-        for (const b of buckets) {
-            const rk = rowAxes.length ? keyFor(b, rowAxes) : "";
-            const ck = colAxes.length ? keyFor(b, colAxes) : "";
-            const key = `${rk}\t${ck}`;
-            const cur = cellMap.get(key) ?? {
-                sumHits: 0,
-                sumTargets: 0,
-                bucketCount: 0,
-            };
-            cur.sumHits += b.hitCount;
-            cur.sumTargets += b.goalTarget;
-            cur.bucketCount += 1;
-            cellMap.set(key, cur);
-        }
+        const { rowKeys, colKeys, cellMap } = aggregatePivotCells(buckets, rowAxes, colAxes);
 
         const rowKeyToLabel = new Map<string, string>();
         for (const rk of rowKeys) rowKeyToLabel.set(rk, labelForKey(rk));
