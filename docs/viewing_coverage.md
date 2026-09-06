@@ -174,6 +174,8 @@ The coverage tree search box matches point names and also accepts keywords:
 as clickable suggestions. Plain typing also suggests matching tags (and tiers when
 the token is numeric); choosing a suggestion inserts the `tag:` / `tier:` filter.
 Active search prunes the tree to matching coverpoints and their ancestors.
+Completed `tag:` / `tier:` keywords also drive the Summary table’s Tier and Tags
+column filters (name-only search stays tree-only).
 
 Selecting a coverpoint shows its buckets, goals, hit counts, and hit percentage.
 Axis columns and goal names can be filtered; columns can be sorted. Summary views

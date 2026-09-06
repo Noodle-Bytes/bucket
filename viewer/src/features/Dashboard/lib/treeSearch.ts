@@ -129,6 +129,33 @@ export function treeSearchIsActive(query: TreeSearchQuery): boolean {
     );
 }
 
+export type SummaryTagMatchMode = "any" | "all";
+
+/**
+ * Completed `tag:` / `tier:` keywords that should drive the Summary table
+ * filters. Incomplete prefixes stay tree-only until accepted/spaced.
+ */
+export type SummaryFiltersFromTreeSearch = {
+    /** When true, Summary Tier/Tags filters follow the tree search keywords. */
+    drives: boolean;
+    tags: string[];
+    tiers: number[];
+    tagMatchMode: SummaryTagMatchMode;
+};
+
+export function summaryFiltersFromTreeSearch(
+    query: TreeSearchQuery,
+): SummaryFiltersFromTreeSearch {
+    const drives = query.tags.length > 0 || query.tiers.length > 0;
+    return {
+        drives,
+        tags: [...query.tags],
+        tiers: [...query.tiers],
+        // Tree search requires every completed tag; mirror that with All.
+        tagMatchMode: query.tags.length > 1 ? "all" : "any",
+    };
+}
+
 type PointLikeNode = TreeNode<{
     point?: { tags?: string | null; tier?: number | null };
 }>;
