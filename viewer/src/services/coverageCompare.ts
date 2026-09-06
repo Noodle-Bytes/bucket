@@ -3,7 +3,7 @@
  * Copyright (c) 2026 Noodle-Bytes. All Rights Reserved
  */
 
-import { materializeReadout, mergeCompareReadoutsForDisplay } from "@/services/readoutUtils";
+import { materializeReadout, mergeCompareReadoutsForDisplay, withReadoutSource } from "@/services/readoutUtils";
 import type {
     BucketCategory,
     CategoryCounts,
@@ -436,6 +436,38 @@ export function formatCategoryPercent(count: number, valid: number): string {
     return `${((count / valid) * 100).toFixed(1)}%`;
 }
 
+function shortRecordLabel(readout: Readout, fallback: string): string {
+    const source = readout.get_source();
+    const sourceKey = readout.get_source_key();
+    if (source && sourceKey) {
+        return `${source}[${sourceKey}]`;
+    }
+    if (source) {
+        return source;
+    }
+    if (sourceKey) {
+        return `[${sourceKey}]`;
+    }
+    return fallback;
+}
+
+function comparePairIdentity(
+    readoutA: Readout,
+    readoutB: Readout,
+): { source: string; sourceKey: string } {
+    const sourceA = readoutA.get_source();
+    const sourceB = readoutB.get_source();
+    const keyA = readoutA.get_source_key() || "A";
+    const keyB = readoutB.get_source_key() || "B";
+    if (sourceA && sourceA === sourceB) {
+        return { source: sourceA, sourceKey: `${keyA} vs ${keyB}` };
+    }
+    return {
+        source: "Compare",
+        sourceKey: `${shortRecordLabel(readoutA, "A")} vs ${shortRecordLabel(readoutB, "B")}`,
+    };
+}
+
 /** Readout whose bucket/point hits match what the active compare set mode should display. */
 export function buildCompareDisplayReadout(
     readoutA: Readout,
@@ -443,11 +475,19 @@ export function buildCompareDisplayReadout(
     setMode: CompareSetMode,
 ): Readout {
     switch (setMode) {
+        case "a_only":
+            return readoutA;
         case "b_only":
             return readoutB;
-        case "both":
-            return mergeCompareReadoutsForDisplay(readoutA, readoutB);
-        default:
-            return readoutA;
+        case "both": {
+            const merged = mergeCompareReadoutsForDisplay(readoutA, readoutB);
+            const identity = comparePairIdentity(readoutA, readoutB);
+            return withReadoutSource(merged, identity.source, identity.sourceKey);
+        }
+        default: {
+            // "all" / "neither": shared tree structure, labeled as the A/B pair.
+            const identity = comparePairIdentity(readoutA, readoutB);
+            return withReadoutSource(readoutA, identity.source, identity.sourceKey);
+        }
     }
 }

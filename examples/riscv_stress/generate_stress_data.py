@@ -12,6 +12,7 @@ from bucket.rw import ArchiveAccessor, PointReader
 from bucket.rw.common import (
     BucketHitTuple,
     PointHitTuple,
+    PointTuple,
     PuppetReadout,
 )
 
@@ -29,6 +30,20 @@ DEMO_MODULE_COVERAGE = {
     "pipeline": 0.12,
     "register_file": 0.85,
     "system": 0.42,
+}
+
+# Complementary profile for the second record in the viewer example archive.
+DEMO_MODULE_COVERAGE_B = {
+    "arithmetic": 0.22,
+    "compare": 0.38,
+    "control_flow": 0.82,
+    "exceptions": 0.74,
+    "instruction_formats": 0.28,
+    "logical": 0.88,
+    "memory_operations": 0.45,
+    "pipeline": 0.90,
+    "register_file": 0.20,
+    "system": 0.66,
 }
 
 DEMO_COVERPOINT_OFFSETS = (-0.08, 0.0, 0.08)
@@ -150,12 +165,100 @@ def _demo_bucket_hits(target: int, coverage: float, rand: random.Random) -> int:
     return 0
 
 
+def _axis_value_names(
+    definition: PuppetReadout,
+    point: PointTuple,
+) -> list[list[str]]:
+    """Return axis value names for a point, in axis order (last axis fastest)."""
+    axes = list(definition.iter_axes(point.axis_start, point.axis_end))
+    axis_values = list(
+        definition.iter_axis_values(point.axis_value_start, point.axis_value_end)
+    )
+    names: list[list[str]] = []
+    for axis in axes:
+        local = [
+            str(value.value)
+            for value in axis_values
+            if axis.value_start <= value.start < axis.value_end
+        ]
+        names.append(local)
+    return names
+
+
+def _paint_jump_operations_pivot_demo(
+    definition: PuppetReadout,
+    bucket_hits: list[int],
+    *,
+    fill_jalr_holes: bool,
+) -> None:
+    """Overwrite jump_operations with a pivot-friendly coverage pattern.
+
+    Pivot jump_type (rows) × rd (columns) shows on one screen:
+    - JAL fully covered across return registers
+    - JALR empty for low registers unless ``fill_jalr_holes``
+    - Other only hit for x1
+
+    That structure is hard to spot in a flat bucket list and obvious in the
+    pivot table.
+    """
+    points = list(definition.iter_points())
+    goals = list(definition.iter_goals())
+    bucket_goals = list(definition.iter_bucket_goals())
+    point = next(
+        (
+            candidate
+            for candidate in points
+            if candidate.end == candidate.start + 1
+            and candidate.name == "jump_operations"
+        ),
+        None,
+    )
+    if point is None:
+        return
+
+    axis_names = _axis_value_names(definition, point)
+    if len(axis_names) != 3:
+        return
+    jump_names, rd_names, _target_names = axis_names
+    sizes = [len(names) for names in axis_names]
+
+    for bucket_idx in range(point.bucket_start, point.bucket_end):
+        target = goals[bucket_goals[bucket_idx].goal].target
+        if target <= 0:
+            bucket_hits[bucket_idx] = 0
+            continue
+
+        offset = bucket_idx - point.bucket_start
+        indices: list[int] = []
+        remaining = offset
+        for size in reversed(sizes):
+            indices.append(remaining % size)
+            remaining //= size
+        indices.reverse()
+        jump_type = jump_names[indices[0]]
+        rd = rd_names[indices[1]]
+
+        if jump_type == "JAL":
+            covered = True
+        elif jump_type == "JALR":
+            # Leave x0/x1/x2 empty in baseline; fill them in the improved record.
+            covered = fill_jalr_holes or indices[1] >= 3
+        else:
+            covered = rd == "x1"
+
+        bucket_hits[bucket_idx] = target if covered else 0
+
+
 def generate_viewer_demo_readout(
     definition: PuppetReadout,
     *,
     seed: int = 42,
+    module_coverage: dict[str, float] | None = None,
+    source: str = "riscv_stress_viewer_demo",
+    source_key: str | None = None,
 ) -> PuppetReadout:
     """Create presentation-friendly coverage with varied sunburst sectors."""
+    coverage_by_module = module_coverage or DEMO_MODULE_COVERAGE
     readout = copy_definition(definition)
     rand = random.Random(seed)
     points = list(definition.iter_points())
@@ -181,11 +284,11 @@ def generate_viewer_demo_readout(
         leaf_index = module_leaf_counts[module.name]
         module_leaf_counts[module.name] += 1
         base_module_name = module.name
-        if base_module_name not in DEMO_MODULE_COVERAGE:
+        if base_module_name not in coverage_by_module:
             name_without_copy, separator, copy_index = base_module_name.rpartition("_")
             if separator and copy_index.isdigit():
                 base_module_name = name_without_copy
-        coverage = DEMO_MODULE_COVERAGE.get(base_module_name, 0.5)
+        coverage = coverage_by_module.get(base_module_name, 0.5)
         coverage += DEMO_COVERPOINT_OFFSETS[leaf_index % len(DEMO_COVERPOINT_OFFSETS)]
         coverage = min(1.0, max(0.0, coverage))
 
@@ -193,12 +296,19 @@ def generate_viewer_demo_readout(
             target = goals[bucket_goals[bucket_idx].goal].target
             bucket_hits[bucket_idx] = _demo_bucket_hits(target, coverage, rand)
 
+    resolved_key = source_key if source_key is not None else str(seed)
+    _paint_jump_operations_pivot_demo(
+        definition,
+        bucket_hits,
+        fill_jalr_holes=resolved_key == "improved",
+    )
+
     readout.bucket_hits = [
         BucketHitTuple(start=index, hits=hits) for index, hits in enumerate(bucket_hits)
     ]
     readout.point_hits = calculate_point_hits(definition, bucket_hits)
-    readout.source = "riscv_stress_viewer_demo"
-    readout.source_key = str(seed)
+    readout.source = source
+    readout.source_key = resolved_key
     return readout
 
 
@@ -208,14 +318,33 @@ def generate_viewer_demo(
     seed: int = 42,
     copies: int = 1,
 ) -> Path:
-    """Write one varied RISC-V coverage archive for showing in the viewer."""
+    """Write a two-record RISC-V archive for the viewer (browse + Compare)."""
     logging.basicConfig(level=logging.INFO)
     log = logging.getLogger("stress_demo")
     definition = capture_definition(copies=copies, seed=seed)
-    readout = generate_viewer_demo_readout(definition, seed=seed)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    ArchiveAccessor(output_path).write(readout)
-    log.info("Viewer demo written to %s", output_path)
+    if output_path.exists():
+        output_path.unlink()
+
+    ArchiveAccessor(output_path).write(
+        generate_viewer_demo_readout(
+            definition,
+            seed=seed,
+            module_coverage=DEMO_MODULE_COVERAGE,
+            source="riscv_compare",
+            source_key="baseline",
+        )
+    )
+    ArchiveAccessor(output_path).write(
+        generate_viewer_demo_readout(
+            definition,
+            seed=seed + 1,
+            module_coverage=DEMO_MODULE_COVERAGE_B,
+            source="riscv_compare",
+            source_key="improved",
+        )
+    )
+    log.info("Viewer demo written to %s (2 records)", output_path)
     return output_path
 
 

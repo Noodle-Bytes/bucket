@@ -131,7 +131,7 @@ recent tag.
 
 ### Rehearsing on TestPyPI
 
-Worth doing after any change to `publish-pypi.yml`, since production is now
+Worth doing after any change to `publish-pypi.yml`, since production is
 tag-triggered and there is no dry run in front of it.
 
 *Actions → Publish to PyPI → Run workflow*, from `main`, target
@@ -189,34 +189,31 @@ rehearsal, which runs from `main`.
 ## Identities and secrets
 
 - **noodle-bucket-releases** (GitHub App) — creates release tags, releases,
-  and the shipped-in comments, appearing as `noodle-bucket-releases[bot]`.
-  The release workflow mints a short-lived installation token from the
-  `NOODLE_APP_ID` and `NOODLE_APP_PRIVATE_KEY` repository secrets (App
-  installed on this repo with Contents + Pull requests: Read and write). An
-  App token is used rather than the default `GITHUB_TOKEN` because tags
-  pushed with `GITHUB_TOKEN` do not trigger `deploy-viewer.yml` or
-  `publish-pypi.yml`.
+  and the shipped-in / PyPI comments, appearing as
+  `noodle-bucket-releases[bot]`. The release and publish workflows mint a
+  short-lived installation token from the `NOODLE_APP_ID` and
+  `NOODLE_APP_PRIVATE_KEY` repository secrets (App installed on this repo
+  with Contents + Pull requests: Read and write). An App token is used
+  rather than the default `GITHUB_TOKEN` because tags pushed with
+  `GITHUB_TOKEN` do not trigger `deploy-viewer.yml` or `publish-pypi.yml`.
+  Private keys do not expire; if compromised, generate a new one on the
+  App's settings page and update `NOODLE_APP_PRIVATE_KEY`.
 - **PyPI / TestPyPI Trusted Publishers** — `publish-pypi.yml` exchanges a
   GitHub OIDC token for a short-lived upload token against the `testpypi`
   or `pypi` environment. No API token is stored in GitHub secrets. See
   [Publishing to PyPI](#publishing-to-pypi).
-- An App private key does not expire, so there is no token to renew and no
-  scheduled health check. If the key is ever compromised, generate a new
-  one on the App's settings page and update `NOODLE_APP_PRIVATE_KEY`.
 
-The `noodle-bucket-bot` service account and its `VERSION_BUMP_TOKEN` PAT,
-the `bucket-release-approver` GitHub App, the `release-pipeline-gate` status
-check, bot-authored `[Release]` PRs, and the Monday token health check all
-belonged to earlier versions of the release flow and are retired.
+Optionally restrict `v*` tag creation to the noodle-bucket-releases App
+with a repository tag ruleset.
 
 ## Recovery
 
-The failure surface is small: if `tag-release-on-merge.yml` fails, no state
-is left behind — no branches, no PRs, no blocked gates on other PRs. Fix
-the cause (e.g. a revoked App key, or the App losing repo access) and
-either re-run the failed workflow run, or cut the missed release via
-`workflow_dispatch`. The release step is idempotent: it skips if the
-release already exists and refuses to overwrite an existing tag.
+If `tag-release-on-merge.yml` fails, nothing is left behind — no tag, no
+release, no comment. Fix the cause (e.g. a revoked App key, or the App
+losing repo access) and either re-run the failed workflow run, or cut the
+missed release via `workflow_dispatch`. The release step is idempotent: it
+skips if the release already exists and refuses to overwrite an existing
+tag.
 
 ## Required checks on `main` (GitHub settings)
 
@@ -229,7 +226,3 @@ changes. Verified against the live settings:
 - `test (3.11)`, `test (3.12)`, `test (3.13)`, `test (3.14)`
 - `test-viewer (22)`, `test-viewer (23)`, `test-viewer (24)`
 - 1 approving review, strict up-to-date requirement
-
-`release-pipeline-gate` must NOT be in this list — it no longer exists and
-would block every PR. Optionally add a tag ruleset restricting `v*` tag
-creation to the noodle-bucket-releases App.

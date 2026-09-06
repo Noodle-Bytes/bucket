@@ -106,15 +106,6 @@ export default function EmptyState({
                                         >
                                             Open File...
                                         </Button>
-                                        {onLoadExample && (
-                                            <Button
-                                                icon={<ExperimentOutlined />}
-                                                size="large"
-                                                onClick={onLoadExample}
-                                            >
-                                                Load example data
-                                            </Button>
-                                        )}
                                         <Typography.Text style={{ fontSize: '13px', color: secondaryTextColor }}>
                                             Or drag and drop a `.bktgz` file here
                                         </Typography.Text>
@@ -126,9 +117,18 @@ export default function EmptyState({
                                 )}
                             </div>
                         </div>
+                        {onLoadExample && (
+                            <Button
+                                icon={<ExperimentOutlined />}
+                                onClick={onLoadExample}
+                                style={{ marginTop: 24 }}
+                            >
+                                Try with example data
+                            </Button>
+                        )}
                         <Typography.Text
                             style={{
-                                marginTop: '28px',
+                                marginTop: onLoadExample ? 16 : 28,
                                 fontSize: '13px',
                                 color: secondaryTextColor,
                                 textAlign: 'center',

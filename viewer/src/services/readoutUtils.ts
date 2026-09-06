@@ -280,6 +280,20 @@ export function mergeCompareReadoutsForDisplay(readoutA: Readout, readoutB: Read
     });
 }
 
+/** Copy a readout with a different source / source_key for display labeling. */
+export function withReadoutSource(
+    readout: Readout,
+    source: string | null,
+    sourceKey: string | null,
+): Readout {
+    const data = materializeReadout(readout);
+    return new InMemoryReadout({
+        ...data,
+        source,
+        sourceKey,
+    });
+}
+
 export function mergeReadoutsStrict(readouts: Readout[]): Readout {
     if (readouts.length === 0) {
         throw new Error("No records selected for merge.");
