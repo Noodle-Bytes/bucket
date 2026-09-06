@@ -58,12 +58,16 @@ function setDragData(e: React.DragEvent, data: AxisDragData) {
 const KEY_SEP = "\u001f";
 
 type BucketRecord = {
-    [axisName: string]: string | number;
-    hits: number;
-    target: number;
+    /** Axis name → value. Kept separate so names like "target" cannot clobber metrics. */
+    axes: Record<string, string>;
+    hitCount: number;
+    goalTarget: number;
 };
 
-function buildBucketRecords(node: PointNode): { buckets: BucketRecord[]; axisNames: string[] } {
+export function buildBucketRecords(node: PointNode): {
+    buckets: BucketRecord[];
+    axisNames: string[];
+} {
     const pointData = node.data;
     const readout = pointData.readout;
     const {
@@ -87,20 +91,21 @@ function buildBucketRecords(node: PointNode): { buckets: BucketRecord[]; axisNam
     for (const bucketGoal of readout.iter_bucket_goals(bucket_start, bucket_end)) {
         const bucketHit = bucketHits.next().value;
         const goal = goals[bucketGoal.goal - goal_start];
-        const datum: BucketRecord = {
-            hits: bucketHit.hits,
-            target: goal.target,
-        };
+        const axisMap: Record<string, string> = {};
         let offset = bucketGoal.start - bucket_start;
         for (let axisIdx = axes.length - 1; axisIdx >= 0; axisIdx--) {
             const axis = axes[axisIdx];
             const axisOffset = axis.value_start - axis_value_start;
             const axisSize = axis.value_end - axis.value_start;
             const axisValueIdx = offset % axisSize;
-            datum[axis.name] = axisValues[axisOffset + axisValueIdx].value;
+            axisMap[axis.name] = String(axisValues[axisOffset + axisValueIdx].value);
             offset = Math.floor(offset / axisSize);
         }
-        buckets.push(datum);
+        buckets.push({
+            axes: axisMap,
+            hitCount: bucketHit.hits,
+            goalTarget: goal.target,
+        });
     }
 
     return { buckets, axisNames: axes.map((a) => a.name) };
@@ -108,9 +113,7 @@ function buildBucketRecords(node: PointNode): { buckets: BucketRecord[]; axisNam
 
 function keyFor(record: BucketRecord, axisNames: string[]): string {
     if (axisNames.length === 0) return "";
-    return axisNames
-        .map((name) => String(record[name] ?? ""))
-        .join(KEY_SEP);
+    return axisNames.map((name) => record.axes[name] ?? "").join(KEY_SEP);
 }
 
 function labelForKey(key: string): string {
@@ -137,10 +140,10 @@ function suggestAxesAll(
     for (const axisName of axisNames) {
         const byValue = new Map<string, { hits: number; target: number }>();
         for (const b of buckets) {
-            const v = String(b[axisName] ?? "");
+            const v = b.axes[axisName] ?? "";
             const cur = byValue.get(v) ?? { hits: 0, target: 0 };
-            cur.hits += b.hits;
-            cur.target += b.target;
+            cur.hits += b.hitCount;
+            cur.target += b.goalTarget;
             byValue.set(v, cur);
         }
 
@@ -416,8 +419,8 @@ export function PointPivotView({ node }: PointPivotViewProps) {
                 sumTargets: 0,
                 bucketCount: 0,
             };
-            cur.sumHits += b.hits;
-            cur.sumTargets += b.target;
+            cur.sumHits += b.hitCount;
+            cur.sumTargets += b.goalTarget;
             cur.bucketCount += 1;
             cellMap.set(key, cur);
         }
