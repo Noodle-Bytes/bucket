@@ -169,6 +169,12 @@ The navigation tree on the left can be expanded, collapsed, and searched.
   <img alt="Screenshot showing searching the covertree for the word 'chew'" src="https://raw.githubusercontent.com/Noodle-Bytes/bucket/main/.github/images/Search__dark.png">
 </picture>
 
+The coverage tree search box matches point names and also accepts keywords:
+`tag:name` and `tier:N`. While typing `tag:…` or `tier:…`, matching values appear
+as clickable suggestions. Plain typing also suggests matching tags (and tiers when
+the token is numeric); choosing a suggestion inserts the `tag:` / `tier:` filter.
+Active search prunes the tree to matching coverpoints and their ancestors.
+
 Selecting a coverpoint shows its buckets, goals, hit counts, and hit percentage.
 Axis columns and goal names can be filtered; columns can be sorted. Summary views
 also support tier and tag filters, and can be shown as a table or donut chart.
