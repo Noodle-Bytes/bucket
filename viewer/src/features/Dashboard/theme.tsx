@@ -46,7 +46,7 @@ const sider = {
     } as SiderProps,
     search: {
         props: {
-            placeholder: "Search coverage tree…",
+            placeholder: "Search name, tag:…, tier:…",
             variant: "outlined",
         } as SearchProps,
     },
