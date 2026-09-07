@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { loadReadoutsFromBytes, EXAMPLE_COVERAGE_ARCHIVE } from "./fileLoader";
+import { loadReadoutsFromBytes, EXAMPLE_COVERAGE_ARCHIVE, resolveBundledAssetUrl } from "./fileLoader";
 import {
     BASE_POINT_COLUMNS,
     createBaseDefinition,
@@ -77,5 +77,14 @@ describe("bundled example coverage", () => {
         expect(readouts[1].get_source()).toBe("riscv_compare");
         expect(readouts[0].get_source_key()).toBe("baseline");
         expect(readouts[1].get_source_key()).toBe("improved");
+    });
+
+    test("resolveBundledAssetUrl uses app:// for the Electron protocol", () => {
+        expect(resolveBundledAssetUrl(EXAMPLE_COVERAGE_ARCHIVE, "app:")).toBe(
+            `app://${EXAMPLE_COVERAGE_ARCHIVE}`,
+        );
+        expect(resolveBundledAssetUrl(EXAMPLE_COVERAGE_ARCHIVE, "http:")).toBe(
+            `/${EXAMPLE_COVERAGE_ARCHIVE}`,
+        );
     });
 });

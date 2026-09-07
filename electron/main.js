@@ -820,6 +820,30 @@ ipcMain.handle('read-file', async (event, filePath) => {
   }
 });
 
+// Bundled empty-state example (viewer/public → dist/examples via Vite).
+ipcMain.handle('read-bundled-example-coverage', async () => {
+  const relativeExample = path.join('examples', 'riscv_stress_viewer_demo.bktgz');
+  const candidates = [
+    path.join(distPath, relativeExample),
+    // Dev / incomplete builds: fall back to the source public asset.
+    path.join(__dirname, '..', 'viewer', 'public', relativeExample),
+  ];
+  for (const candidate of candidates) {
+    try {
+      return await fsp.readFile(candidate);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+        continue;
+      }
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to read bundled example coverage: ${detail}`);
+    }
+  }
+  throw new Error(
+    `Bundled example coverage not found. Looked in:\n${candidates.join('\n')}`,
+  );
+});
+
 // Handle exporting files
 ipcMain.handle('save-export-file', async (event, payload) => {
   try {

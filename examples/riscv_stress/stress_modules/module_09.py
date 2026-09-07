@@ -40,6 +40,7 @@ class CompareFlags(Covergroup):
 class CompareOperations(Coverpoint):
     NAME = "compare_operations"
     DESCRIPTION = "Compare operation coverage"
+    MOTIVATION = "Exercise compare opcodes and operand signs that feed branch and set-flag logic."
     TIER = 1
     TAGS = ["compare", "basic"]
 
@@ -96,6 +97,7 @@ class CompareOperations(Coverpoint):
 class CompareResults(Coverpoint):
     NAME = "compare_results"
     DESCRIPTION = "Compare result coverage"
+    MOTIVATION = "Capture equal/less/greater outcomes so downstream condition consumers are covered."
     TIER = 3
     TAGS = ["compare", "results"]
 
@@ -160,6 +162,7 @@ class CompareResults(Coverpoint):
 class FlagGeneration(Coverpoint):
     NAME = "flag_generation"
     DESCRIPTION = "Flag generation coverage"
+    MOTIVATION = "Ensure status flags from compares are produced in every meaningful combination."
     TIER = 2
     TAGS = ["compare", "flags"]
 

@@ -34,6 +34,7 @@ import {
     EditOutlined,
     ExportOutlined,
     FileAddOutlined,
+    FileTextOutlined,
     MenuFoldOutlined,
     MenuUnfoldOutlined,
     MoreOutlined,
@@ -72,6 +73,7 @@ import type { CoverageRecord, CoverageSourceRef, ExportFormat } from "@/types/co
 import { getDefaultExportFileName } from "@/services/exportSaver";
 import { checkFormatCompat } from "@/utils/versionCompat";
 import CompareToolbar from "./components/CompareToolbar";
+import CoverageReportExportModal from "./components/CoverageReportExportModal";
 import type { PointData, PointNode } from "./lib/coveragetree";
 import { getPointNodeCompareCounts, getPointNodeCoverageMetrics } from "./lib/coveragemetrics";
 import type { UseCoverageCompareResult } from "@/hooks/useCoverageCompare";
@@ -814,6 +816,7 @@ export default function Dashboard({
         {} as { [key: TreeKey]: string | number },
     );
     const [summaryViewMode, setSummaryViewMode] = useState<"table" | "donut">("table");
+    const [treeSearchValue, setTreeSearchValue] = useState("");
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [editLoadedById, setEditLoadedById] = useState<Record<string, boolean>>({});
     const [mergeSelectedIds, setMergeSelectedIds] = useState<string[]>([]);
@@ -826,6 +829,7 @@ export default function Dashboard({
     const [exportMergeBeforeWrite, setExportMergeBeforeWrite] = useState(false);
     const [exportFileName, setExportFileName] = useState("");
     const [exportBusy, setExportBusy] = useState(false);
+    const [reportModalOpen, setReportModalOpen] = useState(false);
 
     const navigationPastRef = useRef<ViewNavigationSnapshot[]>([]);
     const [viewNavigationPastLength, setViewNavigationPastLength] = useState(0);
@@ -966,6 +970,7 @@ export default function Dashboard({
         if (isEmpty) {
             navigationPastRef.current = [];
             setViewNavigationPastLength(0);
+            setTreeSearchValue("");
             if (selectedTreeKeys.length > 0) {
                 setSelectedTreeKeys([]);
                 setExpandedTreeKeys([]);
@@ -1104,6 +1109,31 @@ export default function Dashboard({
         [compareContext],
     );
 
+    const compareToolbarCounts = useMemo(() => {
+        const comparison = compare?.comparison;
+        if (!comparison) {
+            return undefined;
+        }
+        if (viewKey === Tree.ROOT) {
+            return comparison.global;
+        }
+        const node = tree.getNodeByKey(viewKey);
+        if (!node) {
+            return comparison.global;
+        }
+        return (
+            getPointNodeCompareCounts(node as PointNode, comparison) ?? {
+                a_only: 0,
+                both: 0,
+                b_only: 0,
+                neither: 0,
+                valid: 0,
+                illegal: 0,
+                ignore: 0,
+            }
+        );
+    }, [compare?.comparison, tree, viewKey]);
+
     const isElectronProduction =
         typeof window !== "undefined" && window.location.protocol === "app:";
     const isFileProtocol =
@@ -1179,6 +1209,7 @@ export default function Dashboard({
                         node={currentNode}
                         setSelectedTreeKeys={onSelect}
                         compare={compareContext}
+                        treeSearchValue={treeSearchValue}
                     />
                 );
                 return withTopLevelInfoPanel({
@@ -1206,6 +1237,7 @@ export default function Dashboard({
         logoSrc,
         isDragging,
         summaryViewMode,
+        treeSearchValue,
         onSelect,
         topLevelCoverageInfo,
         compareContext,
@@ -1321,6 +1353,8 @@ export default function Dashboard({
                                     setSidebarWidth={setSidebarWidth}
                                     autoExpandTreeParent={autoExpandTreeParent}
                                     setAutoExpandTreeParent={setAutoExpandTreeParent}
+                                    searchValue={treeSearchValue}
+                                    onSearchValueChange={setTreeSearchValue}
                                     compareBadge={compareContext ? compareTreeBadge : undefined}
                                 />
                             )}
@@ -1570,13 +1604,23 @@ export default function Dashboard({
                                                                 },
                                                             });
                                                         }
-                                                        if (onExportRecords) {
-                                                            moreItems.push({
-                                                                key: "export",
-                                                                icon: <ExportOutlined />,
-                                                                label: "Export…",
-                                                                onClick: () => setExportModalOpen(true),
-                                                            });
+                                                        if (onExportRecords || loadedRecordRows.length > 0) {
+                                                            if (loadedRecordRows.length > 0) {
+                                                                moreItems.push({
+                                                                    key: "generate-report",
+                                                                    icon: <FileTextOutlined />,
+                                                                    label: "Generate report…",
+                                                                    onClick: () => setReportModalOpen(true),
+                                                                });
+                                                            }
+                                                            if (onExportRecords) {
+                                                                moreItems.push({
+                                                                    key: "export",
+                                                                    icon: <ExportOutlined />,
+                                                                    label: "Export…",
+                                                                    onClick: () => setExportModalOpen(true),
+                                                                });
+                                                            }
                                                         }
                                                         if (onClearCoverage) {
                                                             if (moreItems.length > 0) {
@@ -1633,8 +1677,29 @@ export default function Dashboard({
                                         compare={compare}
                                         records={compareRecordRows}
                                         onClose={() => compare.setActive(false)}
+                                        summaryCounts={compareToolbarCounts}
                                     />
                                 )}
+                                <CoverageReportExportModal
+                                    open={reportModalOpen}
+                                    records={records
+                                        .filter((record) => record.isLoaded)
+                                        .map((record) => {
+                                            const source = sourceById.get(record.sourceRef);
+                                            const recordsInSource =
+                                                recordCountBySourceRef.get(record.sourceRef) ?? 1;
+                                            return {
+                                                id: record.id,
+                                                label: getReadoutLabel(
+                                                    record,
+                                                    source,
+                                                    recordsInSource,
+                                                ),
+                                                readout: record.readout,
+                                            };
+                                        })}
+                                    onClose={() => setReportModalOpen(false)}
+                                />
                                 <Content {...view.body.content.props}>{selectedViewContent}</Content>
                             </Layout>
                         </Layout>
@@ -1924,7 +1989,6 @@ export default function Dashboard({
                                                     options={[
                                                         { value: "bktgz", label: ".bktgz" },
                                                         { value: "json", label: ".json" },
-                                                        { value: "html", label: ".html" },
                                                     ]}
                                                     style={{
                                                         width: 88,
@@ -2244,7 +2308,6 @@ export default function Dashboard({
                             options={[
                                 { value: "bktgz", label: ".bktgz (Bucket Archive)" },
                                 { value: "json", label: ".json" },
-                                { value: "html", label: ".html (Coverage Report)" },
                             ]}
                         />
                     </div>

@@ -42,6 +42,7 @@ class RTypeAdvanced(Covergroup):
 class RTypeArithmetic(Coverpoint):
     NAME = "r_type_arithmetic"
     DESCRIPTION = "R-type arithmetic operations"
+    MOTIVATION = "Ensure register-register arithmetic opcodes and operand combinations exercise the ALU datapath."
     TIER = 1
     TAGS = ["arithmetic", "r-type"]
 
@@ -88,6 +89,7 @@ class RTypeArithmetic(Coverpoint):
 class RTypeLogical(Coverpoint):
     NAME = "r_type_logical"
     DESCRIPTION = "R-type logical operations"
+    MOTIVATION = "Confirm logical R-type ops across register pairs so bitwise datapath corners are not left unsampled."
     TIER = 2
     TAGS = ["logical", "r-type"]
 
@@ -141,6 +143,7 @@ class RTypeLogical(Coverpoint):
 class RTypeShift(Coverpoint):
     NAME = "r_type_shift"
     DESCRIPTION = "R-type shift operations"
+    MOTIVATION = "Cover shift amount and opcode crosses that stress barrel-shifter edge cases and decode aliases."
     TIER = 3
     TAGS = ["shift", "r-type"]
 
@@ -221,6 +224,7 @@ class ITypeGroup(Covergroup):
 class ITypeLoad(Coverpoint):
     NAME = "i_type_load"
     DESCRIPTION = "I-type load operations"
+    MOTIVATION = "Exercise load opcodes, widths, and immediate forms that feed the memory pipeline."
     TIER = 1
     TAGS = ["load", "i-type"]
 
@@ -271,6 +275,7 @@ class ITypeLoad(Coverpoint):
 class ITypeImmediate(Coverpoint):
     NAME = "i_type_immediate"
     DESCRIPTION = "I-type immediate operations"
+    MOTIVATION = "Verify immediate arithmetic/logical encodings so sign-extension and immediate mux paths are hit."
     TIER = 2
     TAGS = ["immediate", "i-type"]
 
@@ -347,6 +352,7 @@ class BranchAdvanced(Covergroup):
 class BranchOperations(Coverpoint):
     NAME = "branch_operations"
     DESCRIPTION = "Branch operation types"
+    MOTIVATION = "Sample taken and not-taken branch opcodes to validate compare-and-redirect control."
     TIER = 2
     TAGS = ["branch", "control-flow"]
 
@@ -398,6 +404,7 @@ class BranchOperations(Coverpoint):
 class BranchPrediction(Coverpoint):
     NAME = "branch_prediction"
     DESCRIPTION = "Branch prediction coverage"
+    MOTIVATION = "Catch predictor state and outcome mixes that expose mispredict and recovery bugs."
     TIER = 3
     TAGS = ["branch", "prediction"]
 

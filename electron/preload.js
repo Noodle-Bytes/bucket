@@ -21,6 +21,7 @@ ipcRenderer.on('files-opened', (_event, filePaths) => {
 contextBridge.exposeInMainWorld('electronAPI', {
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+  readBundledExampleCoverage: () => ipcRenderer.invoke('read-bundled-example-coverage'),
   saveExportFile: (payload) => ipcRenderer.invoke('save-export-file', payload),
   getDroppedFiles: (filePaths) => ipcRenderer.invoke('get-dropped-file', filePaths),
   onFilesOpened: (callback) => {

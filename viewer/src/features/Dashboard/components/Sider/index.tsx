@@ -8,11 +8,21 @@
  * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
  */
 
-import { Layout, Tree as AntTree, Input } from "antd";
+import { AutoComplete, Layout, Tree as AntTree, Input } from "antd";
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { view } from "../../theme";
 import Tree, { TreeKey, TreeNode } from "../../lib/tree";
+import {
+    applyTreeSearchSuggestion,
+    buildTreeSearchSuggestions,
+    collectTreeTags,
+    collectTreeTiers,
+    filterTreeToMatches,
+    matchingTreeKeysWithAncestors,
+    parseTreeSearchQuery,
+    treeSearchIsActive,
+} from "../../lib/treeSearch";
 import Theme from "@/providers/Theme";
 import { hexToRgba } from "@/utils/colors";
 
@@ -27,7 +37,7 @@ export const MAX_SIDEBAR_WIDTH = 520;
  * @returns a formatted tree of nodes
  */
 function treeTitleFormatter(
-    tree: Tree,
+    nodes: TreeNode[],
     nodeTitleFormatter: (treeNode: TreeNode) => ReactNode,
     compareBadge?: (treeNode: TreeNode) => number | null,
     badgeColors?: { background: string; color: string },
@@ -61,7 +71,7 @@ function treeTitleFormatter(
             children: treeNode.children?.map(callback),
         };
     };
-    return tree.getRoots().map(callback);
+    return nodes.map(callback);
 }
 
 /**
@@ -71,17 +81,22 @@ function treeTitleFormatter(
  * @returns a formatted title with the search value highlighted
  */
 function searchNodeTitleFormatterFactory(searchValue: string) {
+    const nameTerms = parseTreeSearchQuery(searchValue).nameTerms;
+    const highlightTerm = nameTerms[0] ?? "";
     return (treeNode: TreeNode) => {
         const strTitle = treeNode.title as string;
-        const index = strTitle.indexOf(searchValue);
+        if (!highlightTerm) {
+            return <span>{strTitle}</span>;
+        }
+        const index = strTitle.indexOf(highlightTerm);
         const beforeStr = strTitle.substring(0, index);
-        const afterStr = strTitle.slice(index + searchValue.length);
+        const afterStr = strTitle.slice(index + highlightTerm.length);
         const title =
             index > -1 ? (
                 <span>
                     {beforeStr}
                     <span {...view.sider.tree.searchlight.props}>
-                        {searchValue}
+                        {highlightTerm}
                     </span>
                     {afterStr}
                 </span>
@@ -99,6 +114,8 @@ export type SiderProps = {
     selectedTreeKeys: TreeKey[];
     expandedTreeKeys: TreeKey[];
     autoExpandTreeParent: boolean;
+    searchValue: string;
+    onSearchValueChange: (value: string) => void;
     setSidebarWidth: (width: number) => void;
     setAutoExpandTreeParent: (newValue: boolean) => void;
     setSelectedTreeKeys: (newSelectedKeys: TreeKey[]) => void;
@@ -113,6 +130,8 @@ export default function Sider({
     selectedTreeKeys,
     expandedTreeKeys,
     autoExpandTreeParent,
+    searchValue,
+    onSearchValueChange,
     setSidebarWidth,
     setAutoExpandTreeParent,
     setSelectedTreeKeys,
@@ -120,7 +139,6 @@ export default function Sider({
     compareBadge,
 }: SiderProps) {
     const { theme } = Theme.useContext();
-    const [searchValue, setSearchValue] = useState("");
     const [isResizing, setIsResizing] = useState(false);
     const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
@@ -133,6 +151,33 @@ export default function Sider({
         }),
         [theme],
     );
+
+    const allTags = useMemo(() => collectTreeTags(tree.walk()), [tree]);
+    const allTiers = useMemo(() => collectTreeTiers(tree.walk()), [tree]);
+
+    const parsedQuery = useMemo(() => parseTreeSearchQuery(searchValue), [searchValue]);
+
+    const searchSuggestions = useMemo(
+        () => buildTreeSearchSuggestions(searchValue, parsedQuery, allTags, allTiers),
+        [searchValue, parsedQuery, allTags, allTiers],
+    );
+
+    const searchMatch = useMemo(() => {
+        if (!treeSearchIsActive(parsedQuery)) {
+            return null;
+        }
+        return matchingTreeKeysWithAncestors(tree.walk(), parsedQuery);
+    }, [tree, parsedQuery]);
+
+    const applySearchValue = (value: string) => {
+        const query = parseTreeSearchQuery(value);
+        if (treeSearchIsActive(query)) {
+            const { expandKeys } = matchingTreeKeysWithAncestors(tree.walk(), query);
+            setExpandedTreeKeys(Array.from(expandKeys));
+            setAutoExpandTreeParent(true);
+        }
+        onSearchValueChange(value);
+    };
 
     const onExpand = (newExpandedKeys: React.Key[]) => {
         setExpandedTreeKeys(newExpandedKeys as TreeKey[]);
@@ -163,28 +208,22 @@ export default function Sider({
         setSelectedTreeKeys(keys);
     };
 
-    const onSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { value } = e.target;
-        const newExpandedKeys = new Set<TreeKey>();
-        for (const [node, parent] of tree.walk()) {
-            const strTitle = node.title as string;
-            if (strTitle.includes(value) && parent !== null) {
-                newExpandedKeys.add(parent.key);
-            }
+    const visibleRoots = useMemo(() => {
+        const roots = tree.getRoots();
+        if (!searchMatch) {
+            return roots;
         }
-        setExpandedTreeKeys(Array.from(newExpandedKeys));
-        setSearchValue(value);
-        setAutoExpandTreeParent(true);
-    };
+        return filterTreeToMatches(roots, searchMatch.matchKeys);
+    }, [tree, searchMatch]);
 
     const formattedTreeData = useMemo(() => {
         return treeTitleFormatter(
-            tree,
+            visibleRoots,
             searchNodeTitleFormatterFactory(searchValue),
             compareBadge,
             compareBadgeColors,
         );
-    }, [searchValue, tree, compareBadge, compareBadgeColors]);
+    }, [searchValue, visibleRoots, compareBadge, compareBadgeColors]);
 
     const onResizeMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
         if (!sidebarVisible) {
@@ -264,11 +303,41 @@ export default function Sider({
                 {...(!sidebarVisible ? { inert: "" } as any : {})}
             >
                 <div style={{ display: "flex", alignItems: "center" }}>
-                    <Input
-                        {...view.sider.search.props}
-                        onChange={onSearchChange}
-                        style={{ ...view.sider.search.props.style, flex: 1, minWidth: 0 }}
-                    />
+                    <AutoComplete
+                        value={searchValue}
+                        options={searchSuggestions.map((suggestion) => {
+                            const completed = applyTreeSearchSuggestion(
+                                searchValue,
+                                suggestion,
+                            );
+                            const labelText =
+                                suggestion.kind === "tag"
+                                    ? suggestion.value
+                                    : String(suggestion.value);
+                            const kindLabel = suggestion.kind === "tag" ? "tag:" : "tier:";
+                            return {
+                                value: completed,
+                                label: (
+                                    <span>
+                                        <span style={{ opacity: 0.65 }}>{kindLabel}</span>
+                                        {labelText}
+                                    </span>
+                                ),
+                            };
+                        })}
+                        onChange={(value) => applySearchValue(value ?? "")}
+                        filterOption={false}
+                        defaultActiveFirstOption={false}
+                        allowClear
+                        style={{ flex: 1, minWidth: 0 }}
+                    >
+                        <Input
+                            {...view.sider.search.props}
+                            placeholder="Search name, tag:…, tier:…"
+                            style={{ ...view.sider.search.props.style, width: "100%" }}
+                            aria-label="Search coverage tree by name, tag, or tier"
+                        />
+                    </AutoComplete>
                 </div>
                 <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
                     <AntTree

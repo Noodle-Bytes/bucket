@@ -35,6 +35,9 @@ class SystemAdvanced(Covergroup):
 class CSROperations(Coverpoint):
     NAME = "csr_operations"
     DESCRIPTION = "CSR operation coverage"
+    MOTIVATION = (
+        "Access CSR read/write/set/clear forms that gate privileged state updates."
+    )
     TIER = 1
     TAGS = ["system", "csr"]
 
@@ -82,6 +85,9 @@ class CSROperations(Coverpoint):
 class PrivilegeTransitions(Coverpoint):
     NAME = "privilege_transitions"
     DESCRIPTION = "Privilege transition coverage"
+    MOTIVATION = (
+        "Cover mode changes that reconfigure PMA/PMP and interrupt eligibility."
+    )
     TIER = 3
     TAGS = ["system", "privilege"]
 
@@ -151,6 +157,7 @@ class PrivilegeTransitions(Coverpoint):
 class InterruptHandling(Coverpoint):
     NAME = "interrupt_handling"
     DESCRIPTION = "Interrupt handling coverage"
+    MOTIVATION = "Stimulate interrupt taken/return sequences so priority and nesting are observed."
     TIER = 2
     TAGS = ["system", "interrupt"]
 

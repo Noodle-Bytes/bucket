@@ -15,12 +15,15 @@ import {
 } from "@/utils/colors";
 import type { UseCoverageCompareResult } from "@/hooks/useCoverageCompare";
 import type { CompareRecordRow } from "@/hooks/useCoverageCompare";
+import type { CategoryCounts } from "@/types/coverageCompare";
 import CompareReportExportModal from "@/features/Dashboard/components/CompareReportExportModal";
 
 export type CompareToolbarProps = {
     compare: UseCoverageCompareResult;
     records: CompareRecordRow[];
     onClose: () => void;
+    /** When set (e.g. active coverpoint/covergroup), cards use these instead of global. */
+    summaryCounts?: CategoryCounts;
 };
 
 function SummaryStat({
@@ -92,7 +95,12 @@ function SummaryStat({
     );
 }
 
-export default function CompareToolbar({ compare, records, onClose }: CompareToolbarProps) {
+export default function CompareToolbar({
+    compare,
+    records,
+    onClose,
+    summaryCounts,
+}: CompareToolbarProps) {
     const compatibleRecords = records.filter((record) =>
         compare.compatibleRecordIds.includes(record.id),
     );
@@ -104,8 +112,8 @@ export default function CompareToolbar({ compare, records, onClose }: CompareToo
     const [exportOpen, setExportOpen] = useState(false);
     const [exporting, setExporting] = useState(false);
 
-    const global = compare.comparison?.global;
-    const valid = global?.valid ?? 0;
+    const counts = summaryCounts ?? compare.comparison?.global;
+    const valid = counts?.valid ?? 0;
 
     return (
         <Theme.Consumer>
@@ -188,6 +196,7 @@ export default function CompareToolbar({ compare, records, onClose }: CompareToo
                                 </Space>
                                 <Space>
                                     <Button
+                                        type="primary"
                                         size="small"
                                         icon={<DownloadOutlined />}
                                         disabled={!compare.comparison || exporting}
@@ -201,6 +210,11 @@ export default function CompareToolbar({ compare, records, onClose }: CompareToo
                                         icon={<CloseOutlined />}
                                         onClick={onClose}
                                         disabled={exporting}
+                                        style={{
+                                            background: colors.tertiarybg.value,
+                                            borderColor: colors.secondarybg.value,
+                                            color: colors.saturatedtxt.value,
+                                        }}
                                     >
                                         Exit compare
                                     </Button>
@@ -211,29 +225,29 @@ export default function CompareToolbar({ compare, records, onClose }: CompareToo
                                     {compare.comparisonError}
                                 </Typography.Text>
                             )}
-                            {global && (
+                            {counts && (
                                 <Flex gap="small" wrap="wrap" style={{ marginTop: 12 }}>
                                     <SummaryStat
                                         label="A only"
-                                        count={global.a_only}
+                                        count={counts.a_only}
                                         valid={valid}
                                         category="a_only"
                                     />
                                     <SummaryStat
                                         label="Both"
-                                        count={global.both}
+                                        count={counts.both}
                                         valid={valid}
                                         category="both"
                                     />
                                     <SummaryStat
                                         label="B only"
-                                        count={global.b_only}
+                                        count={counts.b_only}
                                         valid={valid}
                                         category="b_only"
                                     />
                                     <SummaryStat
                                         label="Neither"
-                                        count={global.neither}
+                                        count={counts.neither}
                                         valid={valid}
                                         category="neither"
                                     />
