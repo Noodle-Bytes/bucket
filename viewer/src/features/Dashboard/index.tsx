@@ -34,6 +34,7 @@ import {
     EditOutlined,
     ExportOutlined,
     FileAddOutlined,
+    FileTextOutlined,
     MenuFoldOutlined,
     MenuUnfoldOutlined,
     MoreOutlined,
@@ -72,6 +73,7 @@ import type { CoverageRecord, CoverageSourceRef, ExportFormat } from "@/types/co
 import { getDefaultExportFileName } from "@/services/exportSaver";
 import { checkFormatCompat } from "@/utils/versionCompat";
 import CompareToolbar from "./components/CompareToolbar";
+import CoverageReportExportModal from "./components/CoverageReportExportModal";
 import type { PointData, PointNode } from "./lib/coveragetree";
 import { getPointNodeCompareCounts, getPointNodeCoverageMetrics } from "./lib/coveragemetrics";
 import type { UseCoverageCompareResult } from "@/hooks/useCoverageCompare";
@@ -827,6 +829,7 @@ export default function Dashboard({
     const [exportMergeBeforeWrite, setExportMergeBeforeWrite] = useState(false);
     const [exportFileName, setExportFileName] = useState("");
     const [exportBusy, setExportBusy] = useState(false);
+    const [reportModalOpen, setReportModalOpen] = useState(false);
 
     const navigationPastRef = useRef<ViewNavigationSnapshot[]>([]);
     const [viewNavigationPastLength, setViewNavigationPastLength] = useState(0);
@@ -1576,13 +1579,23 @@ export default function Dashboard({
                                                                 },
                                                             });
                                                         }
-                                                        if (onExportRecords) {
-                                                            moreItems.push({
-                                                                key: "export",
-                                                                icon: <ExportOutlined />,
-                                                                label: "Export…",
-                                                                onClick: () => setExportModalOpen(true),
-                                                            });
+                                                        if (onExportRecords || loadedRecordRows.length > 0) {
+                                                            if (loadedRecordRows.length > 0) {
+                                                                moreItems.push({
+                                                                    key: "generate-report",
+                                                                    icon: <FileTextOutlined />,
+                                                                    label: "Generate report…",
+                                                                    onClick: () => setReportModalOpen(true),
+                                                                });
+                                                            }
+                                                            if (onExportRecords) {
+                                                                moreItems.push({
+                                                                    key: "export",
+                                                                    icon: <ExportOutlined />,
+                                                                    label: "Export…",
+                                                                    onClick: () => setExportModalOpen(true),
+                                                                });
+                                                            }
                                                         }
                                                         if (onClearCoverage) {
                                                             if (moreItems.length > 0) {
@@ -1641,6 +1654,26 @@ export default function Dashboard({
                                         onClose={() => compare.setActive(false)}
                                     />
                                 )}
+                                <CoverageReportExportModal
+                                    open={reportModalOpen}
+                                    records={records
+                                        .filter((record) => record.isLoaded)
+                                        .map((record) => {
+                                            const source = sourceById.get(record.sourceRef);
+                                            const recordsInSource =
+                                                recordCountBySourceRef.get(record.sourceRef) ?? 1;
+                                            return {
+                                                id: record.id,
+                                                label: getReadoutLabel(
+                                                    record,
+                                                    source,
+                                                    recordsInSource,
+                                                ),
+                                                readout: record.readout,
+                                            };
+                                        })}
+                                    onClose={() => setReportModalOpen(false)}
+                                />
                                 <Content {...view.body.content.props}>{selectedViewContent}</Content>
                             </Layout>
                         </Layout>
@@ -1930,7 +1963,6 @@ export default function Dashboard({
                                                     options={[
                                                         { value: "bktgz", label: ".bktgz" },
                                                         { value: "json", label: ".json" },
-                                                        { value: "html", label: ".html" },
                                                     ]}
                                                     style={{
                                                         width: 88,
@@ -2250,7 +2282,6 @@ export default function Dashboard({
                             options={[
                                 { value: "bktgz", label: ".bktgz (Bucket Archive)" },
                                 { value: "json", label: ".json" },
-                                { value: "html", label: ".html (Coverage Report)" },
                             ]}
                         />
                     </div>

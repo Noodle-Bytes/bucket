@@ -188,6 +188,7 @@ export default function CompareToolbar({ compare, records, onClose }: CompareToo
                                 </Space>
                                 <Space>
                                     <Button
+                                        type="primary"
                                         size="small"
                                         icon={<DownloadOutlined />}
                                         disabled={!compare.comparison || exporting}
@@ -201,6 +202,11 @@ export default function CompareToolbar({ compare, records, onClose }: CompareToo
                                         icon={<CloseOutlined />}
                                         onClick={onClose}
                                         disabled={exporting}
+                                        style={{
+                                            background: colors.tertiarybg.value,
+                                            borderColor: colors.secondarybg.value,
+                                            color: colors.saturatedtxt.value,
+                                        }}
                                     >
                                         Exit compare
                                     </Button>

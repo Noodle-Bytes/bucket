@@ -14,12 +14,34 @@
  * Mirrors the compare-report pattern: build one intermediate model from
  * readouts, then serialize it to the output format.
  *
- * The report always renders every section it knows about (descriptions,
+ * The report always renders every structural section it knows about (descriptions,
  * motivations, tier/tags, axes and their values, goals, bucket counts, the
- * rollup summary tables, and recorded results). The only options are scope
- * controls that narrow *which* coverpoints appear and how many axis values
- * to list.
+ * rollup summary tables, and recorded results). Scope controls narrow *which*
+ * coverpoints appear and how many axis values to list. An optional
+ * `gapAnalysis` block adds an unhit-pattern summary before the details.
  */
+
+/** Optional unhit-pattern analysis block included in HTML/JSON coverage reports. */
+export type ReportUnhitPattern = {
+    pointName: string;
+    pointPath: string;
+    bucketCount: number;
+    summary: string;
+    description: string;
+};
+
+export type ReportGapAnalysisRecord = {
+    title: string;
+    unhitBuckets: number;
+    coveredBuckets: number;
+    patterns: ReportUnhitPattern[];
+};
+
+export type ReportGapAnalysis = {
+    definitionLabel: string;
+    patternScopeLabel: string;
+    records: ReportGapAnalysisRecord[];
+};
 
 export type ReadableReportOptions = {
     /** Cap on listed values per axis; 0 means unlimited. Default 64. */
@@ -33,15 +55,22 @@ export type ReadableReportOptions = {
      * matches this glob, e.g. "Pets.dogs*" or "Pets.cats". Default null.
      */
     point?: string | null;
+    /** When set, an unhit-pattern analysis section is rendered before details. */
+    gapAnalysis?: ReportGapAnalysis | null;
 };
 
-type ResolvedReportOptions = Required<ReadableReportOptions>;
+type ResolvedReportOptions = Required<
+    Omit<ReadableReportOptions, "gapAnalysis">
+> & {
+    gapAnalysis: ReportGapAnalysis | null;
+};
 
 const DEFAULT_OPTIONS: ResolvedReportOptions = {
     maxAxisValues: 64,
     maxTier: null,
     tags: [],
     point: null,
+    gapAnalysis: null,
 };
 
 export type ReportAxis = {
@@ -845,6 +874,15 @@ dl.meta dt{color:#57606a}
 dl.meta dd{margin:0;overflow-wrap:anywhere}
 .filters{background:#fff8c5;border:1px solid #d4a72c66;border-radius:6px;
   padding:.4rem .8rem;font-size:.9rem}
+.gap-analysis{margin:1.5rem 0 2rem;padding:1rem 1.1rem;border:1px solid #d0d7de;
+  border-radius:8px;background:#f6f8fa}
+.gap-analysis h2{margin-top:0;font-size:1.2rem;border:none;padding:0}
+.gap-analysis .gap-meta{color:#57606a;font-size:.9rem;margin:.35rem 0 1rem}
+.gap-analysis .gap-record{margin-top:1.1rem}
+.gap-analysis .gap-record h3{margin-top:0;text-transform:none;letter-spacing:0;
+  color:#1f2328;font-size:1rem}
+.gap-analysis table{width:100%;background:#fff}
+.gap-analysis td:nth-child(2){font-variant-numeric:tabular-nums}
 table{border-collapse:collapse;margin:.6rem 0;font-size:.9rem;width:auto}
 th,td{border:1px solid #d0d7de;padding:.3rem .65rem;text-align:left;vertical-align:top}
 th{background:#f6f8fa}
@@ -1053,10 +1091,58 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 `;
 
+function renderGapAnalysis(analysis: ReportGapAnalysis): string {
+    const recordBlocks = analysis.records
+        .map((record) => {
+            const patternRows =
+                record.patterns.length === 0
+                    ? `<tr><td colspan="4">No unhit patterns detected for this record.</td></tr>`
+                    : record.patterns
+                          .map(
+                              (pattern, index) => `
+            <tr>
+                <td>${index + 1}</td>
+                <td><strong>${pattern.bucketCount}</strong></td>
+                <td>${escapeHtml(pattern.pointName)}</td>
+                <td>${escapeHtml(pattern.summary)}</td>
+            </tr>`,
+                          )
+                          .join("");
+            return `
+        <div class="gap-record">
+            <h3>${escapeHtml(record.title)}</h3>
+            <p class="gap-meta">Unhit buckets: ${record.unhitBuckets.toLocaleString()} · Covered: ${record.coveredBuckets.toLocaleString()} · Patterns: ${record.patterns.length.toLocaleString()}</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Buckets</th>
+                        <th>Coverpoint</th>
+                        <th>Pattern</th>
+                    </tr>
+                </thead>
+                <tbody>${patternRows}</tbody>
+            </table>
+        </div>`;
+        })
+        .join("");
+
+    return `
+    <section class="gap-analysis">
+        <h2>Unhit coverage patterns</h2>
+        <p class="gap-meta">Definition: ${escapeHtml(analysis.definitionLabel)} · Pattern scope: ${escapeHtml(analysis.patternScopeLabel)}</p>
+        ${recordBlocks}
+    </section>`;
+}
+
 export function serializeReportHtml(model: ReportModel): string {
     const ids = buildAnchorIds(model.readouts);
     const filterNote = describeFilters(model.options);
     const sections: string[] = [];
+    const gapSection =
+        model.options.gapAnalysis !== null
+            ? renderGapAnalysis(model.options.gapAnalysis)
+            : "";
 
     for (const readout of model.readouts) {
         const parts: string[] = [`<h2>${escapeHtml(readout.title)}</h2>`];
@@ -1110,7 +1196,7 @@ export function serializeReportHtml(model: ReportModel): string {
         `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">` +
         `<meta name="viewport" content="width=device-width, initial-scale=1">` +
         `<title>Coverage report</title><style>${REPORT_CSS}</style></head>` +
-        `<body><main><h1>Coverage report</h1>${sections.join("")}</main>` +
+        `<body><main><h1>Coverage report</h1>${gapSection}${sections.join("")}</main>` +
         `<script>${REPORT_JS}</script></body></html>\n`
     );
 }

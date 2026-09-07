@@ -151,6 +151,8 @@ export const view = {
 export function antTheme(activeTheme: AppTheme): ThemeConfig {
     const colors = activeTheme.theme.colors;
     const siderBg = colors.secondarybg.value;
+    const isDarkUi =
+        activeTheme.name === "dark" || activeTheme.name.startsWith("auto (dark)");
     return {
         token: {
             colorText: colors.primarytxt.value,
@@ -211,26 +213,31 @@ export function antTheme(activeTheme: AppTheme): ThemeConfig {
                 colorBgTextHover: colors.lowlightbg.value,
             },
             Segmented: {
-                trackBg: undefined,
-                itemColor: colors.primarytxt.value,
+                // Light: white selected pill on grey track. Dark: raised selected on darker track.
+                // (highlightbg is white in light theme, so it cannot be both track and selection.)
+                trackBg: colors.secondarybg.value,
+                itemColor: colors.desaturatedtxt.value,
+                itemHoverColor: colors.saturatedtxt.value,
                 itemHoverBg: colors.lowlightbg.value,
-                itemSelectedBg: colors.highlightbg.value,
-                trackPadding: 0,
+                itemSelectedBg: isDarkUi ? colors.highlightbg.value : colors.tertiarybg.value,
+                itemSelectedColor: colors.saturatedtxt.value,
+                trackPadding: 2,
                 borderRadius: 8,
                 borderRadiusSM: 6,
             },
             Button: {
                 borderRadius: 4,
-                // Keep default (non-primary/non-danger) buttons readable in dark themes.
+                // Default buttons: sit slightly off the page background so they
+                // remain visible in both light and dark themes.
                 defaultBg: colors.tertiarybg.value,
                 defaultColor: colors.saturatedtxt.value,
-                defaultBorderColor: colors.lowlightbg.value,
+                defaultBorderColor: colors.secondarybg.value,
                 defaultHoverBg: colors.highlightbg.value,
                 defaultHoverColor: colors.saturatedtxt.value,
-                defaultHoverBorderColor: colors.highlightbg.value,
+                defaultHoverBorderColor: colors.lowlightbg.value,
                 defaultActiveBg: colors.lowlightbg.value,
                 defaultActiveColor: colors.saturatedtxt.value,
-                defaultActiveBorderColor: colors.lowlightbg.value,
+                defaultActiveBorderColor: colors.secondarybg.value,
             },
             FloatButton: {
                 colorBgElevated: colors.highlightbg.value,

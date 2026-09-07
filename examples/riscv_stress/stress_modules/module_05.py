@@ -44,6 +44,7 @@ class BranchPrediction(Covergroup):
 class JumpOperations(Coverpoint):
     NAME = "jump_operations"
     DESCRIPTION = "Jump operation coverage"
+    MOTIVATION = "Exercise direct and indirect jumps so link-register and target-mux paths are covered."
     TIER = 1
     TAGS = ["jump", "control-flow"]
 
@@ -93,6 +94,9 @@ class JumpOperations(Coverpoint):
 class BranchTargets(Coverpoint):
     NAME = "branch_targets"
     DESCRIPTION = "Branch target coverage"
+    MOTIVATION = (
+        "Sample near/far and forward/back targets that stress PC mux and BTB indexing."
+    )
     TIER = 3
     TAGS = ["branch", "targets"]
 
@@ -165,6 +169,7 @@ class BranchTargets(Coverpoint):
 class PredictionAccuracy(Coverpoint):
     NAME = "prediction_accuracy"
     DESCRIPTION = "Branch prediction accuracy coverage"
+    MOTIVATION = "Correlate predicted vs actual outcomes to expose biased or stale predictor state."
     TIER = 2
     TAGS = ["branch", "prediction"]
 

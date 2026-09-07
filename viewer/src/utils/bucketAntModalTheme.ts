@@ -74,6 +74,18 @@ export function buildBucketAntModalTheme(pref: BucketTheme): ThemeConfig {
                 defaultShadow: "none",
                 dangerShadow: "none",
             },
+            Segmented: {
+                // Grey track + contrasting selected pill (light: white on grey; dark: raised panel)
+                trackBg: secondaryBg,
+                itemColor: muted,
+                itemHoverColor: txt,
+                itemHoverBg: isDarkUi ? "rgba(255, 255, 255, 0.08)" : cl.lowlightbg.value,
+                itemSelectedBg: isDarkUi ? highlightBg : panel,
+                itemSelectedColor: cl.saturatedtxt.value,
+                trackPadding: 2,
+                borderRadius: 8,
+                borderRadiusSM: 6,
+            },
             Input: {
                 borderRadius: 6,
                 colorBorder: uiBorder,

@@ -40,6 +40,7 @@ class LogicalShifts(Covergroup):
 class BasicLogical(Coverpoint):
     NAME = "basic_logical"
     DESCRIPTION = "Basic logical operations"
+    MOTIVATION = "Exercise AND/OR/XOR-style ops across operand patterns that stress the logical unit."
     TIER = 1
     TAGS = ["logical", "basic"]
 
@@ -90,6 +91,7 @@ class BasicLogical(Coverpoint):
 class BitwiseOperations(Coverpoint):
     NAME = "bitwise_operations"
     DESCRIPTION = "Bitwise operation coverage"
+    MOTIVATION = "Cover bit-manip style ops that hit sparse decode space and unusual operand uses."
     TIER = 3
     TAGS = ["logical", "bitwise"]
 
@@ -154,6 +156,7 @@ class BitwiseOperations(Coverpoint):
 class ShiftOperations(Coverpoint):
     NAME = "shift_operations"
     DESCRIPTION = "Shift operation coverage"
+    MOTIVATION = "Sample shift/rotate amounts including zero and max to validate shifter control."
     TIER = 2
     TAGS = ["logical", "shift"]
 

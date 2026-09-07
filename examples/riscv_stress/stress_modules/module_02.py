@@ -29,6 +29,7 @@ class PipelineHazards(Covergroup):
 class PipelineStages(Coverpoint):
     NAME = "pipeline_stages"
     DESCRIPTION = "Pipeline stage coverage"
+    MOTIVATION = "Ensure instructions occupy each pipeline stage combination expected by the microarchitecture."
     TIER = 1
     TAGS = ["pipeline", "stages"]
 
@@ -84,6 +85,7 @@ class PipelineStages(Coverpoint):
 class DataHazards(Coverpoint):
     NAME = "data_hazards"
     DESCRIPTION = "Data hazard coverage"
+    MOTIVATION = "Stimulate forwarding and stall paths for RAW/WAR/WAW hazards between dependent instructions."
     TIER = 3
     TAGS = ["pipeline", "hazards"]
 
@@ -146,6 +148,7 @@ class DataHazards(Coverpoint):
 class ControlHazards(Coverpoint):
     NAME = "control_hazards"
     DESCRIPTION = "Control hazard coverage"
+    MOTIVATION = "Cover branch/jump-induced redirects that flush younger instructions and restart fetch."
     TIER = 2
     TAGS = ["pipeline", "control"]
 
@@ -203,6 +206,7 @@ class ControlHazards(Coverpoint):
 class PipelineFlush(Coverpoint):
     NAME = "pipeline_flush"
     DESCRIPTION = "Pipeline flush coverage"
+    MOTIVATION = "Exercise flush reasons and depths so restart and squash logic is not under-tested."
     TIER = 2
     TAGS = ["pipeline", "flush"]
 
