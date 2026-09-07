@@ -146,8 +146,7 @@ export async function saveCompareReportBytes(
     if (isElectron() && window.electronAPI?.saveExportFile) {
         return window.electronAPI.saveExportFile({
             bytes,
-            // Compare reports are text (json/html); the bktgz filter never applies.
-            format: "json",
+            format,
             defaultFileName,
         });
     }

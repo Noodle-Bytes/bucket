@@ -28,6 +28,7 @@ class RegisterHazards(Covergroup):
 class RegisterAccess(Coverpoint):
     NAME = "register_access"
     DESCRIPTION = "Register access coverage"
+    MOTIVATION = "Cover read/write patterns across the architectural register file, including x0 behaviour."
     TIER = 1
     TAGS = ["register", "access"]
 
@@ -82,6 +83,7 @@ class RegisterAccess(Coverpoint):
 class RegisterDependencies(Coverpoint):
     NAME = "register_dependencies"
     DESCRIPTION = "Register dependency coverage"
+    MOTIVATION = "Hit producer-consumer register pairs that stress scoreboard and bypass networks."
     TIER = 3
     TAGS = ["register", "dependencies"]
 
@@ -144,6 +146,7 @@ class RegisterDependencies(Coverpoint):
 class RegisterWriteback(Coverpoint):
     NAME = "register_writeback"
     DESCRIPTION = "Register writeback coverage"
+    MOTIVATION = "Ensure writeback timing and destination classes retire correctly under contention."
     TIER = 2
     TAGS = ["register", "writeback"]
 

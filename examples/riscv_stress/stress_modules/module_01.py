@@ -41,6 +41,7 @@ class MemoryAlignment(Covergroup):
 class LoadOperations(Coverpoint):
     NAME = "load_operations"
     DESCRIPTION = "Load operation coverage"
+    MOTIVATION = "Drive load size/address patterns that exercise alignment and sign-extension in the load path."
     TIER = 1
     TAGS = ["load", "memory"]
 
@@ -90,6 +91,7 @@ class LoadOperations(Coverpoint):
 class StoreOperations(Coverpoint):
     NAME = "store_operations"
     DESCRIPTION = "Store operation coverage"
+    MOTIVATION = "Cover store widths and address patterns that stress write buffering and store-queue merging."
     TIER = 2
     TAGS = ["store", "memory"]
 
@@ -147,6 +149,7 @@ class StoreOperations(Coverpoint):
 class CacheOperations(Coverpoint):
     NAME = "cache_operations"
     DESCRIPTION = "Cache operation coverage"
+    MOTIVATION = "Hit cache hit/miss and op-type crosses so hierarchy traffic is not inferred from sparse loads alone."
     TIER = 3
     TAGS = ["cache", "memory"]
 
@@ -207,6 +210,7 @@ class CacheOperations(Coverpoint):
 class AlignmentCoverage(Coverpoint):
     NAME = "alignment_coverage"
     DESCRIPTION = "Memory alignment coverage"
+    MOTIVATION = "Force aligned and misaligned accesses that trigger alignment exceptions and slow paths."
     TIER = 2
     TAGS = ["alignment", "memory"]
 

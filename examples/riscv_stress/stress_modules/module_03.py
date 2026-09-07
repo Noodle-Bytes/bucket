@@ -40,6 +40,9 @@ class ExceptionRecovery(Covergroup):
 class ExceptionTypes(Coverpoint):
     NAME = "exception_types"
     DESCRIPTION = "Exception type coverage"
+    MOTIVATION = (
+        "Sample exception causes that activate trap entry vectors and privilege checks."
+    )
     TIER = 1
     TAGS = ["exception", "error"]
 
@@ -88,6 +91,7 @@ class ExceptionTypes(Coverpoint):
 class ExceptionContext(Coverpoint):
     NAME = "exception_context"
     DESCRIPTION = "Exception context coverage"
+    MOTIVATION = "Capture privilege/mode context around traps so handler entry state is fully observed."
     TIER = 3
     TAGS = ["exception", "context"]
 
@@ -154,6 +158,7 @@ class ExceptionContext(Coverpoint):
 class RecoveryPaths(Coverpoint):
     NAME = "recovery_paths"
     DESCRIPTION = "Exception recovery path coverage"
+    MOTIVATION = "Verify return-from-exception and restart sequences after each major trap class."
     TIER = 2
     TAGS = ["exception", "recovery"]
 

@@ -31,6 +31,7 @@ class AdvancedArithmetic(Covergroup):
 class BasicArithmetic(Coverpoint):
     NAME = "basic_arithmetic"
     DESCRIPTION = "Basic arithmetic operations"
+    MOTIVATION = "Cover everyday ADD/SUB-style ops as a baseline for ALU correctness regressions."
     TIER = 1
     TAGS = ["arithmetic", "basic"]
 
@@ -80,6 +81,9 @@ class BasicArithmetic(Coverpoint):
 class ArithmeticOverflow(Coverpoint):
     NAME = "arithmetic_overflow"
     DESCRIPTION = "Arithmetic overflow coverage"
+    MOTIVATION = (
+        "Force overflow and wrap cases that set sticky flags and exception hints."
+    )
     TIER = 3
     TAGS = ["arithmetic", "overflow"]
 
@@ -142,6 +146,7 @@ class ArithmeticOverflow(Coverpoint):
 class ArithmeticFlags(Coverpoint):
     NAME = "arithmetic_flags"
     DESCRIPTION = "Arithmetic flag coverage"
+    MOTIVATION = "Observe flag combinations produced by arithmetic so condition codes stay trustworthy."
     TIER = 2
     TAGS = ["arithmetic", "flags"]
 
