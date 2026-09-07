@@ -1109,6 +1109,31 @@ export default function Dashboard({
         [compareContext],
     );
 
+    const compareToolbarCounts = useMemo(() => {
+        const comparison = compare?.comparison;
+        if (!comparison) {
+            return undefined;
+        }
+        if (viewKey === Tree.ROOT) {
+            return comparison.global;
+        }
+        const node = tree.getNodeByKey(viewKey);
+        if (!node) {
+            return comparison.global;
+        }
+        return (
+            getPointNodeCompareCounts(node as PointNode, comparison) ?? {
+                a_only: 0,
+                both: 0,
+                b_only: 0,
+                neither: 0,
+                valid: 0,
+                illegal: 0,
+                ignore: 0,
+            }
+        );
+    }, [compare?.comparison, tree, viewKey]);
+
     const isElectronProduction =
         typeof window !== "undefined" && window.location.protocol === "app:";
     const isFileProtocol =
@@ -1652,6 +1677,7 @@ export default function Dashboard({
                                         compare={compare}
                                         records={compareRecordRows}
                                         onClose={() => compare.setActive(false)}
+                                        summaryCounts={compareToolbarCounts}
                                     />
                                 )}
                                 <CoverageReportExportModal
