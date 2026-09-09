@@ -4,7 +4,13 @@
  */
 
 import CoverageTree, { PointNode } from "./coveragetree";
-import { getPointNodeCompareCounts, getPointNodeCoverageMetrics } from "./coveragemetrics";
+import {
+    coverageRatio,
+    effectiveTarget,
+    effectiveTargetBuckets,
+    getPointNodeCompareCounts,
+    getPointNodeCoverageMetrics,
+} from "./coveragemetrics";
 import {
     parseTreeSearchQuery,
     summaryFiltersFromTreeSearch,
@@ -44,11 +50,27 @@ import {
     FilterOutlined,
     InfoCircleFilled,
 } from "@ant-design/icons";
-import { hexToRgba, getCoverageColor, getCompareCategoryBackground, getCompareCategoryLabel } from "@/utils/colors";
+import {
+    hexToRgba,
+    getCoverageColor,
+    getCompareCategoryBackground,
+    getCompareCategoryLabel,
+    getWaivedBucketBackground,
+    WAIVED_BUCKET_COLOR,
+    WAIVED_BUCKET_LABEL,
+} from "@/utils/colors";
 import { coverageInfoChromeOuterBox } from "./coverageInfoChrome";
 import { confirmThemed } from "@/utils/themedStaticModal";
-import { getBucketCategoryForIndex, matchesCompareSetMode } from "@/services/coverageCompare";
-import type { BucketCategory, CompareViewContext } from "@/types/coverageCompare";
+import {
+    getBucketCategoryForIndex,
+    isExcludedCategory,
+    matchesCompareSetMode,
+} from "@/services/coverageCompare";
+import type {
+    BucketCategory,
+    CompareViewContext,
+    ExcludedBucketCategory,
+} from "@/types/coverageCompare";
 import {
     CSSProperties,
     Dispatch,
@@ -79,10 +101,13 @@ type CoverageRecord = {
     hits: number;
     hit_ratio: number;
     goal_name: string;
+    /** Set when the bucket is excluded from scoring by a waiver. */
+    waived?: boolean;
+    waiver_reason?: string;
     hits_a?: number;
     hits_b?: number;
     compare_category?: BucketCategory;
-    [axisName: string]: string | number | BucketCategory | undefined;
+    [axisName: string]: string | number | boolean | BucketCategory | undefined;
 };
 
 type LargeCoverageRecord = {
@@ -92,6 +117,8 @@ type LargeCoverageRecord = {
     hits: number;
     hit_ratio: number;
     goal_name: string;
+    waived?: boolean;
+    waiver_reason?: string;
     hits_a?: number;
     hits_b?: number;
     compare_category?: BucketCategory;
@@ -107,11 +134,14 @@ type SummaryRecord = {
     tier: number | null;
     tags: string[];
     tags_text: string;
+    /** Effective hit target: definition target minus waived buckets' targets. */
     target: number;
     hits: number;
+    /** Effective valid buckets: definition count minus waived buckets. */
     target_buckets: number;
     hit_buckets: number;
     full_buckets: number;
+    waived_buckets: number;
     hit_ratio: number;
     buckets_hit_ratio: number;
     buckets_full_ratio: number;
@@ -128,7 +158,7 @@ const SUMMARY_COLUMN_HELP = {
     goalGroup:
         "Total number of hits per coverpoint across all buckets",
     goalTarget:
-        "Total hits required for this coverpoint (the sum of every bucket’s goal).",
+        "Total hits required for this coverpoint (the sum of every bucket’s goal, excluding waived buckets).",
     goalHits:
         "Total hits seen by this coverpoint, summed across all buckets. (Capped at each bucket's goal).",
     goalHitPct: "Percentage of hits compared to total goal for this coverpoint",
@@ -136,7 +166,9 @@ const SUMMARY_COLUMN_HELP = {
     bucketsGroup:
         "Counts valid buckets hit",
     bucketsTarget:
-        "How many valid buckets there are (legal buckets with a positive hit requirement)",
+        "How many valid buckets there are (legal buckets with a positive hit requirement, excluding waived buckets)",
+    bucketsWaived:
+        "Buckets excluded from scoring by a waiver (not counted in Valid or the percentages)",
     bucketsHit: "Buckets with at least one hit",
     bucketsFull: "Buckets that have reached their goal",
     bucketsHitPct: "Percentage of buckets with 1+ hits",
@@ -159,6 +191,8 @@ type RecordWithRatio = {
     hit_ratio?: number;
     buckets_hit_ratio?: number;
     buckets_full_ratio?: number;
+    /** Bucket rows: excluded from scoring by a waiver. */
+    waived?: boolean;
 };
 
 type AxisModel = {
@@ -178,6 +212,9 @@ type PointTableModel = {
     goalIndices: number[];
     bucketKeys: number[];
     hits: number[];
+    /** Waiver reason per row; undefined when the bucket is not waived. */
+    waiverReasons: (string | undefined)[];
+    hasWaivers: boolean;
     buildMs: number;
 };
 
@@ -333,7 +370,7 @@ function SummaryTagFilterDropdown({
     );
 }
 
-type HitClassFilter = "all" | "full" | "partial" | "empty" | "illegal" | "ignore";
+type HitClassFilter = "all" | "full" | "partial" | "empty" | "illegal" | "ignore" | "waived";
 type LargeCompareCategoryFilter = "all" | "a_only" | "both" | "b_only" | "neither";
 type LargeSortOption =
     | "bucket_asc"
@@ -356,6 +393,7 @@ const COMPARE_CATEGORY_SORT_RANK: Record<BucketCategory, number> = {
     neither: 3,
     illegal: 4,
     ignore: 5,
+    waived: 6,
 };
 type AxisSortMode = "none" | "user_asc" | "user_desc" | "alpha_asc" | "alpha_desc";
 type AxisSortState = {
@@ -430,7 +468,16 @@ function normalizePointTier(tier: number | null | undefined): number | null {
 
 function getCoverageColumnConfig(theme: ThemeType, columnKey: string) {
     return {
-        render: (ratio: number) => {
+        // `record` is typed loosely: this config is spread into bucket-row
+        // and summary-row columns alike, and only bucket rows carry `waived`.
+        render: (ratio: number, record?: unknown) => {
+            if ((record as { waived?: boolean } | undefined)?.waived) {
+                return (
+                    <span style={{ color: WAIVED_BUCKET_COLOR, fontStyle: "italic" }}>
+                        {WAIVED_BUCKET_LABEL}
+                    </span>
+                );
+            }
             if (Number.isNaN(ratio) || Object.is(ratio, -0)) {
                 return "-";
             }
@@ -443,7 +490,9 @@ function getCoverageColumnConfig(theme: ThemeType, columnKey: string) {
             const ratio = record[columnKey] as number;
             let backgroundColor = "unset";
             let fontWeight = "unset";
-            if (ratio >= 1) {
+            if (record.waived) {
+                backgroundColor = getWaivedBucketBackground(0.3);
+            } else if (ratio >= 1) {
                 backgroundColor = getCoverageColor(ratio, theme.theme.colors);
             } else if (Number.isNaN(ratio) || Object.is(ratio, -0)) {
                 // NaN if target is zero (don't care)
@@ -662,6 +711,12 @@ function buildPointTableModel(node: PointNode): PointTableModel {
     const goalIndices = new Array<number>(rowCount);
     const bucketKeys = new Array<number>(rowCount);
     const hits = new Array<number>(rowCount);
+    const waiverReasons = new Array<string | undefined>(rowCount);
+
+    const waiverByBucket = new Map<number, string>();
+    for (const waiver of readout.iter_bucket_waivers(bucket_start, bucket_end)) {
+        waiverByBucket.set(waiver.start, waiver.reason);
+    }
 
     const bucketHits = readout.iter_bucket_hits(bucket_start, bucket_end);
     let row = 0;
@@ -674,6 +729,11 @@ function buildPointTableModel(node: PointNode): PointTableModel {
         goalIndices[row] = bucketGoal.goal - goal_start;
         bucketKeys[row] = nextBucketHit.value.start;
         hits[row] = nextBucketHit.value.hits;
+        // Only buckets with a positive goal can be waived.
+        waiverReasons[row] =
+            goals[goalIndices[row]]?.target > 0
+                ? waiverByBucket.get(nextBucketHit.value.start)
+                : undefined;
         row += 1;
     }
 
@@ -681,6 +741,7 @@ function buildPointTableModel(node: PointNode): PointTableModel {
         goalIndices.length = row;
         bucketKeys.length = row;
         hits.length = row;
+        waiverReasons.length = row;
     }
 
     return {
@@ -693,8 +754,19 @@ function buildPointTableModel(node: PointNode): PointTableModel {
         goalIndices,
         bucketKeys,
         hits,
+        waiverReasons,
+        hasWaivers: waiverReasons.some((reason) => reason !== undefined),
         buildMs: performance.now() - startTs,
     };
+}
+
+function isRowWaived(model: PointTableModel, row: number): boolean {
+    return model.waiverReasons[row] !== undefined;
+}
+
+/** Hit ratio for the bucket table; waived buckets carry no ratio (NaN → "-"). */
+function bucketHitRatio(hits: number, target: number, waived: boolean): number {
+    return waived ? Number.NaN : hits / target;
 }
 
 function getAxisValue(model: PointTableModel, row: number, axisIdx: number): string {
@@ -703,12 +775,19 @@ function getAxisValue(model: PointTableModel, row: number, axisIdx: number): str
     return model.axisValues[axisModel.offset + valueIndex].value;
 }
 
-function classifyHitClass(target: number, hits: number): Exclude<HitClassFilter, "all"> {
+function classifyHitClass(
+    target: number,
+    hits: number,
+    waived: boolean = false,
+): Exclude<HitClassFilter, "all"> {
     if (target < 0) {
         return "illegal";
     }
     if (target === 0) {
         return "ignore";
+    }
+    if (waived) {
+        return "waived";
     }
     if (hits >= target) {
         return "full";
@@ -730,8 +809,8 @@ function sortLargeRows(
         const targetB = model.goals[model.goalIndices[b]].target;
         const hitsA = model.hits[a];
         const hitsB = model.hits[b];
-        const ratioA = hitsA / targetA;
-        const ratioB = hitsB / targetB;
+        const ratioA = bucketHitRatio(hitsA, targetA, isRowWaived(model, a));
+        const ratioB = bucketHitRatio(hitsB, targetB, isRowWaived(model, b));
 
         if (compare) {
             const bucketIndexA = model.bucketKeys[a];
@@ -788,6 +867,40 @@ function sortLargeRows(
                 return 0;
         }
     });
+}
+
+/** Width of the waiver reason column (only shown when the point has waivers). */
+const WAIVER_COLUMN_WIDTH = 200;
+
+/**
+ * Waiver reason column, ellipsised with the full reason in a tooltip. Shared
+ * by the full and large tables; only rendered when the point has waivers.
+ */
+function getWaiverColumn<RecordType extends { waiver_reason?: string; waived?: boolean }>(): NonNullable<
+    TableProps<RecordType>["columns"]
+>[number] {
+    return {
+        title: (
+            <Tooltip title="Why this bucket is excluded from scoring (from the waiver file)">
+                <span>Waiver</span>
+            </Tooltip>
+        ),
+        dataIndex: "waiver_reason",
+        key: "waiver_reason",
+        width: WAIVER_COLUMN_WIDTH,
+        ellipsis: { showTitle: false },
+        render: (reason: string | undefined, record: RecordType) => {
+            if (!record.waived) {
+                return "-";
+            }
+            const text = reason && reason.trim() ? reason : "(no reason given)";
+            return (
+                <Tooltip title={text} placement="topLeft">
+                    <span style={{ color: WAIVED_BUCKET_COLOR, fontStyle: "italic" }}>{text}</span>
+                </Tooltip>
+            );
+        },
+    };
 }
 
 function getFullColumns(
@@ -1024,27 +1137,13 @@ function getFullColumns(
                         { text: "Empty", value: "empty" },
                         { text: "Illegal", value: "illegal" },
                         { text: "Ignore", value: "ignore" },
+                        ...(model.hasWaivers
+                            ? [{ text: WAIVED_BUCKET_LABEL, value: "waived" }]
+                            : []),
                     ],
-                    onFilter: (value, record) => {
-                        switch (value) {
-                            case "full":
-                                return record.target > 0 && record.hits >= record.target;
-                            case "partial":
-                                return (
-                                    record.target > 0
-                                    && record.hits > 0
-                                    && record.hits < record.target
-                                );
-                            case "empty":
-                                return record.target > 0 && record.hits === 0;
-                            case "illegal":
-                                return record.target < 0;
-                            case "ignore":
-                                return record.target === 0;
-                            default:
-                                throw new Error(`Unexpected value ${value}`);
-                        }
-                    },
+                    onFilter: (value, record) =>
+                        classifyHitClass(record.target, record.hits, record.waived === true)
+                        === value,
                     filterMode: "tree",
                     filterSearch: true,
                     ...getCoverageColumnConfig(theme, "hit_ratio"),
@@ -1052,6 +1151,10 @@ function getFullColumns(
             ],
         },
     );
+
+    if (model.hasWaivers) {
+        columns.push(getWaiverColumn<CoverageRecord>());
+    }
 
     return columns;
 }
@@ -1124,6 +1227,10 @@ function getLargeColumns(
         },
     );
 
+    if (model.hasWaivers) {
+        columns.push(getWaiverColumn<LargeCoverageRecord>());
+    }
+
     return columns;
 }
 
@@ -1143,13 +1250,27 @@ function bucketMatchesCompareFilter(
 }
 
 function getCompareRowStyle(category: BucketCategory | undefined, compare: CompareViewContext | undefined) {
-    if (!compare || !category || category === "illegal" || category === "ignore") {
+    if (!compare || !category || isExcludedCategory(category)) {
         return {};
     }
     const active = compare.setMode === "all" || compare.setMode === category;
     return {
         backgroundColor: getCompareCategoryBackground(category, active),
     };
+}
+
+/** Row tint: compare category colour in compare mode, muted slate for waived rows. */
+function getBucketRowStyle(
+    record: { waived?: boolean; compare_category?: BucketCategory },
+    compare: CompareViewContext | undefined,
+): CSSProperties {
+    if (compare) {
+        return getCompareRowStyle(record.compare_category, compare);
+    }
+    if (record.waived) {
+        return { backgroundColor: getWaivedBucketBackground(0.12) };
+    }
+    return {};
 }
 
 /** The compare-related fields shared by both point table record shapes. */
@@ -1193,7 +1314,7 @@ const COMPARE_COLUMNS: TableProps<CompareColumnRecord>["columns"] = [
             width: 100,
             onCell: getNowrapCellProps,
             render: (value: BucketCategory | undefined) =>
-                value ? getCompareCategoryLabel(value as Exclude<BucketCategory, "illegal" | "ignore">) : "-",
+                value ? getCompareCategoryLabel(value as Exclude<BucketCategory, ExcludedBucketCategory>) : "-",
         },
 ];
 
@@ -1335,7 +1456,7 @@ export function PointGrid({ node, compare }: PointGridProps) {
                 }
             } else if (
                 largeHitFilter !== "all"
-                && classifyHitClass(goal.target, hits) !== largeHitFilter
+                && classifyHitClass(goal.target, hits, isRowWaived(model, row)) !== largeHitFilter
             ) {
                 continue;
             }
@@ -1366,14 +1487,19 @@ export function PointGrid({ node, compare }: PointGridProps) {
             const goal = model.goals[model.goalIndices[row]];
             const hits = model.hits[row];
             const bucketIndex = model.bucketKeys[row];
+            const waived = isRowWaived(model, row);
             const record: LargeCoverageRecord = {
                 key: bucketIndex,
                 row,
                 target: goal.target,
                 hits,
-                hit_ratio: hits / goal.target,
+                hit_ratio: bucketHitRatio(hits, goal.target, waived),
                 goal_name: goal.name,
             };
+            if (waived) {
+                record.waived = true;
+                record.waiver_reason = model.waiverReasons[row];
+            }
             if (compare) {
                 record.hits_a = compare.comparison.hitsAByIndex.get(bucketIndex) ?? 0;
                 record.hits_b = compare.comparison.hitsBByIndex.get(bucketIndex) ?? 0;
@@ -1396,13 +1522,18 @@ export function PointGrid({ node, compare }: PointGridProps) {
             if (!bucketMatchesCompareFilter(bucketIndex, goal.target, compare)) {
                 continue;
             }
+            const waived = isRowWaived(model, row);
             const datum: CoverageRecord = {
                 key: bucketIndex,
                 target: goal.target,
                 hits,
-                hit_ratio: hits / goal.target,
+                hit_ratio: bucketHitRatio(hits, goal.target, waived),
                 goal_name: goal.name,
             };
+            if (waived) {
+                datum.waived = true;
+                datum.waiver_reason = model.waiverReasons[row];
+            }
 
             if (compare) {
                 datum.hits_a = compare.comparison.hitsAByIndex.get(bucketIndex) ?? 0;
@@ -1913,6 +2044,9 @@ export function PointGrid({ node, compare }: PointGridProps) {
                                     { label: "Empty", value: "empty" },
                                     { label: "Illegal", value: "illegal" },
                                     { label: "Ignore", value: "ignore" },
+                                    ...(model.hasWaivers
+                                        ? [{ label: WAIVED_BUCKET_LABEL, value: "waived" }]
+                                        : []),
                                 ]}
                                 style={{ minWidth: 160 }}
                             />
@@ -1975,7 +2109,10 @@ export function PointGrid({ node, compare }: PointGridProps) {
             // sum the explicit column widths for each mode.
             const largeScrollX = compare
                 ? 90 + model.axisModels.length * 160 + 244
-                : 72 + model.axisModels.length * 140 + 460;
+                : 72
+                  + model.axisModels.length * 140
+                  + 460
+                  + (model.hasWaivers ? WAIVER_COLUMN_WIDTH : 0);
             return (
                 <>
                     {pointMetadata}
@@ -1988,7 +2125,7 @@ export function PointGrid({ node, compare }: PointGridProps) {
                         columns={largeColumns}
                         dataSource={largeDataSource}
                         onRow={(record) => ({
-                            style: getCompareRowStyle(record.compare_category, compare),
+                            style: getBucketRowStyle(record, compare),
                         })}
                         virtual
                         scroll={{
@@ -2003,7 +2140,10 @@ export function PointGrid({ node, compare }: PointGridProps) {
         // See largeScrollX: virtual tables require a numeric scroll.x.
         const fullScrollX = compare
             ? 90 + model.axisModels.length * 160 + 244
-            : 90 + model.axisModels.length * 160 + 520;
+            : 90
+              + model.axisModels.length * 160
+              + 520
+              + (model.hasWaivers ? WAIVER_COLUMN_WIDTH : 0);
 
         return (
             <>
@@ -2017,7 +2157,7 @@ export function PointGrid({ node, compare }: PointGridProps) {
                     columns={fullColumns}
                     dataSource={sortedFullDataSource}
                     onRow={(record) => ({
-                        style: getCompareRowStyle(record.compare_category, compare),
+                        style: getBucketRowStyle(record, compare),
                     })}
                     virtual
                     scroll={{
@@ -2147,7 +2287,7 @@ export function PointSummaryGrid({
                 continue;
             }
 
-            const { point, point_hit } = subNode.data;
+            const { point } = subNode.data;
             const isCovergroup = (subNode.children?.length ?? 0) > 0;
             const tier = normalizePointTier(point.tier);
             const tags = parsePointTags(point.tags);
@@ -2155,15 +2295,11 @@ export function PointSummaryGrid({
                 subNode as PointNode,
                 compare?.comparison,
             );
-            const metrics = isCovergroup
-                ? getPointNodeCoverageMetrics(subNode as PointNode)
-                : {
-                    target: point.target,
-                    hits: point_hit.hits,
-                    target_buckets: point.target_buckets,
-                    hit_buckets: point_hit.hit_buckets,
-                    full_buckets: point_hit.full_buckets,
-                };
+            // Leaves read point_hit directly, covergroups sum their leaves.
+            // Waived buckets drop out of both denominators.
+            const metrics = getPointNodeCoverageMetrics(subNode as PointNode);
+            const target = effectiveTarget(metrics);
+            const targetBuckets = effectiveTargetBuckets(metrics);
             rows.push({
                 key: subNode.key,
                 parentKey: parent?.key ?? null,
@@ -2174,16 +2310,15 @@ export function PointSummaryGrid({
                 tier,
                 tags,
                 tags_text: tags.join(", "),
-                target: metrics.target,
+                target,
                 hits: metrics.hits,
-                target_buckets: metrics.target_buckets,
+                target_buckets: targetBuckets,
                 hit_buckets: metrics.hit_buckets,
                 full_buckets: metrics.full_buckets,
-                hit_ratio: metrics.target > 0 ? metrics.hits / metrics.target : 0,
-                buckets_hit_ratio:
-                    metrics.target_buckets > 0 ? metrics.hit_buckets / metrics.target_buckets : 0,
-                buckets_full_ratio:
-                    metrics.target_buckets > 0 ? metrics.full_buckets / metrics.target_buckets : 0,
+                waived_buckets: metrics.waived_buckets,
+                hit_ratio: coverageRatio(metrics.hits, target),
+                buckets_hit_ratio: coverageRatio(metrics.hit_buckets, targetBuckets),
+                buckets_full_ratio: coverageRatio(metrics.full_buckets, targetBuckets),
                 compare_a_only: pointCompare?.a_only,
                 compare_both: pointCompare?.both,
                 compare_b_only: pointCompare?.b_only,
@@ -2559,6 +2694,29 @@ export function PointSummaryGrid({
                     title: summaryTableHeaderTitle("Valid", SUMMARY_COLUMN_HELP.bucketsTarget),
                     dataIndex: "target_buckets",
                     key: "target_buckets",
+                    onCell: (record: SummaryRecord) => ({
+                        style: {
+                            backgroundColor: record.isCovergroup
+                                ? hexToRgba(theme.theme.colors.accentbg.value, 0.1)
+                                : "transparent",
+                        },
+                    }),
+                },
+                {
+                    title: summaryTableHeaderTitle(
+                        WAIVED_BUCKET_LABEL,
+                        SUMMARY_COLUMN_HELP.bucketsWaived,
+                    ),
+                    dataIndex: "waived_buckets",
+                    key: "waived_buckets",
+                    render: (count: number) =>
+                        count > 0 ? (
+                            <span style={{ color: WAIVED_BUCKET_COLOR, fontStyle: "italic" }}>
+                                {count}
+                            </span>
+                        ) : (
+                            "-"
+                        ),
                     onCell: (record: SummaryRecord) => ({
                         style: {
                             backgroundColor: record.isCovergroup

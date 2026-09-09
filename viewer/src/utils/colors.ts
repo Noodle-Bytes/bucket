@@ -83,6 +83,18 @@ export function getCoverageColor(
     }
 }
 
+/**
+ * Muted slate for buckets excluded from scoring by a waiver. Deliberately
+ * outside the red/green coverage gradient and distinct from the grey used
+ * for "neither" in compare mode.
+ */
+export const WAIVED_BUCKET_COLOR = "#7a8ca3";
+export const WAIVED_BUCKET_LABEL = "Waived";
+
+export function getWaivedBucketBackground(alpha: number = 0.18): string {
+    return hexToRgba(WAIVED_BUCKET_COLOR, alpha);
+}
+
 export function getCompareCategoryColor(category: CompareBucketCategory): string {
     return COMPARE_CATEGORY_COLORS[category];
 }

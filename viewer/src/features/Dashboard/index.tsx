@@ -76,7 +76,12 @@ import { checkFormatCompat } from "@/utils/versionCompat";
 import CompareToolbar from "./components/CompareToolbar";
 import CoverageReportExportModal from "./components/CoverageReportExportModal";
 import type { PointNode } from "./lib/coveragetree";
-import { getPointNodeCompareCounts, getPointNodeCoverageMetrics } from "./lib/coveragemetrics";
+import {
+    coverageRatio,
+    effectiveTarget,
+    getPointNodeCompareCounts,
+    getPointNodeCoverageMetrics,
+} from "./lib/coveragemetrics";
 import type { UseCoverageCompareResult } from "@/hooks/useCoverageCompare";
 import type { CompareRecordRow } from "@/hooks/useCoverageCompare";
 import type { CompareViewContext } from "@/types/coverageCompare";
@@ -186,13 +191,15 @@ function getTopLevelCoverageInfo(
 ): RootCoverageInfo {
     const readout = node.data.readout as Readout;
     const metrics = getPointNodeCoverageMetrics(node as PointNode);
-    const overallCoverage = metrics.target > 0 ? metrics.hits / metrics.target : 0;
+    // Waived buckets are excluded from the denominator.
+    const target = effectiveTarget(metrics);
+    const overallCoverage = coverageRatio(metrics.hits, target);
 
     return {
         name: node.data.point?.name ?? String(node.title),
         coverpoints: counts.coverpoints,
         covergroups: counts.covergroups,
-        hitsVsTargetText: `${metrics.hits.toLocaleString()} / ${metrics.target.toLocaleString()}`,
+        hitsVsTargetText: `${metrics.hits.toLocaleString()} / ${target.toLocaleString()}`,
         overallCoverageText: `${(overallCoverage * 100).toFixed(1)}%`,
         source: getReadoutSource(readout),
         defSha: getReadoutValue(readout, "get_def_sha"),
@@ -1174,6 +1181,7 @@ export default function Dashboard({
                 valid: 0,
                 illegal: 0,
                 ignore: 0,
+                waived: 0,
             }
         );
     }, [compare?.comparison, tree, viewKey]);

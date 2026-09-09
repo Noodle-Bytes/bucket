@@ -7,13 +7,18 @@ export type CoverageDefinition = "any_hit" | "met_goal";
 
 export type CompareSetMode = "a_only" | "both" | "b_only" | "neither" | "all";
 
+/**
+ * Buckets that take no part in the A/B comparison: illegal (negative target),
+ * ignore (zero target) and waived (excluded from scoring by a waiver file).
+ */
+export type ExcludedBucketCategory = "illegal" | "ignore" | "waived";
+
 export type BucketCategory =
     | "a_only"
     | "both"
     | "b_only"
     | "neither"
-    | "illegal"
-    | "ignore";
+    | ExcludedBucketCategory;
 
 export type CategoryCounts = {
     a_only: number;
@@ -23,6 +28,7 @@ export type CategoryCounts = {
     valid: number;
     illegal: number;
     ignore: number;
+    waived: number;
 };
 
 export type CompareRecordMeta = {

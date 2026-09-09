@@ -19,6 +19,7 @@ import {
 } from "@/services/coverageComparePatterns";
 import type {
     BucketCategory,
+    ExcludedBucketCategory,
     ComparisonResult,
     CoverageDefinition,
 } from "@/types/coverageCompare";
@@ -140,7 +141,7 @@ type CompareReportJson = {
         percentages: Record<"a_only" | "both" | "b_only" | "neither", string>;
     }>;
     bucketsByCategory: Record<
-        Exclude<BucketCategory, "illegal" | "ignore">,
+        Exclude<BucketCategory, ExcludedBucketCategory>,
         ComparisonResult["bucketDetails"]
     >;
     patterns: ComparePattern[];
@@ -325,7 +326,7 @@ export function serializeCompareReportHtmlFromReport(
 
     const categorySection = (
         title: string,
-        category: Exclude<BucketCategory, "illegal" | "ignore">,
+        category: Exclude<BucketCategory, ExcludedBucketCategory>,
         color: string,
     ) => {
         const buckets = report.bucketsByCategory[category];
