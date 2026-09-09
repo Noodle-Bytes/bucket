@@ -15,6 +15,7 @@ from .common import (
     AxisValueTuple,
     BucketGoalTuple,
     BucketHitTuple,
+    BucketWaiverTuple,
     GoalTuple,
     MergeReadout,
     PointHitTuple,
@@ -23,6 +24,7 @@ from .common import (
     Readout,
     Writer,
     check_format_version,
+    iter_waivers_in_range,
     point_tuple_from_row,
 )
 
@@ -54,6 +56,10 @@ class ArchiveRecordTuple(NamedTuple):
     # Storage format the record was written with; rows predating format
     # versioning omit the column and default to the legacy format.
     format_version: int = LEGACY_FORMAT_VERSION
+    # Byte range of the record's rows in the bucket_waiver table (format 3+);
+    # rows from older formats omit both columns and carry no waivers.
+    bucket_waiver_offset: int = 0
+    bucket_waiver_end: int = 0
 
 
 DEFINITION_PATH = "definition"
@@ -65,6 +71,7 @@ GOAL_PATH = "goal"
 BUCKET_GOAL_PATH = "bucket_goal"
 POINT_HIT_PATH = "point_hit"
 BUCKET_HIT_PATH = "bucket_hit"
+BUCKET_WAIVER_PATH = "bucket_waiver"
 
 ###############################################################################
 # Accessors
@@ -204,6 +211,8 @@ class ArchiveReadout(Readout):
             offset_start,
             offset_end,
         ):
+            # Rows written before format 3 lack the trailing waived_buckets
+            # and waived_target columns, which default to 0.
             yield PointHitTuple(*ph)
 
     def iter_bucket_goals(
@@ -272,6 +281,31 @@ class ArchiveReadout(Readout):
             yield BucketHitTuple(idx, *bh)
             idx += 1
 
+    def iter_bucket_waivers(
+        self, start: int = 0, end: int | None = None
+    ) -> Iterable[BucketWaiverTuple]:
+        # Records from formats before 3 have no waiver table at all, and a
+        # record without waivers has an empty byte range: neither opens the
+        # file (which the former does not even contain).
+        if self.record.bucket_waiver_end <= self.record.bucket_waiver_offset:
+            return
+        # The table is sparse (one row per waived bucket), so read the whole
+        # record slice and filter by bucket index rather than slicing lines.
+        yield from iter_waivers_in_range(
+            (
+                BucketWaiverTuple(int(bw[0]), str(bw[1]))
+                for bw in _read(
+                    self.path / BUCKET_WAIVER_PATH,
+                    self.record.bucket_waiver_offset,
+                    self.record.bucket_waiver_end,
+                    0,
+                    None,
+                )
+            ),
+            start,
+            end,
+        )
+
 
 class ArchiveWriter(Writer):
     """
@@ -322,6 +356,11 @@ class ArchiveWriter(Writer):
                 work_path / BUCKET_HIT_PATH,
                 (bh[1:] for bh in readout.iter_bucket_hits()),
             )
+            # Waivers are sparse, so the bucket index is kept in the row.
+            bucket_waiver_offset, bucket_waiver_end = _write(
+                work_path / BUCKET_WAIVER_PATH,
+                (tuple(bw) for bw in readout.iter_bucket_waivers()),
+            )
             # Store offsets in definition and record tables so we can seek later
             definition_offset, _ = _write(
                 work_path / DEFINITION_PATH,
@@ -363,6 +402,8 @@ class ArchiveWriter(Writer):
                         # readout's: it describes how these bytes are laid
                         # out, not where the data came from.
                         ARCHIVE_FORMAT_VERSION,
+                        bucket_waiver_offset,
+                        bucket_waiver_end,
                     )
                 ],
             )

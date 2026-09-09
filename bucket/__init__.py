@@ -10,6 +10,7 @@ from .context import CoverageContext
 from .covergroup import Covergroup
 from .coverpoint import Coverpoint
 from .covertop import Covertop
+from .waiver import Waiver, WaiverFile, load_waivers
 
 # PyPI distribution name. The import package remains `bucket`; `bucket` itself
 # is already taken on PyPI (an unrelated Bitbucket CLI).
@@ -22,4 +23,16 @@ except PackageNotFoundError:
 
 version = __version__
 
-assert all((CoverageContext, Covergroup, Coverpoint, Covertop, AxisUtils, rw))
+assert all(
+    (
+        CoverageContext,
+        Covergroup,
+        Coverpoint,
+        Covertop,
+        AxisUtils,
+        Waiver,
+        WaiverFile,
+        load_waivers,
+        rw,
+    )
+)

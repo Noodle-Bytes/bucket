@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 from functools import reduce
 from operator import mul
@@ -10,11 +10,13 @@ from bucket.rw.common import (
     AxisValueTuple,
     BucketGoalTuple,
     BucketHitTuple,
+    BucketWaiverTuple,
     GoalTuple,
     PointHitTuple,
     PointTuple,
     PuppetReadout,
     Readout,
+    compute_point_hits,
 )
 
 
@@ -44,6 +46,7 @@ class GeneratedReadout(PuppetReadout):
         illegal_hits=True,
         ignore_hits=True,
         root_is_point=False,
+        waivers: dict[int, str] | None = None,
     ):
         super().__init__()
 
@@ -95,6 +98,41 @@ class GeneratedReadout(PuppetReadout):
 
         self.points.sort(key=lambda p: (p.start, p.depth))
         self.point_hits.sort(key=lambda p: (p.start, p.depth))
+
+        if waivers:
+            self.waive_buckets(waivers)
+
+    def bucket_targets(self) -> list[int]:
+        """Goal target of every bucket, indexed by global bucket index."""
+        goal_targets = {goal.start: goal.target for goal in self.goals}
+        return [goal_targets[bg.goal] for bg in self.bucket_goals]
+
+    def waivable_buckets(self) -> list[int]:
+        """Indices of the buckets that may be waived (goal target > 0)."""
+        return [
+            bg.start
+            for bg, target in zip(self.bucket_goals, self.bucket_targets())
+            if target > 0
+        ]
+
+    def waive_buckets(self, waivers: dict[int, str]):
+        """
+        Record waivers (bucket index -> reason) and recompute the point hits
+        so the waived buckets are excluded from scoring. Buckets whose goal
+        target is not > 0 are silently skipped, as they can never be waived.
+        """
+        targets = self.bucket_targets()
+        existing = {waiver.start: waiver.reason for waiver in self.bucket_waivers}
+        for index, reason in waivers.items():
+            if targets[index] > 0:
+                existing.setdefault(index, reason)
+        self.bucket_waivers = [
+            BucketWaiverTuple(index, reason)
+            for index, reason in sorted(existing.items())
+        ]
+        self.point_hits = list(
+            compute_point_hits(self.points, self.bucket_hits, targets, existing)
+        )
 
     def _generate_point(
         self,
@@ -314,6 +352,7 @@ def readouts_are_equal(readout_a: Readout, readout_b: Readout) -> bool:
         "iter_goals",
         "iter_bucket_goals",
         "iter_bucket_hits",
+        "iter_bucket_waivers",
         "iter_point_hits",
     ):
         try:

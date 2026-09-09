@@ -26,6 +26,7 @@ from bucket.rw.common import (
     AxisValueTuple,
     BucketGoalTuple,
     BucketHitTuple,
+    BucketWaiverTuple,
     GoalTuple,
     PointHitTuple,
     PointTuple,
@@ -67,7 +68,7 @@ class TestFormatVersion:
         viewer/src/utils/versionCompat.ts), document the change in the
         format history, then update this snapshot.
         """
-        assert FORMAT_VERSION == 2
+        assert FORMAT_VERSION == 3
         # The archive and JSON formats are versioned independently but by
         # policy always bump in lockstep.
         assert ARCHIVE_FORMAT_VERSION == FORMAT_VERSION
@@ -96,6 +97,8 @@ class TestFormatVersion:
             "source_key",
             "bucket_version",
             "format_version",
+            "bucket_waiver_offset",
+            "bucket_waiver_end",
         )
         assert PointTuple._fields == (
             "start",
@@ -133,8 +136,11 @@ class TestFormatVersion:
             "hits",
             "hit_buckets",
             "full_buckets",
+            "waived_buckets",
+            "waived_target",
         )
         assert BucketHitTuple._fields == ("start", "hits")
+        assert BucketWaiverTuple._fields == ("start", "reason")
 
     def test_writer_stamps_current_format(self):
         """A written archive records the current format and reads silently."""
