@@ -11,7 +11,7 @@ import { pathToFileURL } from "node:url";
  *
  * Git tags are the single source of truth for versions (package.json holds a
  * `0.0.0` placeholder). Resolution order:
- *   1. BUCKET_VERSION env var (set by CI and electron/build.sh)
+ *   1. BUCKET_VERSION env var (set by CI and electron/build.mjs)
  *   2. `git describe` against the latest v* tag, normalized to semver:
  *      exact tag        -> "2.4.3"
  *      2 commits past   -> "2.4.4-dev.2+gcf775b8"
@@ -64,7 +64,7 @@ function normalizeDescribe(described) {
     return `${major}.${minor}.${Number(patch) + 1}-dev.${distance}+g${sha}${dirtySuffix}`;
 }
 
-// Allow `node scripts/resolve-version.mjs` (used by electron/build.sh and CI).
+// Allow `node scripts/resolve-version.mjs` (used by electron/build.mjs and CI).
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     console.log(resolveBucketVersion());
 }

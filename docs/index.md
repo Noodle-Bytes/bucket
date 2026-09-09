@@ -20,7 +20,8 @@ HTML generation (`write html` / `write report`) is not part of the pip
 package; it needs a source checkout of this repository and Node.js.
 
 To run the in-repo example, which includes a coverage tree along with some
-randomised data to sample:
+randomised data to sample (`./bin/shell` needs [uv](https://docs.astral.sh/uv/) and
+either zsh or bash, so it works on macOS and Linux alike):
 
 ```
 $ ./bin/shell

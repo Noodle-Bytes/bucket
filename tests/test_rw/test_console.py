@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Noodle-Bytes. All Rights Reserved
+# Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 from io import StringIO
 from typing import Iterator
@@ -166,7 +166,7 @@ def check_readout(
     cov = CoverageAccess(readout)
     with StringIO() as op:
         # wide to prevent truncation of values
-        console = Console(file=op, width=1000)
+        console = Console(file=op, width=1000, legacy_windows=False)
         writer = ConsoleWriter(
             axes=axes, goals=goals, points=points, summary=summary, console=console
         )
@@ -254,7 +254,7 @@ class TestConsole:
         readout.source = source
         readout.source_key = source_key
         output = StringIO()
-        console = Console(file=output, width=1000)
+        console = Console(file=output, width=1000, legacy_windows=False)
         writer = ConsoleWriter(console=console)
         writer.write(readout)
         text = output.getvalue()

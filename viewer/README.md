@@ -6,7 +6,7 @@
 # Bucket Viewer
 
 React web app for viewing Bucket coverage archives (`.bktgz`). It is also
-embedded in standalone HTML exports and bundled into the Electron Mac app.
+embedded in standalone HTML exports and bundled into the Electron desktop app.
 
 ## User documentation
 
@@ -14,7 +14,7 @@ For loading coverage, compare mode, session management, and export:
 
 - [Viewing coverage](../docs/viewing_coverage.md)
 - Hosted viewer: https://noodle-bytes.github.io/bucket/
-- Mac app: [`electron/README.md`](../electron/README.md)
+- Desktop app: [`electron/README.md`](../electron/README.md)
 
 ## Development
 

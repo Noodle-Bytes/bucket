@@ -6,11 +6,15 @@ on: pull_request
 permissions:
   contents: read
 jobs:
+  # Check names are "test-<os> (<python>)"; branch protection on main requires
+  # every combination, so update it if the matrix changes.
   test:
-    runs-on: ubuntu-latest
+    name: test-${{ matrix.os }} (${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}-latest
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu, windows]
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       # Full history and tags so hatch-vcs can derive the package version.
