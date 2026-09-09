@@ -127,12 +127,17 @@ macOS uses `bucket.icns` for the app. Windows and Linux use `branding/logo.png`
 directly; electron-builder converts it to `.ico` and the Linux icon set at
 build time, so no extra tooling is needed there.
 
-The `.bktgz` document icon comes from `branding/file-icon.svg`, a page carrying
-the mark. `branding/apply.sh` rasterizes it to `branding/file-icon.png` and
-builds `electron/bucket_file.icns` (macOS) and `electron/bucket_file.ico`
-(Windows, via electron-builder's bundled converter). Linux desktops pick file
-icons from the icon theme by MIME type, which an AppImage cannot install, so
-`.bktgz` files there show the generic archive icon.
+The `.bktgz` document icons are also produced by `branding/apply.sh`:
+
+- macOS (`electron/bucket_file.icns`): the mark and an ARCHIVE label composed
+  by `branding/make-file-icon.mjs` onto macOS's own generic document page,
+  read at build time from `CoreTypes.bundle`, so it matches Finder's other
+  documents. This step only runs on a Mac.
+- Windows (`electron/bucket_file.ico`): the flat page in
+  `branding/file-icon.svg`, packed at 16 to 256px by `branding/make-ico.mjs`.
+- Linux: none. Desktops pick file icons from the icon theme by MIME type,
+  which an AppImage cannot install, so `.bktgz` files show the generic
+  archive icon.
 
 **Note**: The built app is completely standalone and does not require a web server to run. It loads the viewer from the bundled files.
 

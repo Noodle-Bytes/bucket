@@ -5,9 +5,10 @@
   -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
     <!--
-      Document icon for .bktgz coverage archives: a page with a folded corner
-      carrying the Azure Spark mark (branding/logo.svg) and the extension.
-      Rasterized by branding/apply.sh into electron/bucket_file.{icns,ico}.
+      Windows document icon for .bktgz coverage archives: a flat page with a
+      folded corner carrying the Azure Spark mark (branding/logo.svg) and the
+      extension. Rasterized by branding/apply.sh into electron/bucket_file.ico.
+      macOS uses its own document page instead; see branding/make-file-icon.mjs.
     -->
     <defs>
         <clipPath id="page-clip">
