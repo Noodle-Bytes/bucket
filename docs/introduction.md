@@ -3,11 +3,6 @@
   ~ Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
   -->
 
-<!--
-  ~ SPDX-License-Identifier: MIT
-  ~ Copyright (c) 2023-2024 Vypercore. All Rights Reserved
-  -->
-
 ## Introduction
 
 Bucket is a functional coverage tool allowing for the creation of coverpoints, sampling of data, and viewing of collected coverage. It is written entirely in Python which allows for easy integration with cocotb and other Python-based testbenches.

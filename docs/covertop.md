@@ -3,11 +3,6 @@
   ~ Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
   -->
 
-<!--
-  ~ SPDX-License-Identifier: MIT
-  ~ Copyright (c) 2023-2025 Vypercore. All Rights Reserved
-  -->
-
 ## Covertop
 
 `Covertop` is a type of covergroup reserved for the very top of coverage. This class contains special functions such as filtering, `sample`, and `process_trace`. This is the coverage instance that you will instance in your testbench and call `sample(trace)` on each cycle.

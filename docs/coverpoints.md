@@ -3,11 +3,6 @@
   ~ Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
   -->
 
-<!--
-  ~ SPDX-License-Identifier: MIT
-  ~ Copyright (c) 2023-2024 Vypercore. All Rights Reserved
-  -->
-
 # Coverpoints
 
 A coverpoint consists of one or more axes, which are then crossed. (An axis covers one signal/data - similar to a UVM coverpoint). Each possible combination of the axes' values is called a bucket. Each bucket has a default goal with a target of 10 hits, which can be modified as required, or can be made illegal or ignored.
