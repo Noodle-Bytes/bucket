@@ -39,7 +39,7 @@ export function compareVersions(a: string, b: string): -1 | 0 | 1 {
  * open and fully process — see tests/format_fixtures/README.md for the
  * bump / drop-support workflow.
  */
-export const SUPPORTED_FORMAT_VERSION = 2;
+export const SUPPORTED_FORMAT_VERSION = 3;
 export const MIN_SUPPORTED_FORMAT_VERSION = 1;
 
 /** Files written before format versioning are format 1. */

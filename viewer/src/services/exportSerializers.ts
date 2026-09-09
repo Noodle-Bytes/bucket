@@ -41,9 +41,36 @@ const JSON_TABLES: Record<string, string[]> = {
     axis_value: ["start", "value"],
     goal: ["start", "target", "name", "description"],
     bucket_goal: ["start", "goal"],
-    point_hit: ["start", "depth", "hits", "hit_buckets", "full_buckets"],
+    // Format 3: waived_buckets / waived_target trail the original columns.
+    point_hit: [
+        "start",
+        "depth",
+        "hits",
+        "hit_buckets",
+        "full_buckets",
+        "waived_buckets",
+        "waived_target",
+    ],
     bucket_hit: ["start", "hits"],
+    // Format 3: sparse per-record table of waived buckets.
+    bucket_waiver: ["start", "reason"],
 };
+
+function pointHitRow(pointHit: PointHitTuple): CsvValue[] {
+    return [
+        pointHit.start,
+        pointHit.depth,
+        pointHit.hits,
+        pointHit.hit_buckets,
+        pointHit.full_buckets,
+        pointHit.waived_buckets ?? 0,
+        pointHit.waived_target ?? 0,
+    ];
+}
+
+function bucketWaiverRow(waiver: BucketWaiverTuple): CsvValue[] {
+    return [waiver.start, waiver.reason];
+}
 
 class CsvTableBuilder {
     private chunks: string[] = [];
@@ -206,17 +233,12 @@ export function serializeReadoutsToJsonBytes(readouts: Readout[]): Uint8Array {
             // Always stamp the serializer's own format, not the source
             // readout's: it describes how this record is laid out.
             format_version: SUPPORTED_FORMAT_VERSION,
-            point_hit: data.pointHits.map((pointHit) => [
-                pointHit.start,
-                pointHit.depth,
-                pointHit.hits,
-                pointHit.hit_buckets,
-                pointHit.full_buckets,
-            ]),
+            point_hit: data.pointHits.map(pointHitRow),
             bucket_hit: data.bucketHits.map((bucketHit) => [
                 bucketHit.start,
                 bucketHit.hits,
             ]),
+            bucket_waiver: data.bucketWaivers.map(bucketWaiverRow),
         });
     }
 
@@ -231,6 +253,7 @@ export function serializeReadoutsToArchiveBytes(readouts: Readout[]): Uint8Array
     const bucketGoalTable = new CsvTableBuilder();
     const pointHitTable = new CsvTableBuilder();
     const bucketHitTable = new CsvTableBuilder();
+    const bucketWaiverTable = new CsvTableBuilder();
     const definitionTable = new CsvTableBuilder();
     const recordTable = new CsvTableBuilder();
 
@@ -260,15 +283,7 @@ export function serializeReadoutsToArchiveBytes(readouts: Readout[]): Uint8Array
             ]),
         );
 
-        const pointHitSpan = pointHitTable.writeRows(
-            data.pointHits.map((pointHit) => [
-                pointHit.start,
-                pointHit.depth,
-                pointHit.hits,
-                pointHit.hit_buckets,
-                pointHit.full_buckets,
-            ]),
-        );
+        const pointHitSpan = pointHitTable.writeRows(data.pointHits.map(pointHitRow));
 
         const axisSpan = axisTable.writeRows(
             data.axes.map((axis) => [
@@ -293,6 +308,10 @@ export function serializeReadoutsToArchiveBytes(readouts: Readout[]): Uint8Array
 
         const bucketHitSpan = bucketHitTable.writeRows(
             data.bucketHits.map((bucketHit) => [bucketHit.hits]),
+        );
+
+        const bucketWaiverSpan = bucketWaiverTable.writeRows(
+            data.bucketWaivers.map(bucketWaiverRow),
         );
 
         const definitionSpan = definitionTable.writeRows([
@@ -325,6 +344,10 @@ export function serializeReadoutsToArchiveBytes(readouts: Readout[]): Uint8Array
                 // Always stamp the serializer's own format, not the source
                 // readout's: it describes how this record row is laid out.
                 SUPPORTED_FORMAT_VERSION,
+                // Format 3: byte range of this record's waivers, after
+                // format_version so older readers still parse the row.
+                bucketWaiverSpan.start,
+                bucketWaiverSpan.end,
             ],
         ]);
     }
@@ -339,6 +362,7 @@ export function serializeReadoutsToArchiveBytes(readouts: Readout[]): Uint8Array
         { name: "bucket_goal", data: bucketGoalTable.toBytes() },
         { name: "point_hit", data: pointHitTable.toBytes() },
         { name: "bucket_hit", data: bucketHitTable.toBytes() },
+        { name: "bucket_waiver", data: bucketWaiverTable.toBytes() },
     ]);
 
     return gzipSync(tarBytes);

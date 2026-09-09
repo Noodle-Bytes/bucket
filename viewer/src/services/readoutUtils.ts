@@ -17,6 +17,8 @@ type MaterializedReadoutData = {
     goals: GoalTuple[];
     pointHits: PointHitTuple[];
     bucketHits: BucketHitTuple[];
+    /** Waived buckets (format 3+); empty for older records. */
+    bucketWaivers: BucketWaiverTuple[];
 };
 
 function clonePointTuple(point: PointTuple): PointTuple {
@@ -47,15 +49,24 @@ function cloneBucketHitTuple(bucketHit: BucketHitTuple): BucketHitTuple {
     return { ...bucketHit };
 }
 
+function cloneBucketWaiverTuple(waiver: BucketWaiverTuple): BucketWaiverTuple {
+    return { ...waiver };
+}
+
 function toSliceEnd<T>(items: T[], end: number | null): number {
     return end === null ? items.length : end;
 }
 
+/** Constructor input: waivers may be omitted (no waived buckets). */
+export type InMemoryReadoutData = Omit<MaterializedReadoutData, "bucketWaivers"> & {
+    bucketWaivers?: BucketWaiverTuple[];
+};
+
 export class InMemoryReadout implements Readout {
     private data: MaterializedReadoutData;
 
-    constructor(data: MaterializedReadoutData) {
-        this.data = data;
+    constructor(data: InMemoryReadoutData) {
+        this.data = { ...data, bucketWaivers: data.bucketWaivers ?? [] };
     }
 
     get_def_sha(): string {
@@ -144,6 +155,18 @@ export class InMemoryReadout implements Readout {
             .slice(start, toSliceEnd(this.data.bucketHits, end))
             .map(cloneBucketHitTuple);
     }
+
+    *iter_bucket_waivers(
+        start: number = 0,
+        end: number | null = null,
+    ): Generator<BucketWaiverTuple> {
+        // Sparse table: filter by bucket index, not by row position.
+        for (const waiver of this.data.bucketWaivers) {
+            if (waiver.start >= start && (end === null || waiver.start < end)) {
+                yield cloneBucketWaiverTuple(waiver);
+            }
+        }
+    }
 }
 
 export function materializeReadout(readout: Readout): MaterializedReadoutData {
@@ -161,7 +184,28 @@ export function materializeReadout(readout: Readout): MaterializedReadoutData {
         goals: Array.from(readout.iter_goals(0, null)).map(cloneGoalTuple),
         pointHits: Array.from(readout.iter_point_hits()).map(clonePointHitTuple),
         bucketHits: Array.from(readout.iter_bucket_hits(0, null)).map(cloneBucketHitTuple),
+        bucketWaivers: Array.from(readout.iter_bucket_waivers(0, null)).map(
+            cloneBucketWaiverTuple,
+        ),
     };
+}
+
+/**
+ * Union waivers from several records by bucket index. The first record to
+ * waive a bucket supplies the reason.
+ */
+export function unionBucketWaivers(
+    waiverLists: Iterable<BucketWaiverTuple>[],
+): BucketWaiverTuple[] {
+    const byStart = new Map<number, BucketWaiverTuple>();
+    for (const waivers of waiverLists) {
+        for (const waiver of waivers) {
+            if (!byStart.has(waiver.start)) {
+                byStart.set(waiver.start, { ...waiver });
+            }
+        }
+    }
+    return Array.from(byStart.values()).sort((a, b) => a.start - b.start);
 }
 
 function getMergedSourceName(): string {
@@ -175,11 +219,18 @@ function getMergedSourceName(): string {
     return `Merged_${year}${month}${day}_${hour}${minute}${second}`;
 }
 
-function buildMergedPointHits(
+/**
+ * Recompute point_hit rows from bucket hits, mirroring the Python writer:
+ * only buckets with a positive goal target score, and a waived bucket is
+ * excluded from scoring entirely (its hits count towards nothing) while its
+ * bucket and target are reported in waived_buckets / waived_target.
+ */
+export function buildMergedPointHits(
     points: PointTuple[],
     bucketGoals: BucketGoalTuple[],
     goals: GoalTuple[],
     bucketHits: BucketHitTuple[],
+    bucketWaivers: BucketWaiverTuple[] = [],
 ): PointHitTuple[] {
     const goalTargetByStart = new Map<number, number>();
     for (const goal of goals) {
@@ -196,11 +247,15 @@ function buildMergedPointHits(
         bucketHitByStart.set(bucketHit.start, bucketHit);
     }
 
+    const waivedStarts = new Set(bucketWaivers.map((waiver) => waiver.start));
+
     const pointHits: PointHitTuple[] = [];
     for (const point of points) {
         let hits = 0;
         let hitBuckets = 0;
         let fullBuckets = 0;
+        let waivedBuckets = 0;
+        let waivedTarget = 0;
         for (let bucketIdx = point.bucket_start; bucketIdx < point.bucket_end; bucketIdx += 1) {
             const bucketHit = bucketHitByStart.get(bucketIdx);
             if (!bucketHit) {
@@ -212,6 +267,11 @@ function buildMergedPointHits(
             }
             const target = goalTargetByStart.get(bucketGoal.goal) ?? 0;
             if (target <= 0) {
+                continue;
+            }
+            if (waivedStarts.has(bucketIdx)) {
+                waivedBuckets += 1;
+                waivedTarget += target;
                 continue;
             }
             const cappedBucketHits = Math.min(bucketHit.hits, target);
@@ -229,6 +289,8 @@ function buildMergedPointHits(
             hits,
             hit_buckets: hitBuckets,
             full_buckets: fullBuckets,
+            waived_buckets: waivedBuckets,
+            waived_target: waivedTarget,
         });
     }
     return pointHits;
@@ -256,11 +318,13 @@ export function mergeCompareReadoutsForDisplay(readoutA: Readout, readoutB: Read
         hits: bucketHit.hits + (hitsBByStart.get(bucketHit.start) ?? 0),
     }));
 
+    const mergedWaivers = unionBucketWaivers([master.bucketWaivers, dataB.bucketWaivers]);
     const mergedPointHits = buildMergedPointHits(
         master.points,
         master.bucketGoals,
         master.goals,
         mergedBucketHits,
+        mergedWaivers,
     );
 
     return new InMemoryReadout({
@@ -277,6 +341,7 @@ export function mergeCompareReadoutsForDisplay(readoutA: Readout, readoutB: Read
         goals: master.goals,
         pointHits: mergedPointHits,
         bucketHits: mergedBucketHits,
+        bucketWaivers: mergedWaivers,
     });
 }
 
@@ -306,6 +371,7 @@ export function mergeReadoutsStrict(readouts: Readout[]): Readout {
     for (const bucketHit of master.bucketHits) {
         hitsByBucketStart.set(bucketHit.start, bucketHit.hits);
     }
+    const waiverLists: Iterable<BucketWaiverTuple>[] = [master.bucketWaivers];
 
     for (const readout of otherReadouts) {
         if (readout.get_def_sha() !== master.defSha) {
@@ -326,6 +392,7 @@ export function mergeReadoutsStrict(readouts: Readout[]): Readout {
                 (hitsByBucketStart.get(bucketHit.start) ?? 0) + bucketHit.hits,
             );
         }
+        waiverLists.push(readout.iter_bucket_waivers(0, null));
     }
 
     const mergedBucketHits = master.bucketHits.map((bucketHit) => ({
@@ -333,11 +400,16 @@ export function mergeReadoutsStrict(readouts: Readout[]): Readout {
         hits: hitsByBucketStart.get(bucketHit.start) ?? bucketHit.hits,
     }));
 
+    // Waivers union across the merged records; the first record to waive a
+    // bucket supplies the reason. Point hits are then rescored so the waived
+    // buckets drop out of hits / hit_buckets / full_buckets.
+    const mergedWaivers = unionBucketWaivers(waiverLists);
     const mergedPointHits = buildMergedPointHits(
         master.points,
         master.bucketGoals,
         master.goals,
         mergedBucketHits,
+        mergedWaivers,
     );
 
     return new InMemoryReadout({
@@ -354,5 +426,6 @@ export function mergeReadoutsStrict(readouts: Readout[]): Readout {
         goals: master.goals,
         pointHits: mergedPointHits,
         bucketHits: mergedBucketHits,
+        bucketWaivers: mergedWaivers,
     });
 }

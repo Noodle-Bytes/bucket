@@ -117,7 +117,15 @@ export class JSONReadout implements Readout {
     ): Generator<PointHitTuple> {
         const offsetStart = start + depth;
         const offsetEnd = end === null ? null : end + depth;
-        yield *this.iter_rec_table("point_hit", offsetStart, offsetEnd);
+        for (const pointHit of this.iter_rec_table<PointHitTuple>("point_hit", offsetStart, offsetEnd)) {
+            // Rows from format 1/2 files (or short rows) carry no waiver
+            // counts; they read as zero.
+            yield {
+                ...pointHit,
+                waived_buckets: toCount(pointHit.waived_buckets),
+                waived_target: toCount(pointHit.waived_target),
+            };
+        }
     }
     *iter_bucket_hits(
         start: number=0,
@@ -125,6 +133,42 @@ export class JSONReadout implements Readout {
     ): Generator<BucketHitTuple> {
         yield *this.iter_rec_table("bucket_hit", start, end);
     }
+    *iter_bucket_waivers(
+        start: number=0,
+        end: number | null=null,
+    ): Generator<BucketWaiverTuple> {
+        // Format 1/2 records have no bucket_waiver table at all.
+        const rows = this.record.bucket_waiver;
+        if (!Array.isArray(rows)) {
+            return;
+        }
+        const keys = this.tables.bucket_waiver ?? BUCKET_WAIVER_COLUMNS;
+        const startIdx = keys.indexOf("start");
+        const reasonIdx = keys.indexOf("reason");
+        for (const values of rows) {
+            const waiver = {
+                start: toNumber((values[startIdx] ?? 0) as string | number),
+                reason: toString((values[reasonIdx] ?? "") as string | number),
+            };
+            if (inBucketRange(waiver.start, start, end)) {
+                yield waiver;
+            }
+        }
+    }
+}
+
+const BUCKET_WAIVER_COLUMNS = ["start", "reason"];
+
+function inBucketRange(index: number, start: number, end: number | null): boolean {
+    return index >= start && (end === null || index < end);
+}
+
+function toCount(value: unknown): number {
+    if (value === null || value === undefined || value === "") {
+        return 0;
+    }
+    const parsed = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
 }
 export class JSONReader implements Reader {
     data: JSONData;
@@ -155,7 +199,16 @@ const ARCHIVE_TABLE_FILES = [
     "bucket_goal",
     "point_hit",
     "bucket_hit",
+    "bucket_waiver",
 ] as const;
+
+/**
+ * Tables added by later storage formats; an archive written before the
+ * table existed simply lacks the file and reads as an empty table.
+ */
+const OPTIONAL_ARCHIVE_TABLE_FILES: ReadonlySet<ArchiveTableName> = new Set([
+    "bucket_waiver",
+]);
 
 type ArchiveTableName = (typeof ARCHIVE_TABLE_FILES)[number];
 
@@ -184,6 +237,8 @@ type ArchiveRecord = {
     source_key: string | null;  // Stored as "" in CSV, converted to null when reading
     bucket_version: string;  // Version of bucket that wrote this record ("" if unknown)
     format_version: number;  // Storage format of the record (legacy rows omit the column)
+    bucket_waiver_offset: number;  // Format 3+; rows without the columns read as an empty range
+    bucket_waiver_end: number;
 };
 
 type ArchiveTableMap = Record<ArchiveTableName, ArchiveTable>;
@@ -198,6 +253,9 @@ export type ParsedCsvTable = {
 };
 
 export type ParsedArchiveTables = Record<ArchiveTableName, ParsedCsvTable>;
+/** Parsed tables where format-3+ additions may be absent (older archives). */
+export type PartialParsedArchiveTables = Omit<ParsedArchiveTables, "bucket_waiver"> &
+    Partial<Pick<ParsedArchiveTables, "bucket_waiver">>;
 
 class ArchiveTable {
     rows: (string | number)[][];
@@ -408,6 +466,9 @@ export class ArchiveReadout implements Readout {
                 hits: toNumber(hits),
                 hit_buckets: toNumber(hit_buckets),
                 full_buckets: toNumber(full_buckets),
+                // Format 1/2 rows stop at full_buckets.
+                waived_buckets: toCount(row[5]),
+                waived_target: toCount(row[6]),
             };
         }
     }
@@ -428,6 +489,22 @@ export class ArchiveReadout implements Readout {
                 hits: toNumber(row[0]),
             };
             idx += 1;
+        }
+    }
+
+    *iter_bucket_waivers(
+        start: number = 0,
+        end: number | null = null,
+    ): Generator<BucketWaiverTuple> {
+        for (const row of this.tables.bucket_waiver.slice(
+            this.record.bucket_waiver_offset,
+            this.record.bucket_waiver_end,
+        )) {
+            const [bucketStart, reason] = row;
+            const index = toNumber(bucketStart);
+            if (inBucketRange(index, start, end)) {
+                yield { start: index, reason: toString(reason ?? "") };
+            }
         }
     }
 }
@@ -455,10 +532,10 @@ export class ArchiveReader implements Reader {
      * Reconstruct a reader from already-parsed table data (e.g. produced off
      * the main thread by the archive worker — see archiveWorker.ts).
      */
-    static fromParsedTables(parsed: ParsedArchiveTables): ArchiveReader {
+    static fromParsedTables(parsed: PartialParsedArchiveTables): ArchiveReader {
         const tables = {} as ArchiveTableMap;
         for (const name of ARCHIVE_TABLE_FILES) {
-            tables[name] = new ArchiveTable(parsed[name]);
+            tables[name] = new ArchiveTable(parsed[name] ?? { rows: [], offsets: [] });
         }
         return new ArchiveReader(tables);
     }
@@ -540,6 +617,9 @@ function toArchiveRecord(row: (string | number)[]): ArchiveRecord {
         source_key: source_key === "" ? null : toString(source_key),
         bucket_version: row.length > 8 ? toString(row[8]) : "",
         format_version: toFormatVersion(row.length > 9 ? row[9] : null),
+        // Format 3 appended the bucket_waiver byte range after format_version.
+        bucket_waiver_offset: row.length > 11 ? toNumber(row[10]) : 0,
+        bucket_waiver_end: row.length > 11 ? toNumber(row[11]) : 0,
     };
 }
 
@@ -641,13 +721,16 @@ function parseTarEntries(buffer: Uint8Array): Record<string, Uint8Array> {
 export function parseArchiveBytes(bytes: Uint8Array): ParsedArchiveTables {
     const decompressed = gunzipSync(bytes);
     const entries = parseTarEntries(decompressed);
-    const missing = ARCHIVE_TABLE_FILES.filter((name) => !(name in entries));
+    const missing = ARCHIVE_TABLE_FILES.filter(
+        (name) => !(name in entries) && !OPTIONAL_ARCHIVE_TABLE_FILES.has(name),
+    );
     if (missing.length > 0) {
         throw new Error(`Archive is missing tables: ${missing.join(", ")}`);
     }
     const tables = {} as ParsedArchiveTables;
     for (const name of ARCHIVE_TABLE_FILES) {
-        tables[name] = parseCsvTable(entries[name]!);
+        const entry = entries[name];
+        tables[name] = entry ? parseCsvTable(entry) : { rows: [], offsets: [] };
     }
     return tables;
 }
