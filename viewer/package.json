@@ -46,7 +46,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "fake-indexeddb": "^6.2.5",
     "globals": "^16.2.0",
-    "typescript": "^5.2.2",
+    "typescript": "^7.0.2",
     "typescript-eslint": "^8.58.2",
     "vite-node": "^3.2.4",
     "vite-plugin-pwa": "^1.2.0",
