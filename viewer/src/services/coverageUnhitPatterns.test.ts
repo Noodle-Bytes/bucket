@@ -13,8 +13,14 @@ import { buildReadableReportHtml } from "@/services/readableReport";
 import { InMemoryReadout } from "@/services/readoutUtils";
 import type { CompareRecordMeta } from "@/types/coverageCompare";
 
-function createTwoAxisReadout(bucketHits: number[][]): Readout {
+function createTwoAxisReadout(
+    bucketHits: number[][],
+    waivers: BucketWaiverTuple[] = [],
+): Readout {
+    const waivedStarts = new Set(waivers.map((waiver) => waiver.start));
+    const scored = bucketHits.flat().filter((_, idx) => !waivedStarts.has(idx));
     return new InMemoryReadout({
+        bucketWaivers: waivers,
         defSha: "def-a",
         recSha: "rec-a",
         source: "suite",
@@ -72,9 +78,11 @@ function createTwoAxisReadout(bucketHits: number[][]): Readout {
             {
                 start: 0,
                 depth: 0,
-                hits: bucketHits.flat().reduce((sum, hits) => sum + Math.min(hits, 10), 0),
-                hit_buckets: bucketHits.flat().filter((hits) => hits > 0).length,
-                full_buckets: bucketHits.flat().filter((hits) => hits >= 10).length,
+                hits: scored.reduce((sum, hits) => sum + Math.min(hits, 10), 0),
+                hit_buckets: scored.filter((hits) => hits > 0).length,
+                full_buckets: scored.filter((hits) => hits >= 10).length,
+                waived_buckets: waivers.length,
+                waived_target: waivers.length * 10,
             },
         ],
         bucketHits: bucketHits.flatMap((row, rowIdx) =>
@@ -108,6 +116,31 @@ describe("buildCoverageGapComparison", () => {
         expect(gap.global.a_only).toBe(2);
         expect(gap.global.both).toBe(2);
         expect(gap.bucketDetails.filter((bucket) => bucket.category === "a_only")).toHaveLength(2);
+    });
+});
+
+describe("buildCoverageGapComparison with waivers", () => {
+    test("waived buckets are neither gaps nor covered", () => {
+        // Barbara/Slipper (bucket 2) is unhit but waived; Barbara/Ball (3) is a real gap.
+        const readout = createTwoAxisReadout(
+            [
+                [10, 5],
+                [0, 0],
+            ],
+            [{ start: 2, reason: "unreachable in this config" }],
+        );
+        const gap = buildCoverageGapComparison(readout, meta(readout), "any_hit");
+        expect(gap.global).toMatchObject({ a_only: 1, both: 2, waived: 1, valid: 3 });
+        expect(gap.bucketsByIndex.get(2)).toBe("waived");
+        expect(gap.bucketDetails.map((bucket) => bucket.bucketIndex)).toEqual([0, 1, 3]);
+
+        // Pattern search never reports the waived bucket as unhit.
+        const patterns = findUnhitPatterns(gap, "detailed");
+        const barbara = patterns.find((pattern) => pattern.conditions.name === "Barbara");
+        expect(barbara?.bucketCount ?? 0).toBeLessThanOrEqual(1);
+        expect(
+            patterns.some((pattern) => pattern.conditions.favourite_toy === "Slipper"),
+        ).toBe(false);
     });
 });
 

@@ -8,6 +8,7 @@ import { describe, expect, test } from "vitest";
 import {
     ArchiveReader,
     ParsedArchiveTables,
+    PartialParsedArchiveTables,
     parseCsvTable,
     parseCsvTableBytes,
     readJsonBytes,
@@ -250,6 +251,7 @@ describe("archive record format version", () => {
             bucket_goal: emptyTable(),
             point_hit: emptyTable(),
             bucket_hit: emptyTable(),
+            bucket_waiver: emptyTable(),
         };
     }
 
@@ -302,5 +304,160 @@ describe("json record format version", () => {
         const readout = await readSingle(payload);
         expect(readout.get_format_version?.()).toBe(1);
         expect(readout.get_bucket_version()).toBe("");
+    });
+});
+
+describe("bucket waivers (storage format 3)", () => {
+    const emptyTable = () => ({ rows: [], offsets: [] });
+
+    /**
+     * One record whose point covers buckets 0..3. The bucket_waiver table
+     * holds two records' worth of rows so the byte range on the record row
+     * is load-bearing: record 0 owns bytes [0, 22), record 1 the rest.
+     */
+    function buildWaiverTables(recordRow: (string | number)[], pointHitRow: (string | number)[]): ParsedArchiveTables {
+        return {
+            definition: {
+                rows: [["defsha", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+                offsets: [0],
+            },
+            record: { rows: [recordRow], offsets: [0] },
+            point: emptyTable(),
+            axis: emptyTable(),
+            axis_value: emptyTable(),
+            goal: emptyTable(),
+            bucket_goal: emptyTable(),
+            point_hit: { rows: [pointHitRow], offsets: [0] },
+            bucket_hit: emptyTable(),
+            bucket_waiver: {
+                // "1","first"\n  (12 bytes)  "3","third"\n (12 bytes) | "7","other"\n
+                rows: [
+                    [1, "first"],
+                    [3, "third"],
+                    [7, "other record"],
+                ],
+                offsets: [0, 12, 24],
+            },
+        };
+    }
+
+    test("archive: reads the waiver range and the trailing point_hit columns", async () => {
+        const reader = ArchiveReader.fromParsedTables(
+            buildWaiverTables(
+                // ..., bucket_version, format_version, bucket_waiver_offset, bucket_waiver_end
+                ["recsha", 0, 0, 1, 0, 0, "", "", "2.0.0", 3, 0, 24],
+                [0, 0, 5, 1, 1, 2, 10],
+            ),
+        );
+        const readout = await reader.read(0);
+        expect(readout.get_format_version?.()).toBe(3);
+        expect(Array.from(readout.iter_bucket_waivers(0, null))).toEqual([
+            { start: 1, reason: "first" },
+            { start: 3, reason: "third" },
+        ]);
+        // The range filters by bucket index, not row position.
+        expect(Array.from(readout.iter_bucket_waivers(2, 4))).toEqual([
+            { start: 3, reason: "third" },
+        ]);
+        expect(Array.from(readout.iter_bucket_waivers(4, null))).toEqual([]);
+        expect(Array.from(readout.iter_point_hits())).toEqual([
+            {
+                start: 0,
+                depth: 0,
+                hits: 5,
+                hit_buckets: 1,
+                full_buckets: 1,
+                waived_buckets: 2,
+                waived_target: 10,
+            },
+        ]);
+    });
+
+    test("archive: format 2 rows without the columns read as no waivers", async () => {
+        const reader = ArchiveReader.fromParsedTables(
+            buildWaiverTables(
+                ["recsha", 0, 0, 1, 0, 0, "", "", "1.9.0", 2],
+                [0, 0, 5, 1, 1],
+            ),
+        );
+        const readout = await reader.read(0);
+        expect(Array.from(readout.iter_bucket_waivers(0, null))).toEqual([]);
+        const [pointHit] = Array.from(readout.iter_point_hits());
+        expect(pointHit.waived_buckets).toBe(0);
+        expect(pointHit.waived_target).toBe(0);
+    });
+
+    test("archive: a parsed table set without bucket_waiver still loads", async () => {
+        const tables = buildWaiverTables(
+            ["recsha", 0, 0, 1, 0, 0, "", "", "1.9.0", 2],
+            [0, 0, 5, 1, 1],
+        );
+        const withoutWaivers: PartialParsedArchiveTables = { ...tables };
+        delete withoutWaivers.bucket_waiver;
+        const reader = ArchiveReader.fromParsedTables(withoutWaivers);
+        const readout = await reader.read(0);
+        expect(Array.from(readout.iter_bucket_waivers(0, null))).toEqual([]);
+    });
+
+    test("json: reads bucket_waiver rows and the extra point_hit fields", async () => {
+        const tables = createCommonTables(BASE_POINT_COLUMNS);
+        tables.point_hit = [...tables.point_hit, "waived_buckets", "waived_target"];
+        tables.bucket_waiver = ["start", "reason"];
+        const payload: JsonPayload = {
+            tables,
+            definitions: [createBaseDefinition([
+                0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, "root", "point",
+            ])],
+            records: [
+                createBaseRecord({
+                    format_version: 3,
+                    point_hit: [[0, 0, 0, 0, 0, 1, 1]],
+                    bucket_waiver: [[0, "known gap"]],
+                }),
+            ],
+        };
+        const readout = await readSingle(payload);
+        expect(Array.from(readout.iter_bucket_waivers(0, null))).toEqual([
+            { start: 0, reason: "known gap" },
+        ]);
+        expect(Array.from(readout.iter_bucket_waivers(1, null))).toEqual([]);
+        expect(Array.from(readout.iter_point_hits())[0]).toMatchObject({
+            waived_buckets: 1,
+            waived_target: 1,
+        });
+    });
+
+    test("json: format 2 records without the table or fields default to none", async () => {
+        const payload: JsonPayload = {
+            tables: createCommonTables(BASE_POINT_COLUMNS),
+            definitions: [createBaseDefinition([
+                0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, "root", "point",
+            ])],
+            records: [createBaseRecord({ format_version: 2 })],
+        };
+        const readout = await readSingle(payload);
+        expect(Array.from(readout.iter_bucket_waivers(0, null))).toEqual([]);
+        expect(Array.from(readout.iter_point_hits())[0]).toMatchObject({
+            waived_buckets: 0,
+            waived_target: 0,
+        });
+    });
+
+    test("json: short point_hit rows under a format 3 table read waived counts as 0", async () => {
+        const tables = createCommonTables(BASE_POINT_COLUMNS);
+        tables.point_hit = [...tables.point_hit, "waived_buckets", "waived_target"];
+        const payload: JsonPayload = {
+            tables,
+            definitions: [createBaseDefinition([
+                0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, "root", "point",
+            ])],
+            records: [createBaseRecord({ point_hit: [[0, 0, 1, 1, 1]] })],
+        };
+        const readout = await readSingle(payload);
+        expect(Array.from(readout.iter_point_hits())[0]).toMatchObject({
+            hits: 1,
+            waived_buckets: 0,
+            waived_target: 0,
+        });
     });
 });

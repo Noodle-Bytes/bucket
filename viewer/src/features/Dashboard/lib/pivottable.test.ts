@@ -135,6 +135,7 @@ describe("aggregatePivotCells", () => {
                 sumHits: 10,
                 sumTargets: 10,
                 bucketCount: 1,
+                waivedCount: 0,
             });
             expect(typeof cellALo!.sumTargets).toBe("number");
 
@@ -143,6 +144,7 @@ describe("aggregatePivotCells", () => {
                 sumHits: 0,
                 sumTargets: 10,
                 bucketCount: 1,
+                waivedCount: 0,
             });
 
             // Ratio used by the table renderer must be finite (not NaN from string concat).
@@ -286,6 +288,7 @@ describe("compare mode", () => {
             sumHits: 10,
             sumTargets: 20,
             bucketCount: 2,
+            waivedCount: 0,
             compare: { validBuckets: 2, hitsA: 10, hitsB: 20, target: 20, category: "both" },
         });
         // The ignored bucket counts towards bucketCount but not towards the comparison.
@@ -293,6 +296,7 @@ describe("compare mode", () => {
             sumHits: 9,
             sumTargets: 10,
             bucketCount: 2,
+            waivedCount: 0,
             compare: { validBuckets: 1, hitsA: 4, hitsB: 0, target: 10, category: "a_only" },
         });
     });
@@ -343,5 +347,29 @@ describe("compare mode", () => {
         expect(getCompareCellBackground(info, "all")).toBe("rgba(22, 163, 74, 0.35)");
         expect(getCompareCellBackground(info, "both")).toBe("rgba(22, 163, 74, 0.35)");
         expect(getCompareCellBackground(info, "a_only")).toBe("rgba(22, 163, 74, 0.12)");
+    });
+});
+
+describe("waived buckets in pivot cells", () => {
+    test("waived buckets are counted but excluded from hit/target sums", () => {
+        const buckets = [
+            { axes: { kind: "A" }, bucketIndex: 0, hitCount: 10, goalTarget: 10 },
+            { axes: { kind: "A" }, bucketIndex: 1, hitCount: 7, goalTarget: 10, waived: true },
+            { axes: { kind: "B" }, bucketIndex: 2, hitCount: 0, goalTarget: 10, waived: true },
+        ];
+        const { cellMap } = aggregatePivotCells(buckets, ["kind"], []);
+        expect(cellMap.get("A\t")).toEqual({
+            sumHits: 10,
+            sumTargets: 10,
+            bucketCount: 2,
+            waivedCount: 1,
+        });
+        // A cell made only of waived buckets has nothing to score.
+        expect(cellMap.get("B\t")).toEqual({
+            sumHits: 0,
+            sumTargets: 0,
+            bucketCount: 1,
+            waivedCount: 1,
+        });
     });
 });
