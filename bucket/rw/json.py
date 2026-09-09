@@ -39,7 +39,7 @@ class JSONWriter(Writer):
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
         if self.path.exists():
-            with self.path.open("r") as f:
+            with self.path.open("r", encoding="utf-8") as f:
                 data = json.load(f)
         else:
             data = {}
@@ -58,11 +58,11 @@ class JSONWriter(Writer):
         if "records" not in data:
             data["records"] = []
 
-        with self.path.open("w") as f:
+        with self.path.open("w", encoding="utf-8") as f:
             json.dump(data, f)
 
     def write(self, readout: Readout):
-        with self.path.open("r") as f:
+        with self.path.open("r", encoding="utf-8") as f:
             data = json.load(f)
 
             definition = {
@@ -94,7 +94,7 @@ class JSONWriter(Writer):
             record_id = len(data["records"])
             data["records"].append(record)
 
-        with self.path.open("w") as f:
+        with self.path.open("w", encoding="utf-8") as f:
             json.dump(data, f)
 
         return record_id
@@ -111,7 +111,7 @@ class JSONReader(Reader):
     def read(self, rec_ref: int):
         readout = PuppetReadout()
 
-        with self.path.open("r") as f:
+        with self.path.open("r", encoding="utf-8") as f:
             data = json.load(f)
 
         record = data.get("records", [])[rec_ref]
@@ -142,7 +142,7 @@ class JSONReader(Reader):
         return readout
 
     def read_all(self) -> Iterable[Readout]:
-        with self.path.open("r") as f:
+        with self.path.open("r", encoding="utf-8") as f:
             data = json.load(f)
 
         for record_index in range(len(data.get("records", []))):

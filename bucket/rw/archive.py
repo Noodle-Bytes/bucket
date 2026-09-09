@@ -76,7 +76,9 @@ def _write(path: Path, values: Iterable[tuple]):
     Write values to a CSV file and return the byte offsets so we can seek
     later.
     """
-    with path.open("a", newline="") as f:
+    # Explicit UTF-8: the readers decode bytes as UTF-8, and Windows would
+    # otherwise write the platform code page.
+    with path.open("a", newline="", encoding="utf-8") as f:
         byte_offset = f.tell()
         csv_writer = csv.writer(f, quoting=csv.QUOTE_NONNUMERIC)
         for value in values:
@@ -398,7 +400,7 @@ class ArchiveReader(Reader):
         """
         path, tempdir = self._extract()
         # Record ids in the record file are start byte of each line
-        with (path / RECORD_PATH).open("r", newline="") as f:
+        with (path / RECORD_PATH).open("r", newline="", encoding="utf-8") as f:
             while True:
                 pos = f.tell()
                 if not f.readline():
