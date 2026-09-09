@@ -79,13 +79,18 @@ def _write(path: Path, values: Iterable[tuple]):
     # Explicit UTF-8: the readers decode bytes as UTF-8, and Windows would
     # otherwise write the platform code page.
     with path.open("a", newline="", encoding="utf-8") as f:
-        byte_offset = f.tell()
+        # The readers seek with these offsets in binary mode, so take them from
+        # the underlying byte buffer: a text stream's tell() is only documented
+        # as an opaque cookie, even though it matches at line boundaries.
+        f.flush()
+        byte_offset = f.buffer.tell()
         csv_writer = csv.writer(f, quoting=csv.QUOTE_NONNUMERIC)
         for value in values:
             # Convert None values to empty strings for CSV compatibility
             csv_row = tuple("" if v is None else v for v in value)
             csv_writer.writerow(csv_row)
-        byte_end = f.tell()
+        f.flush()
+        byte_end = f.buffer.tell()
     return byte_offset, byte_end
 
 
@@ -399,8 +404,9 @@ class ArchiveReader(Reader):
         Read all records in the archive.
         """
         path, tempdir = self._extract()
-        # Record ids in the record file are start byte of each line
-        with (path / RECORD_PATH).open("r", newline="", encoding="utf-8") as f:
+        # Record ids in the record file are the start byte of each line. Binary
+        # mode so tell() is an exact byte offset; the line text is not needed.
+        with (path / RECORD_PATH).open("rb") as f:
             while True:
                 pos = f.tell()
                 if not f.readline():
