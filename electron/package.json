@@ -84,7 +84,8 @@
           "ext": "bktgz",
           "name": "Bucket Archive",
           "description": "Bucket Coverage Archive",
-          "role": "Viewer"
+          "role": "Viewer",
+          "icon": "bucket_file.ico"
         }
       ]
     },

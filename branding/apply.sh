@@ -56,6 +56,22 @@ echo "Building electron/bucket.icns..."
 "$root/electron/make-macos-icon.sh" "$branding/logo.png" "$root/electron" bucket
 rm -rf "$root/electron/bucket.iconset"
 
+# .bktgz document icon: a page carrying the mark, used for file associations.
+echo "Rasterizing 1024x1024 file-icon.png from file-icon.svg..."
+rasterize_svg "$branding/file-icon.svg" "$branding/file-icon.png"
+
+echo "Building electron/bucket_file.icns..."
+"$root/electron/make-macos-icon.sh" "$branding/file-icon.png" "$root/electron" bucket_file
+rm -rf "$root/electron/bucket_file.iconset"
+
+# Windows wants a multi-size .ico (16px to 256px); packed with sharp.
+if [[ -d "$root/viewer/node_modules/sharp" ]]; then
+  echo "Building electron/bucket_file.ico..."
+  node "$branding/make-ico.mjs" "$branding/file-icon.png" "$root/electron/bucket_file.ico"
+else
+  echo "Skipping bucket_file.ico (viewer node_modules not installed)."
+fi
+
 if [[ -d "$root/viewer/node_modules/@vite-pwa/assets-generator" ]]; then
   echo "Regenerating viewer PWA icons..."
   (cd "$root/viewer" && npm run generate-pwa-assets)

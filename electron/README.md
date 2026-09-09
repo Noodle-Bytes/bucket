@@ -123,9 +123,16 @@ Or just rebuild `electron/bucket.icns` from the existing PNG:
 ./electron/make-macos-icon.sh
 ```
 
-macOS uses `bucket.icns` (and `bucket_file.icns` for archives). Windows and
-Linux use `branding/logo.png` directly; electron-builder converts it to `.ico`
-and the Linux icon set at build time, so no extra tooling is needed there.
+macOS uses `bucket.icns` for the app. Windows and Linux use `branding/logo.png`
+directly; electron-builder converts it to `.ico` and the Linux icon set at
+build time, so no extra tooling is needed there.
+
+The `.bktgz` document icon comes from `branding/file-icon.svg`, a page carrying
+the mark. `branding/apply.sh` rasterizes it to `branding/file-icon.png` and
+builds `electron/bucket_file.icns` (macOS) and `electron/bucket_file.ico`
+(Windows, via electron-builder's bundled converter). Linux desktops pick file
+icons from the icon theme by MIME type, which an AppImage cannot install, so
+`.bktgz` files there show the generic archive icon.
 
 **Note**: The built app is completely standalone and does not require a web server to run. It loads the viewer from the bundled files.
 
