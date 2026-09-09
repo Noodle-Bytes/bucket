@@ -31,9 +31,11 @@ class FakeNpm:
         self.bundle_envs = []
 
     def __call__(self, args, cwd=None, env=None, **kwargs):
-        if args[:2] == ["npm", "ls"]:
+        # npm is resolved to a full path (npm.cmd on Windows), so match by name.
+        assert Path(args[0]).stem == "npm"
+        if args[1:2] == ["ls"]:
             return self.ls_result
-        assert args[:3] == ["npm", "run", "bundle"]
+        assert args[1:3] == ["run", "bundle"]
         assert env is not None and "BUCKET_CVG_JSON" in env
         self.bundle_envs.append(env["BUCKET_CVG_JSON"])
         if self.bundle_result == 0:

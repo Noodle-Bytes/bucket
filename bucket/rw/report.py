@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 
 from .common import Readout, Writer
-from .html import DEFAULT_WEB_PATH, require_viewer
+from .html import DEFAULT_WEB_PATH, npm_executable, require_viewer
 from .json import JSONWriter
 
 
@@ -60,7 +60,7 @@ class ReportWriter(Writer):
                 json_writer.write(a_readout)
 
             report_cmd = [
-                "npm",
+                npm_executable(),
                 "run",
                 "report",
                 "--",

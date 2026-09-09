@@ -2,7 +2,6 @@
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
 import os
-import shlex
 import shutil
 import subprocess
 import tempfile
@@ -12,6 +11,19 @@ from .common import Readout, Writer
 from .json import JSONWriter
 
 DEFAULT_WEB_PATH = Path(__file__).parent.parent.parent / "viewer"
+
+
+def npm_executable() -> str:
+    """
+    Locate npm for subprocess calls.
+
+    On Windows npm is installed as ``npm.cmd``, which ``subprocess`` cannot
+    launch by bare name without a shell; ``shutil.which`` resolves the full
+    path on every platform.
+    """
+    return shutil.which("npm") or "npm"
+
+
 HOSTED_VIEWER_URL = "https://noodle-bytes.github.io/bucket/"
 
 _VIEWER_FALLBACK = (
@@ -41,7 +53,7 @@ def require_viewer(web_path: str | Path) -> Path:
         )
     try:
         result = subprocess.call(
-            ["npm", "ls"],
+            [npm_executable(), "ls"],
             cwd=path,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -95,10 +107,17 @@ class HTMLWriter(Writer):
             process_env = os.environ.copy()
             process_env["BUCKET_CVG_JSON"] = json_path.as_posix()
 
-            bundle_cmd = f"npm run bundle -- --outDir={tmp} --emptyOutDir=false"
-            result = subprocess.call(
-                shlex.split(bundle_cmd), cwd=self.web_path, env=process_env
-            )
+            # Built as a list rather than split from a string so Windows temp
+            # paths (with backslashes) survive intact.
+            bundle_cmd = [
+                npm_executable(),
+                "run",
+                "bundle",
+                "--",
+                f"--outDir={tmp}",
+                "--emptyOutDir=false",
+            ]
+            result = subprocess.call(bundle_cmd, cwd=self.web_path, env=process_env)
 
             if result != 0:
                 raise RuntimeError("Could not build html bundle!")

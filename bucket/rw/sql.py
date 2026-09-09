@@ -335,7 +335,8 @@ class SQLAccessor(Accessor):
 
     @classmethod
     def File(cls, path: str | Path) -> "SQLAccessor":
-        return cls(f"sqlite:///{path}")
+        # Forward slashes keep the URL valid for Windows paths too.
+        return cls(f"sqlite:///{Path(path).as_posix()}")
 
     def reader(self):
         return SQLReader(self.engine)
