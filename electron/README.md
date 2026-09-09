@@ -3,9 +3,9 @@
   ~ Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
   -->
 
-# Bucket Mac App
+# Bucket Desktop App
 
-This is the Electron-based Mac application for viewing Bucket coverage archive files (`.bktgz`).
+This is the Electron-based desktop application for viewing Bucket coverage archive files (`.bktgz`). It builds for macOS (Apple Silicon and Intel), Windows and Linux.
 
 ## Development Only
 
@@ -41,25 +41,58 @@ If you are just wanting to build the app for local use, please skip this section
 
    **Note**: The web server is only required for development mode. The built/production app loads from the built files and doesn't need a server.
 
-## Building the Mac App
+## Building the Desktop App
 
-To build a local Mac app, you can use the build script which automatically handles all dependencies:
+One build script serves every platform. The simplest arrangement is for each OS
+to package itself: the macOS app on a Mac, the Windows installer on Windows,
+the Linux AppImage on Linux. A Mac can also cross-build the Windows and Linux
+packages (electron-builder downloads the Wine and AppImage tooling it needs),
+but macOS bundles can only be built on macOS.
 
-First make sure you have installed uv and npm
+### Prerequisites
+
+- Node.js 22.12 or newer and npm, plus `git` so the version can be read from tags
+- macOS: nothing else
+- Windows: nothing else (run the command from PowerShell or cmd)
+- Linux: `libfuse2` if you want to *run* the AppImage on distributions that no longer ship it
+
+### Build
+
+From the repository root:
+
 ```bash
-brew install uv
-brew install npm
-```
-Then start a bucket shell
-```bash
-./bin/shell
-```
-Then run the build script
-```bash
-./electron/build.sh
+node electron/build.mjs
 ```
 
-Or manually:
+On macOS and Linux, `./electron/build.sh` does the same thing.
+
+The script resolves the version from git tags, builds the viewer, installs any
+missing npm dependencies, and packages the app for the current OS. Pass a
+platform flag to override, and an architecture flag to narrow it:
+
+```bash
+node electron/build.mjs --mac            # arm64 and x64 .app bundles
+node electron/build.mjs --mac --arm64    # Apple Silicon only
+node electron/build.mjs --win            # NSIS installer, x64
+node electron/build.mjs --linux          # AppImage, x64
+node electron/build.mjs -- --publish never   # anything after -- goes to electron-builder
+```
+
+### Outputs
+
+Everything lands in `electron/dist/`:
+
+| OS      | Output                                                        | Notes                                              |
+|---------|---------------------------------------------------------------|----------------------------------------------------|
+| macOS   | `mac-arm64/Bucket.app` (Apple Silicon), `mac/Bucket.app` (Intel) | Unsigned; copy to Applications or run in place      |
+| Windows | `Bucket-<version>-win-x64.exe`                                | NSIS installer; `win-unpacked/` is a portable folder |
+| Linux   | `Bucket-<version>-linux-x86_64.AppImage`                         | `chmod +x` then run; `linux-unpacked/` also works    |
+
+Installing on Windows or Linux registers the `.bktgz` file association. On
+macOS the association is declared in the app bundle and takes effect once the
+app has been launched once.
+
+### Manual build
 
 ```bash
 # Build the viewer first
@@ -67,13 +100,14 @@ cd viewer
 npm install
 npm run build
 
-# Then build the Electron app
+# Then package the Electron app for the current OS
 cd ../electron
 npm install
-npm run build:mac
+npm run build            # or build:mac / build:win / build:linux
 ```
 
-This will create a `.app` bundle in the `electron/dist/mac-arm64` directory that can be used directly (no code signing required).
+`npm run build` skips version resolution, so the packaged app reports `0.0.0`
+unless you pass `--config.extraMetadata.version=<version>`.
 
 ## App icon
 
@@ -89,6 +123,10 @@ Or just rebuild `electron/bucket.icns` from the existing PNG:
 ./electron/make-macos-icon.sh
 ```
 
+macOS uses `bucket.icns` (and `bucket_file.icns` for archives). Windows and
+Linux use `branding/logo.png` directly; electron-builder converts it to `.ico`
+and the Linux icon set at build time, so no extra tooling is needed there.
+
 **Note**: The built app is completely standalone and does not require a web server to run. It loads the viewer from the bundled files.
 
 ## Features
@@ -97,5 +135,6 @@ Or just rebuild `electron/bucket.icns` from the existing PNG:
   - File > Open menu
   - Drag and drop
   - Double-clicking `.bktgz` files (when associated with the app)
-- Native macOS menu bar
+  - Passing paths on the command line
+- Native menu bar on each platform
 - Full coverage viewer functionality from the web app

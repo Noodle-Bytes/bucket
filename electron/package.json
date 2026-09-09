@@ -1,12 +1,14 @@
 {
   "name": "bucket-electron",
   "version": "0.0.0",
-  "description": "Bucket Coverage Viewer - Mac App",
+  "description": "Bucket Coverage Viewer - Desktop App",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
     "dev": "NODE_ENV=development electron ."
   },
   "author": "Noodle-Bytes",
@@ -24,13 +26,15 @@
   "build": {
     "appId": "com.noodlebytes.bucket",
     "productName": "Bucket",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": [
         {
           "target": "dir",
           "arch": [
-            "arm64"
+            "arm64",
+            "x64"
           ]
         }
       ],
@@ -62,6 +66,50 @@
           "role": "Viewer",
           "rank": "Owner",
           "icon": "bucket_file.icns"
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "../branding/logo.png",
+      "fileAssociations": [
+        {
+          "ext": "bktgz",
+          "name": "Bucket Archive",
+          "description": "Bucket Coverage Archive",
+          "role": "Viewer"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "../branding/logo.png",
+      "category": "Development",
+      "synopsis": "Bucket Coverage Viewer",
+      "fileAssociations": [
+        {
+          "ext": "bktgz",
+          "name": "Bucket Archive",
+          "mimeType": "application/x-bktgz"
         }
       ]
     },

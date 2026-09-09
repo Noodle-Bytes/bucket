@@ -10,7 +10,7 @@ There are four ways to view collected coverage:
 1. Terminal
 2. Coverage report (standalone HTML)
 3. Web viewer
-4. Electron Mac app
+4. Electron desktop app (macOS, Windows, Linux)
 
 The recommended workflow is to export a `.bktgz` archive from your testbench and
 open it in the viewer. Coverage is processed locally in the browser or desktop
@@ -267,9 +267,9 @@ different hit data.
 
 ---
 
-### Electron Mac app
+### Electron desktop app
 
-The Electron app provides a native Mac experience for viewing `.bktgz` archives.
+The Electron app provides a native desktop experience for viewing `.bktgz` archives on macOS, Windows and Linux.
 See [`electron/README.md`](../electron/README.md) for build instructions.
 
 Open archives via **File > Open**, drag and drop, double-click (when associated
