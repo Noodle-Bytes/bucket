@@ -169,7 +169,7 @@ class Covertop(Covergroup):
         Parameters:
             names: A case-insensitive string or string list to match against
         """
-        return self.exclude_by_function(self._match_by_name(names))
+        return self.restrict_by_function(self._match_by_name(names))
 
     @validate_call
     def exclude_by_name(self, names: MatchStrs):
@@ -204,7 +204,7 @@ class Covertop(Covergroup):
             tags: Tag(s) to match against
             match_all: If set, all tags must match. If cleared, any tags can match
         """
-        return self.exclude_by_function(self._match_by_tags(tags, match_all))
+        return self.restrict_by_function(self._match_by_tags(tags, match_all))
 
     @validate_call
     def exclude_by_tags(self, tags: TagStrs, match_all: bool = False):
