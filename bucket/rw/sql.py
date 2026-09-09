@@ -9,6 +9,7 @@ from sqlalchemy import Integer, String, create_engine, insert, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy.pool import NullPool
 
 from .common import (
     Accessor,
@@ -319,7 +320,11 @@ class SQLAccessor(Accessor):
     """
 
     def __init__(self, url: str):
-        self.engine = create_engine(url)
+        # SQLite file connections are not pooled: a pooled connection keeps
+        # the .db file open after the session closes, which on Windows blocks
+        # deleting or moving the file (e.g. temporary directory cleanup).
+        engine_kwargs = {"poolclass": NullPool} if url.startswith("sqlite") else {}
+        self.engine = create_engine(url, **engine_kwargs)
         try:
             BaseRow.metadata.create_all(self.engine)
         except OperationalError as exc:
