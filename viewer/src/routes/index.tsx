@@ -112,6 +112,13 @@ export const AppRoutes = () => {
     );
 
     const compare = useCoverageCompare(compareRecordRows);
+    // Destructure stable setters so the effect can depend on them without
+    // taking the whole `compare` object (new identity every render).
+    const {
+        setRecordIdA: setCompareRecordIdA,
+        setRecordIdB: setCompareRecordIdB,
+        setActive: setCompareActive,
+    } = compare;
 
     useEffect(() => {
         if (!pendingCompareActivation) {
@@ -144,14 +151,16 @@ export const AppRoutes = () => {
             return;
         }
 
-        compare.setRecordIdA(recordIdA);
-        compare.setRecordIdB(recordIdB);
-        compare.setActive(true);
+        setCompareRecordIdA(recordIdA);
+        setCompareRecordIdB(recordIdB);
+        setCompareActive(true);
     }, [
         pendingCompareActivation,
         compareRecordRows,
         clearPendingCompareActivation,
-        compare,
+        setCompareRecordIdA,
+        setCompareRecordIdB,
+        setCompareActive,
     ]);
 
     const displayTree = useMemo(() => {
