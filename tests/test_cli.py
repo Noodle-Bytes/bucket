@@ -5,6 +5,7 @@
 Tests for the `bucket` command line interface.
 """
 
+import json
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as pkg_version
 
@@ -68,6 +69,44 @@ def archives(tmp_path):
     ArchiveAccessor(path_1).writer().write(readout_1)
     ArchiveAccessor(path_2).writer().write(readout_2)
     return path_1, path_2, readout_1, readout_2
+
+
+@pytest.fixture
+def waivable_archives(tmp_path):
+    """
+    Like `archives`, but with a definition that actually has buckets (the
+    def_seed=1 tree is two empty groups), so waivers have something to match.
+    """
+    params = dict(
+        def_seed=7,
+        min_points=2,
+        max_points=3,
+        max_axes=2,
+        max_axis_values=3,
+        min_hits=1,
+        max_hits=2,
+    )
+    readout_1 = GeneratedReadout(rec_seed=1, **params)
+    readout_2 = GeneratedReadout(rec_seed=2, **params)
+    assert readout_1.waivable_buckets()
+    path_1 = tmp_path / "regr_1.bktgz"
+    path_2 = tmp_path / "regr_2.bktgz"
+    ArchiveAccessor(path_1).writer().write(readout_1)
+    ArchiveAccessor(path_2).writer().write(readout_2)
+    return path_1, path_2, readout_1, readout_2
+
+
+def write_waivers(path, *waivers):
+    path.write_text(json.dumps({"waivers": list(waivers)}), encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def waive_all(tmp_path):
+    """A waiver file that excuses every targetable bucket of any readout."""
+    return write_waivers(
+        tmp_path / "waive_all.json", {"point": "*", "reason": "waive everything"}
+    )
 
 
 class TestCli:
@@ -152,6 +191,109 @@ class TestCli:
                 )
         merged_hits = {bh.start: bh.hits for bh in merged.iter_bucket_hits()}
         assert merged_hits == expected_hits
+
+    def test_write_with_waivers(self, waivable_archives, tmp_path, waive_all):
+        path_1, _, readout_1, _ = waivable_archives
+        out = tmp_path / "waived.json"
+        result = self.run("write", "-r", path_1, "-w", waive_all, "json", "-o", out)
+        assert result.exit_code == 0, result.output
+
+        back = next(JSONAccessor(out).reader().read_all())
+        assert back.get_rec_sha() == readout_1.get_rec_sha()
+        assert [w.start for w in back.iter_bucket_waivers()] == (
+            readout_1.waivable_buckets()
+        )
+        assert {w.reason for w in back.iter_bucket_waivers()} == {"waive everything"}
+        # Every targeted bucket is waived, so nothing scores any more.
+        for point, point_hit in zip(back.iter_points(), back.iter_point_hits()):
+            assert point_hit.hits == 0
+            assert point_hit.waived_buckets == point.target_buckets
+            assert point_hit.waived_target == point.target
+
+    def test_write_with_waivers_applies_after_merge(self, waivable_archives, tmp_path):
+        path_1, path_2, readout_1, _ = waivable_archives
+        # GeneratedReadout points are named S<start>D<depth>E<end>; waive the
+        # subtree of the root's first child by its dotted path.
+        root, child, *_ = readout_1.iter_points()
+        waivers = write_waivers(
+            tmp_path / "subtree.json",
+            {"point": f"{root.name}.{child.name}", "reason": "child subtree"},
+        )
+        out = tmp_path / "merged.json"
+        result = self.run(
+            "write", "-r", path_1, "-r", path_2, "-m", "-w", waivers, "json", "-o", out
+        )
+        assert result.exit_code == 0, result.output
+
+        merged = next(JSONAccessor(out).reader().read_all())
+        waived = [w.start for w in merged.iter_bucket_waivers()]
+        assert waived == [
+            index
+            for index in readout_1.waivable_buckets()
+            if child.bucket_start <= index < child.bucket_end
+        ]
+        assert len(waived) > 0
+        # Merged hits are the per-bucket sums, untouched by the waivers.
+        merged_hits = {bh.start: bh.hits for bh in merged.iter_bucket_hits()}
+        assert all(2 <= hits <= 4 for hits in merged_hits.values())
+
+    def test_multiple_waiver_files_are_combined(self, waivable_archives, tmp_path):
+        path_1, _, readout_1, _ = waivable_archives
+        root, child, *_ = readout_1.iter_points()
+        first = write_waivers(
+            tmp_path / "first.json",
+            {"point": f"{root.name}.{child.name}", "reason": "first file"},
+        )
+        second = write_waivers(
+            tmp_path / "second.json", {"point": "*", "reason": "second file"}
+        )
+        out = tmp_path / "waived.json"
+        result = self.run(
+            "write", "-r", path_1, "-w", first, "-w", second, "json", "-o", out
+        )
+        assert result.exit_code == 0, result.output
+        back = next(JSONAccessor(out).reader().read_all())
+        reasons = {w.start: w.reason for w in back.iter_bucket_waivers()}
+        assert set(reasons) == set(readout_1.waivable_buckets())
+        in_child = [
+            index for index in reasons if child.bucket_start <= index < child.bucket_end
+        ]
+        assert in_child and all(reasons[index] == "first file" for index in in_child)
+        assert any(reason == "second file" for reason in reasons.values())
+
+    def test_waivers_with_unknown_axis_error_cleanly(self, waivable_archives, tmp_path):
+        path_1, *_ = waivable_archives
+        waivers = write_waivers(
+            tmp_path / "bad_axis.json",
+            {"point": "*", "axes": {"no_such_axis": "*"}, "reason": "typo"},
+        )
+        result = self.run("write", "-r", path_1, "-w", waivers, "console")
+        assert result.exit_code != 0
+        assert "Could not apply waivers" in result.output
+        assert "no_such_axis" in result.output
+
+    def test_invalid_waiver_file_errors_cleanly(self, archives, tmp_path):
+        path_1, *_ = archives
+        waivers = write_waivers(tmp_path / "no_reason.json", {"point": "*"})
+        result = self.run("write", "-r", path_1, "-w", waivers, "console")
+        assert result.exit_code != 0
+        assert "Could not apply waivers" in result.output
+
+    def test_missing_waiver_file_errors(self, archives, tmp_path):
+        path_1, *_ = archives
+        result = self.run(
+            "write", "-r", path_1, "-w", tmp_path / "missing.json", "console"
+        )
+        assert result.exit_code != 0
+
+    def test_console_with_waivers_shows_waived_column(
+        self, waivable_archives, waive_all
+    ):
+        path_1, *_ = waivable_archives
+        result = self.run("write", "-r", path_1, "-w", waive_all, "console", "--points")
+        assert result.exit_code == 0, result.output
+        assert "Waived" in result.output
+        assert "waive everything" in result.output
 
     def test_write_html_uses_html_writer(self, archives, tmp_path, monkeypatch):
         """The html command wires the web path and output into HTMLWriter."""

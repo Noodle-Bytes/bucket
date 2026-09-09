@@ -14,9 +14,11 @@ from .rw import (
     JSONAccessor,
     ReportWriter,
     SQLAccessor,
+    WaivedReadout,
 )
 from .rw.common import MergeReadout, Readout
 from .rw.html import DEFAULT_WEB_PATH
+from .waiver import WaiverError, WaiverFile, load_waivers
 
 
 @click.group()
@@ -147,12 +149,35 @@ def get_readouts_from_spec(*specs: str) -> Iterable[Readout]:
     """,
 )
 @click.option("--merge", "-m", is_flag=True, default=False, help="Merge all readouts.")
-def write(ctx, readout_specs: Iterable[str], merge: bool):
+@click.option(
+    "--waivers",
+    "-w",
+    "waiver_paths",
+    multiple=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Waiver specification JSON file (see docs/waivers.md). Can be "
+    "specified multiple times; all waivers are applied to every readout, "
+    "after --merge if given.",
+)
+def write(ctx, readout_specs: Iterable[str], merge: bool, waiver_paths: tuple[Path]):
     ctx.obj = ctx.obj or {}
     readouts = get_readouts_from_spec(*readout_specs)
 
     if merge:
         readouts = [MergeReadout(*readouts)]
+
+    if waiver_paths:
+        try:
+            waiver_file = WaiverFile(
+                waivers=[
+                    waiver
+                    for path in waiver_paths
+                    for waiver in load_waivers(path).waivers
+                ]
+            )
+            readouts = [WaivedReadout(readout, waiver_file) for readout in readouts]
+        except (WaiverError, ValueError) as exc:
+            raise click.ClickException(f"Could not apply waivers: {exc}") from exc
 
     ctx.obj["readouts"] = readouts
 

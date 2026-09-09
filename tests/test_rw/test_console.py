@@ -125,6 +125,7 @@ def check_text(
                             bucket.hit_percent,
                             goal.name,
                             goal.description,
+                            bucket.waiver_reason or "-",
                         ),
                     )
                 )
@@ -145,6 +146,7 @@ def check_text(
                     point.hits,
                     point.hit_percent,
                     point.buckets_targeted,
+                    point.buckets_waived,
                     point.buckets_hit,
                     point.buckets_full,
                     point.buckets_hit_percent,
