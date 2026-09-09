@@ -11,7 +11,7 @@ export type TreeKey = string | number;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic default; callers narrow T
 export type TreeNode<T = any> = TreeDataNode & {
     key: TreeKey;
-    children?: TreeNode[];
+    children?: TreeNode<T>[];
     data: T;
 };
 
