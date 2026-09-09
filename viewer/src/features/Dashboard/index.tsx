@@ -46,6 +46,7 @@ import {
     ExclamationCircleFilled,
     InfoCircleFilled,
     DiffOutlined,
+    LinkOutlined,
 } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 import Sider, { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "./components/Sider";
@@ -79,6 +80,8 @@ import { getPointNodeCompareCounts, getPointNodeCoverageMetrics } from "./lib/co
 import type { UseCoverageCompareResult } from "@/hooks/useCoverageCompare";
 import type { CompareRecordRow } from "@/hooks/useCoverageCompare";
 import type { CompareViewContext } from "@/types/coverageCompare";
+import { useViewUrlState } from "@/hooks/useViewUrlState";
+import { notifyError, notifySuccess } from "@/utils/themedStaticNotification";
 
 declare const __APP_VERSION__: string;
 
@@ -786,6 +789,9 @@ export type DashboardProps = {
         fileBaseName?: string;
     }) => Promise<void> | void;
     isDragging?: boolean;
+    /** Whether loaded coverage is remembered across reloads (Settings). */
+    persistSessionEnabled?: boolean;
+    onPersistSessionChange?: (enabled: boolean) => void;
 };
 
 export default function Dashboard({
@@ -802,6 +808,8 @@ export default function Dashboard({
     onRefreshRecords,
     onExportRecords,
     isDragging = false,
+    persistSessionEnabled,
+    onPersistSessionChange,
 }: DashboardProps) {
     const isElectronRuntime = typeof window !== "undefined" && window.electronAPI !== undefined;
 
@@ -1094,6 +1102,42 @@ export default function Dashboard({
             [selectedTreeKeys[0]]: newView,
         });
     };
+
+    const setContentViewForKey = useCallback((key: TreeKey, view: string) => {
+        setTreeKeyContentKey((current) => ({ ...current, [key]: view }));
+    }, []);
+
+    const { copyLink } = useViewUrlState({
+        tree,
+        records,
+        sources,
+        compare,
+        selectedTreeKeys,
+        currentContentKey,
+        summaryViewMode,
+        treeSearchValue,
+        onSelectNode: onSelect,
+        onSetContentView: setContentViewForKey,
+        setSummaryViewMode,
+        setTreeSearchValue,
+    });
+
+    const handleCopyLink = useCallback(async () => {
+        const copied = await copyLink();
+        if (copied) {
+            notifySuccess({
+                message: "Link copied",
+                description: "The URL for this view is on the clipboard.",
+                duration: 2.5,
+            });
+        } else {
+            notifyError({
+                message: "Could not copy link",
+                description: "Copy the address bar URL instead.",
+                duration: 4,
+            });
+        }
+    }, [copyLink]);
 
     const compareTreeBadge = useCallback(
         (node: TreeNode) => {
@@ -1429,6 +1473,24 @@ export default function Dashboard({
                                                                         color: headerIconColor,
                                                                         opacity: backDisabled ? 0.42 : 1,
                                                                     },
+                                                                }}
+                                                                style={{
+                                                                    width: 24,
+                                                                    minWidth: 24,
+                                                                    paddingInline: 0,
+                                                                    display: "inline-flex",
+                                                                    justifyContent: "center",
+                                                                }}
+                                                            />
+                                                            <Button
+                                                                size="small"
+                                                                type="text"
+                                                                icon={<LinkOutlined />}
+                                                                onClick={() => void handleCopyLink()}
+                                                                title="Copy link to this view"
+                                                                aria-label="Copy link to this view"
+                                                                styles={{
+                                                                    icon: { color: headerIconColor },
                                                                 }}
                                                                 style={{
                                                                     width: 24,
@@ -2121,7 +2183,7 @@ export default function Dashboard({
 
                             return (
                                 <Flex align="center" gap={12}>
-                                    <Typography.Text strong style={{ fontSize: 14, minWidth: 52 }}>
+                                    <Typography.Text strong style={{ fontSize: 14, minWidth: 60 }}>
                                         Theme
                                     </Typography.Text>
                                     <Select
@@ -2164,6 +2226,36 @@ export default function Dashboard({
                             );
                         }}
                     </Theme.Consumer>
+                    {onPersistSessionChange && (
+                        <Theme.Consumer>
+                            {({ theme }) => (
+                                <Flex align="center" gap={12}>
+                                    <Typography.Text strong style={{ fontSize: 14, minWidth: 60 }}>
+                                        Session
+                                    </Typography.Text>
+                                    <Switch
+                                        checked={persistSessionEnabled ?? true}
+                                        onChange={(checked) => onPersistSessionChange(checked)}
+                                        aria-label="Remember loaded coverage across reloads"
+                                    />
+                                    <Flex vertical style={{ minWidth: 0 }}>
+                                        <Typography.Text style={{ fontSize: 13 }}>
+                                            Remember loaded coverage across reloads
+                                        </Typography.Text>
+                                        <Typography.Text
+                                            style={{
+                                                fontSize: 12,
+                                                color: theme.theme.colors.desaturatedtxt.value,
+                                            }}
+                                        >
+                                            Archives are kept in this browser's storage only.
+                                            Turning this off clears the stored session.
+                                        </Typography.Text>
+                                    </Flex>
+                                </Flex>
+                            )}
+                        </Theme.Consumer>
+                    )}
                     <Theme.Consumer>
                         {({ theme }) => (
                             <Typography.Text
