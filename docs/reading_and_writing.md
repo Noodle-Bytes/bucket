@@ -89,6 +89,6 @@ examples of reading and writing each format.
 ---
 <br>
 
-Prev: [Exporting and merging coverage](export_and_merge.md)
+Prev: [Coverage waivers](waivers.md)
 <br>
 Next: [Viewing coverage](viewing_coverage.md)

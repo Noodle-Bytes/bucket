@@ -1,0 +1,16 @@
+{
+  "waivers": [
+    {
+      "point": "Pets.dogs.Doggy stats",
+      "axes": {"name": ["Stuart", "Peter"], "age": "16+"},
+      "reason": "Stuart and Peter are people; no elderly-dog traces are generated for them",
+      "author": "example"
+    },
+    {
+      "point": "pets.cats.play_toys.*",
+      "axes": {"favourite_toy": "Laser"},
+      "reason": "Laser pointer stimulus is not modelled in the example testbench",
+      "author": "example"
+    }
+  ]
+}

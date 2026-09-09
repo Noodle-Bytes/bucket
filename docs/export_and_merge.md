@@ -105,6 +105,9 @@ python -m bucket write -r sql:./test_2356.db -r sql:./test_87263.db -m archive -
 python -m bucket write -r archive:./a.bktgz -r archive:./b.bktgz -m sql -o merged.db
 ```
 
+Add `--waivers` / `-w waivers.json` to excuse unreachable buckets from the
+merged result before writing it — see [Coverage waivers](waivers.md).
+
 ### In the viewer
 
 You can also merge without writing a file first:
@@ -122,4 +125,4 @@ HTML/JSON coverage report (with optional unhit pattern analysis).
 
 Prev: [Adding coverage to the testbench](add_to_testbench.md)
 <br>
-Next: [Reading and Writing](reading_and_writing.md)
+Next: [Coverage waivers](waivers.md)
