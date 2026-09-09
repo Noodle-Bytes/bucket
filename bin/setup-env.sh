@@ -26,10 +26,15 @@ else
     echo "NPM not installed - HTML writer will be disabled. See 'https://docs.npmjs.com/downloading-and-installing-node-js-and-npm'"
 fi
 
-# Activate the uv virtual environment
+# Activate the uv virtual environment (Windows venvs use Scripts/ not bin/,
+# which matters under Git Bash)
 echo "# Activating virtual environment"
 export VIRTUAL_ENV_DISABLE_PROMPT=1
-. "$BUCKET_ROOT/.venv/bin/activate"
+if [ -f "$BUCKET_ROOT/.venv/bin/activate" ]; then
+    . "$BUCKET_ROOT/.venv/bin/activate"
+else
+    . "$BUCKET_ROOT/.venv/Scripts/activate"
+fi
 
 # Install pre-commit
 echo "# Setting up pre-commit hooks"

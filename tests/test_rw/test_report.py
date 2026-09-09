@@ -33,9 +33,11 @@ class FakeReportNpm:
         self.report_args = []
 
     def __call__(self, args, cwd=None, **kwargs):
-        if args[:2] == ["npm", "ls"]:
+        # npm is resolved to a full path (npm.cmd on Windows), so match by name.
+        assert Path(args[0]).stem == "npm"
+        if args[1:2] == ["ls"]:
             return self.ls_result
-        assert args[:4] == ["npm", "run", "report", "--"]
+        assert args[1:4] == ["run", "report", "--"]
         self.report_args.append(args[4:])
         if self.report_result == 0:
             json_path = Path(args[args.index("--json") + 1])
@@ -129,7 +131,7 @@ class TestReportWriter:
 
         def capture_json(args, cwd=None, **kwargs):
             result = fake_npm(args, cwd=cwd, **kwargs)
-            if args[:2] != ["npm", "ls"]:
+            if args[1:2] != ["ls"]:
                 json_path = Path(args[args.index("--json") + 1])
                 json_records.append(len(json.loads(json_path.read_text())["records"]))
             return result
