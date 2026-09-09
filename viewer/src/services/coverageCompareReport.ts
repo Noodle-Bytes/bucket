@@ -480,7 +480,7 @@ export async function exportCompareReportAsync(
         signal: options?.signal,
         detailLevel: patternDetail,
         sideFilter,
-        onProgress: (completed, total, message) => {
+        onProgress: (_completed, _total, message) => {
             emit({
                 phase: "patterns",
                 message,

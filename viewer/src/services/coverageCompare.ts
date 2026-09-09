@@ -6,9 +6,10 @@
 import { materializeReadout, mergeCompareReadoutsForDisplay, withReadoutSource } from "@/services/readoutUtils";
 import type {
     BucketCategory,
+    BucketDetail,
     CategoryCounts,
-    CompareRecordMeta,
     CompareCompatibility,
+    CompareRecordMeta,
     CompareRecordOption,
     CompareSetMode,
     ComparisonResult,
@@ -82,7 +83,7 @@ function buildPointPaths(points: PointTuple[]): Map<number, string> {
 
 function buildAxisModels(
     axes: AxisTuple[],
-    axisValues: AxisValueTuple[],
+    _axisValues: AxisValueTuple[],
     axisValueStart: number,
 ): Array<{ name: string; offset: number; size: number; stride: number }> {
     const models = axes.map((axis) => ({

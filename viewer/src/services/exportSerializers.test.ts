@@ -28,6 +28,7 @@ function createReadout(overrides?: {
         recSha: overrides?.recSha ?? "rec-a",
         source: overrides?.source ?? "suite",
         sourceKey: overrides?.sourceKey ?? "test",
+        bucketVersion: "",
         points: [
             {
                 start: 0,

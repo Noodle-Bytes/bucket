@@ -88,7 +88,7 @@ export async function fetchExampleCoverageFile(): Promise<File> {
 
     if (isElectron() && window.electronAPI?.readBundledExampleCoverage) {
         const bytes = await window.electronAPI.readBundledExampleCoverage();
-        return new File([bytes], fileName, { type: "application/gzip" });
+        return new File([bytes as BlobPart], fileName, { type: "application/gzip" });
     }
 
     const url = resolveBundledAssetUrl(EXAMPLE_COVERAGE_ARCHIVE);

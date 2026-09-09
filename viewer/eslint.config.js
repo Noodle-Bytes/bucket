@@ -11,7 +11,7 @@ import globals from 'globals';
 
 // See: https://github.com/alan2207/bulletproof-react/blob/master/.eslintrc.js
 export default tseslint.config(
-  { ignores: ['dist'] },
+  { ignores: ['dist', 'dev-dist', 'coverage'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -43,6 +43,38 @@ export default tseslint.config(
           patterns: ['@/features/*/*'],
         },
       ],
+      // Leading underscore marks an intentionally unused parameter/variable.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+    },
+  },
+  {
+    // Build scripts and Vite configs run under Node, not the browser.
+    files: ['scripts/**', '*.config.{js,ts,mjs}'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
+    // The routes layer wires features together and may reach into a
+    // feature's lib/ for the shared tree model; features themselves must not
+    // import each other's internals.
+    files: ['src/routes/**'],
+    rules: {
+      'no-restricted-imports': 'off',
+    },
+  },
+  {
+    // lib/ modules deliberately export pure helpers alongside components so
+    // the helpers can be unit tested; they are not route entry points, so
+    // losing fast-refresh for them is acceptable.
+    files: ['src/**/lib/**/*.tsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
     },
   },
 );

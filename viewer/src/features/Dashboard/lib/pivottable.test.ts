@@ -49,6 +49,7 @@ function readoutWithClashAxis(clashAxisName: string): InMemoryReadout {
                 bucket_start: 0,
                 bucket_end: 4,
                 target: 4,
+                target_buckets: 4,
                 name: "clash_coverpoint",
                 description: "",
             },
@@ -82,7 +83,7 @@ function readoutWithClashAxis(clashAxisName: string): InMemoryReadout {
             { start: 2, goal: 0 },
             { start: 3, goal: 0 },
         ],
-        pointHits: [{ start: 0, hits: 20, hit_buckets: 2, full_buckets: 2 }],
+        pointHits: [{ start: 0, depth: 0, hits: 20, hit_buckets: 2, full_buckets: 2 }],
         bucketHits: [
             { start: 0, hits: 10 },
             { start: 1, hits: 0 },

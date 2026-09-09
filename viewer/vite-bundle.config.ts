@@ -25,7 +25,7 @@ export default defineConfig(async () => {
     }
     cvgPathJSON = resolve(cvgPathJSON)
 
-    let coverage = createRequire(import.meta.url)(cvgPathJSON);
+    const coverage = createRequire(import.meta.url)(cvgPathJSON);
     // Note modern but experimental syntax is:
     //  `await import(cvgPathJSON, { with: { type: 'json' }});`
 

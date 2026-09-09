@@ -74,7 +74,7 @@ import { getDefaultExportFileName } from "@/services/exportSaver";
 import { checkFormatCompat } from "@/utils/versionCompat";
 import CompareToolbar from "./components/CompareToolbar";
 import CoverageReportExportModal from "./components/CoverageReportExportModal";
-import type { PointData, PointNode } from "./lib/coveragetree";
+import type { PointNode } from "./lib/coveragetree";
 import { getPointNodeCompareCounts, getPointNodeCoverageMetrics } from "./lib/coveragemetrics";
 import type { UseCoverageCompareResult } from "@/hooks/useCoverageCompare";
 import type { CompareRecordRow } from "@/hooks/useCoverageCompare";

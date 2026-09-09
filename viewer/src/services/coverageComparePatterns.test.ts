@@ -245,7 +245,7 @@ describe("findComparePatterns", () => {
             const bucketHits: Array<{ start: number; hits: number }> = [];
 
             for (const [nameIdx, name] of names.entries()) {
-                for (const [ageIdx, age] of ages.entries()) {
+                for (const ageIdx of ages.keys()) {
                     const bucketIdx = nameIdx * ages.length + ageIdx;
                     const hits =
                         name === "Clive"

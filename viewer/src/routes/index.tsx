@@ -149,9 +149,7 @@ export const AppRoutes = () => {
         pendingCompareActivation,
         compareRecordRows,
         clearPendingCompareActivation,
-        compare.setRecordIdA,
-        compare.setRecordIdB,
-        compare.setActive,
+        compare,
     ]);
 
     const displayTree = useMemo(() => {

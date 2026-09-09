@@ -3,11 +3,7 @@
  * Copyright (c) 2026 Noodle-Bytes. All Rights Reserved
  */
 
-import type {
-    BucketDetail,
-    ComparisonResult,
-    CoverageDefinition,
-} from "@/types/coverageCompare";
+import type { BucketDetail, ComparisonResult } from "@/types/coverageCompare";
 
 export type ComparePatternCategory = "a_only" | "b_only";
 

@@ -16,7 +16,7 @@ import {
 import type { UseCoverageCompareResult } from "@/hooks/useCoverageCompare";
 import type { CompareRecordRow } from "@/hooks/useCoverageCompare";
 import type { CategoryCounts } from "@/types/coverageCompare";
-import CompareReportExportModal from "@/features/Dashboard/components/CompareReportExportModal";
+import CompareReportExportModal from "../CompareReportExportModal";
 
 export type CompareToolbarProps = {
     compare: UseCoverageCompareResult;

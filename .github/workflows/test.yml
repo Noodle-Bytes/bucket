@@ -36,6 +36,45 @@ jobs:
         run: |
           uv run pytest --cov
 
+  # Everything .pre-commit-config.yaml enforces locally (ruff lint + format,
+  # import order, licence headers, docs nav footers), so it also gates merges.
+  pre-commit:
+    name: pre-commit
+    runs-on: ubuntu-latest
+    steps:
+      # Full history so the licence-header hook can diff against the base.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Set up uv
+        run: |
+          python -m pip install --upgrade pip uv
+          uv sync --extra dev
+
+      # The licence-header hook stamps the current year, so over all files it
+      # would "fail" every January on untouched code. Run it the way a local
+      # commit does - only on the files this PR changes - and everything else
+      # over the whole tree.
+      - name: Run pre-commit on all files
+        run: |
+          SKIP=insert-license uv run pre-commit run --all-files --show-diff-on-failure
+
+      - name: Check licence headers on changed files
+        run: |
+          uv run pre-commit run insert-license --show-diff-on-failure \
+            --from-ref ${{ github.event.pull_request.base.sha }} \
+            --to-ref ${{ github.event.pull_request.head.sha }}
+
   test-viewer:
     runs-on: ubuntu-latest
     strategy:
@@ -57,6 +96,12 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Run tests
         run: npm test
