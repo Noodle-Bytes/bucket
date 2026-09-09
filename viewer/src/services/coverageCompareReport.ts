@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2026 Noodle-Bytes. All Rights Reserved
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
 import {
@@ -480,7 +480,7 @@ export async function exportCompareReportAsync(
         signal: options?.signal,
         detailLevel: patternDetail,
         sideFilter,
-        onProgress: (completed, total, message) => {
+        onProgress: (_completed, _total, message) => {
             emit({
                 phase: "patterns",
                 message,

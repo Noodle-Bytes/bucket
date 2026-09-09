@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2026 Noodle-Bytes. All Rights Reserved
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
 import { Button, Flex, Segmented, Select, Space, Typography } from "antd";
@@ -16,7 +16,7 @@ import {
 import type { UseCoverageCompareResult } from "@/hooks/useCoverageCompare";
 import type { CompareRecordRow } from "@/hooks/useCoverageCompare";
 import type { CategoryCounts } from "@/types/coverageCompare";
-import CompareReportExportModal from "@/features/Dashboard/components/CompareReportExportModal";
+import CompareReportExportModal from "../CompareReportExportModal";
 
 export type CompareToolbarProps = {
     compare: UseCoverageCompareResult;

@@ -9,6 +9,7 @@
     "bundle": "BUCKET_CVG_JSON=$BUCKET_CVG_JSON vite build --config vite-bundle.config.ts",
     "report": "vite-node --config vite-node.config.ts scripts/report.ts --",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "preview": "vite preview",
     "test": "vitest run --coverage",
     "generate-pwa-assets": "pwa-assets-generator"

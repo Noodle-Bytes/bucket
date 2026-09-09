@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2026 Noodle-Bytes. All Rights Reserved
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
 import { describe, expect, test } from "vitest";
@@ -245,7 +245,7 @@ describe("findComparePatterns", () => {
             const bucketHits: Array<{ start: number; hits: number }> = [];
 
             for (const [nameIdx, name] of names.entries()) {
-                for (const [ageIdx, age] of ages.entries()) {
+                for (const ageIdx of ages.keys()) {
                     const bucketIdx = nameIdx * ages.length + ageIdx;
                     const hits =
                         name === "Clive"

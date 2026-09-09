@@ -11,7 +11,6 @@ import {
     ArchiveReader,
     parseArchiveBytes,
 } from "../features/Dashboard/lib/readers";
-import type { Readout } from "../features/Dashboard/lib/readers";
 import { loadReadoutsFromBytes } from "./fileLoader";
 import {
     MIN_SUPPORTED_FORMAT_VERSION,
@@ -87,7 +86,7 @@ function canonicalRecord(readout: Readout): Record<string, unknown> {
         source: readout.get_source() ?? "",
         source_key: readout.get_source_key() ?? "",
         bucket_version: readout.get_bucket_version(),
-        format_version: readout.get_format_version(),
+        format_version: readout.get_format_version?.() ?? null,
         point: Array.from(readout.iter_points()).map((point) => ({
             ...point,
             tier: point.tier ?? null,
@@ -157,7 +156,7 @@ function checkAll(
     for (const readout of readouts) {
         // A supported fixture must be recognised as fully compatible.
         expect(
-            checkFormatCompat(readout.get_format_version()),
+            checkFormatCompat(readout.get_format_version?.() ?? null),
             regressionHelp(version),
         ).toEqual({
             status: "match",

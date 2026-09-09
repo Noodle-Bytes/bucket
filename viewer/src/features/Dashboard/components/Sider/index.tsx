@@ -3,11 +3,6 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-/*
- * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
- */
-
 import { AutoComplete, Layout, Tree as AntTree, Input } from "antd";
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 

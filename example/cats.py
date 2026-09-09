@@ -1,9 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2023-2025 Vypercore. All Rights Reserved
-
 from bucket import Covergroup, Coverpoint
 
 # This file contains useful reference code (such as example coverpoints,

@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2026 Noodle-Bytes. All Rights Reserved
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
 // Minimal config for running headless scripts (scripts/report.ts) with

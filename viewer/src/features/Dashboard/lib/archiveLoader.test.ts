@@ -9,7 +9,6 @@ import { describe, expect, test } from "vitest";
 
 import { readArchiveBytes } from "./archiveLoader";
 import { ArchiveReader, parseArchiveBytes } from "./readers";
-import type { Readout } from "./readers";
 import { materializeReadout } from "@/services/readoutUtils";
 
 // Two-record archive written by the Python ArchiveAccessor, with non-ASCII
@@ -85,7 +84,7 @@ describe("archiveLoader", () => {
         const readouts = await collect(reader);
 
         const totals = readouts.map((readout) =>
-            Array.from(readout.iter_bucket_hits()).reduce(
+            Array.from(readout.iter_bucket_hits(0, null)).reduce(
                 (sum, bucket) => sum + Number(bucket.hits),
                 0,
             ),

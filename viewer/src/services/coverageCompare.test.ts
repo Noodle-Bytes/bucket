@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2026 Noodle-Bytes. All Rights Reserved
+ * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
 import { describe, expect, test } from "vitest";
@@ -279,6 +279,7 @@ function materializeFixture(sourceKey: string, bucketHits: number[]) {
                 bucket_start: 0,
                 bucket_end: 2,
                 target: 2,
+                target_buckets: 2,
                 name: "root",
                 description: "",
                 motivation: "",
@@ -291,7 +292,7 @@ function materializeFixture(sourceKey: string, bucketHits: number[]) {
         axes: [],
         axisValues: [],
         goals: [{ start: 0, name: "g", description: "", target: 1 }],
-        pointHits: [{ start: 0, hits: bucketHits.reduce((a, b) => a + b, 0), hit_buckets: 1, full_buckets: 0 }],
+        pointHits: [{ start: 0, depth: 0, hits: bucketHits.reduce((a, b) => a + b, 0), hit_buckets: 1, full_buckets: 0 }],
         bucketHits: bucketHits.map((hits, start) => ({ start, hits })),
     };
 }

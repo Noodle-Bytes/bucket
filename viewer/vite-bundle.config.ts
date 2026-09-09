@@ -3,11 +3,6 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-/*
- * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
- */
-
 // #!/usr/bin/env node --no-warnings=ExperimentalWarning
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
@@ -25,7 +20,7 @@ export default defineConfig(async () => {
     }
     cvgPathJSON = resolve(cvgPathJSON)
 
-    let coverage = createRequire(import.meta.url)(cvgPathJSON);
+    const coverage = createRequire(import.meta.url)(cvgPathJSON);
     // Note modern but experimental syntax is:
     //  `await import(cvgPathJSON, { with: { type: 'json' }});`
 

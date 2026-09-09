@@ -3,19 +3,15 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-/*
- * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
- */
-
 import { TreeDataNode } from "antd";
 import type { SegmentedLabeledOption } from "antd/lib/segmented";
 
 export type TreeKey = string | number;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic default; callers narrow T
 export type TreeNode<T = any> = TreeDataNode & {
     key: TreeKey;
-    children?: TreeNode[];
+    children?: TreeNode<T>[];
     data: T;
 };
 
@@ -25,6 +21,7 @@ type AncestorMap = {
 
 export type View = SegmentedLabeledOption;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic default; callers narrow T
 export default abstract class Tree<T = any> {
     private ancestorsByKey: { [key: TreeKey]: TreeNode<T>[] };
     public static ROOT = "_ROOT_";

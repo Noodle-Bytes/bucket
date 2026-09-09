@@ -96,6 +96,8 @@ type Readout = {
     ) => Generator<BucketHitTuple>;
 };
 
+// Ambient (non-module) file: Reader is consumed by readers.ts via the global scope.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 type Reader = {
     read: (recordId: number) => Promise<Readout>;
     read_all: () => AsyncGenerator<Readout>;
