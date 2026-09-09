@@ -67,12 +67,13 @@ node electron/build.mjs
 On macOS and Linux, `./electron/build.sh` does the same thing.
 
 The script resolves the version from git tags, builds the viewer, installs any
-missing npm dependencies, and packages the app for the current OS. Pass a
-platform flag to override, and an architecture flag to narrow it:
+missing npm dependencies, and packages the app for the current OS and
+architecture (an Apple Silicon Mac builds the arm64 app only). Pass a platform
+flag to override, and architecture flags to choose variants:
 
 ```bash
-node electron/build.mjs --mac            # arm64 and x64 .app bundles
-node electron/build.mjs --mac --arm64    # Apple Silicon only
+node electron/build.mjs --mac --arm64 --x64   # both Mac variants
+node electron/build.mjs --mac --x64      # Intel Mac only
 node electron/build.mjs --win            # NSIS installer, x64
 node electron/build.mjs --linux          # AppImage, x64
 node electron/build.mjs -- --publish never   # anything after -- goes to electron-builder

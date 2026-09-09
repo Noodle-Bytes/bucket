@@ -7,12 +7,16 @@
  * Build the Bucket desktop app for the current OS (or the OS you ask for).
  *
  * Usage:
- *   node electron/build.mjs             # build for the host OS
- *   node electron/build.mjs --mac       # macOS: arm64 + x64 .app bundles
+ *   node electron/build.mjs             # host OS and host architecture
+ *   node electron/build.mjs --mac       # macOS .app for the host architecture
+ *   node electron/build.mjs --mac --arm64 --x64   # both Mac variants
  *   node electron/build.mjs --win       # Windows: NSIS installer (x64)
  *   node electron/build.mjs --linux     # Linux: AppImage (x64)
- *   node electron/build.mjs --mac --arm64   # restrict architectures
  *   node electron/build.mjs -- <extra electron-builder args>
+ *
+ * Without an architecture flag, a build for the host OS targets the host's
+ * own architecture (so an Apple Silicon Mac builds arm64 only); builds for
+ * another OS use the architectures listed in package.json.
  *
  * Each OS can build its own package. A Mac can also cross-build the Windows and
  * Linux packages (electron-builder fetches Wine and the AppImage tooling), but
@@ -39,7 +43,7 @@ function usage() {
     console.log(`Usage: node electron/build.mjs [--mac] [--win] [--linux] [--x64] [--arm64] [-- <electron-builder args>]
 
 Builds the viewer, then packages the Electron app. With no platform flag the
-host OS is built. Outputs land in electron/dist/.`);
+host OS is built, for the host architecture only. Outputs land in electron/dist/.`);
 }
 
 function parseArgs(argv) {
@@ -115,6 +119,16 @@ if (platforms.length === 0) {
     platforms.push(HOST_FLAG);
 }
 
+// Building only for the host OS defaults to the host architecture; an Apple
+// Silicon Mac should not spend time on an Intel build unless asked. Note that
+// electron-builder ignores CLI arch flags for targets whose package.json entry
+// lists its own "arch", so the mac target deliberately leaves arch unset while
+// the win and linux targets pin x64.
+const HOST_ARCH_FLAG = { arm64: "--arm64", x64: "--x64" }[process.arch];
+if (archs.length === 0 && platforms.length === 1 && platforms[0] === HOST_FLAG && HOST_ARCH_FLAG) {
+    archs.push(HOST_ARCH_FLAG);
+}
+
 console.log("Building Bucket desktop app");
 console.log(`Targets: ${platforms.join(" ")}${archs.length ? ` ${archs.join(" ")}` : ""}`);
 
@@ -145,7 +159,11 @@ run(
 
 console.log("\nBuild complete. Packages are in electron/dist/:");
 if (platforms.includes("--mac")) {
-    console.log("  macOS:   dist/mac-arm64/Bucket.app (Apple Silicon), dist/mac/Bucket.app (Intel)");
+    const macOutputs = [];
+    if (archs.length === 0 || archs.includes("--arm64")) macOutputs.push("dist/mac-arm64/Bucket.app (Apple Silicon)");
+    if (archs.length === 0 || archs.includes("--x64")) macOutputs.push("dist/mac/Bucket.app (Intel)");
+    if (archs.includes("--universal")) macOutputs.push("dist/mac-universal/Bucket.app");
+    console.log(`  macOS:   ${macOutputs.join(", ")}`);
 }
 if (platforms.includes("--win")) {
     console.log("  Windows: dist/Bucket-<version>-win-x64.exe installer, dist/win-unpacked/ (portable folder)");
