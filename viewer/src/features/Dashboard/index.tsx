@@ -1184,7 +1184,7 @@ export default function Dashboard({
         switch (currentContentKey) {
             case "Pivot":
                 return withTopLevelInfoPanel({
-                    content: <PointPivotView node={currentNode} />,
+                    content: <PointPivotView node={currentNode} compare={compareContext} />,
                     info: topLevelCoverageInfo,
                     treeSelectionKey: viewKey,
                 });
