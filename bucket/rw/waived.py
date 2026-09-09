@@ -53,6 +53,10 @@ class WaivedReadout(Readout):
             goal_targets[bucket_goal.goal]
             for bucket_goal in readout.iter_bucket_goals()
         ]
+        # Hits indexed by global bucket index, read once for the recomputation.
+        self.bucket_hits: list[int] = [
+            bucket_hit.hits for bucket_hit in readout.iter_bucket_hits()
+        ]
 
     def get_def_sha(self) -> str:
         return self.readout.get_def_sha()
@@ -117,7 +121,7 @@ class WaivedReadout(Readout):
     ) -> Iterable[PointHitTuple]:
         yield from compute_point_hits(
             self.iter_points(start, end, depth),
-            self.readout.iter_bucket_hits(),
+            self.bucket_hits,
             self.bucket_targets,
             self.bucket_waivers,
         )

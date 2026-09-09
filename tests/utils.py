@@ -131,7 +131,12 @@ class GeneratedReadout(PuppetReadout):
             for index, reason in sorted(existing.items())
         ]
         self.point_hits = list(
-            compute_point_hits(self.points, self.bucket_hits, targets, existing)
+            compute_point_hits(
+                self.points,
+                [bucket_hit.hits for bucket_hit in self.bucket_hits],
+                targets,
+                existing,
+            )
         )
 
     def _generate_point(

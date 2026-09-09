@@ -6,7 +6,7 @@ import warnings
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError as _PKGNotFound
 from importlib.metadata import version as _pkg_version
-from typing import Any, Iterable, NamedTuple, Protocol
+from typing import Any, Iterable, Mapping, NamedTuple, Protocol, Sequence
 
 from ..common.chain import Link
 from ..link import CovDef, CovRun
@@ -305,20 +305,20 @@ class BucketWaiverTuple(NamedTuple):
 
 def compute_point_hits(
     points: Iterable[PointTuple],
-    bucket_hits: Iterable[BucketHitTuple],
-    bucket_targets: list[int],
-    waivers: dict[int, str] | None = None,
+    bucket_hits: Sequence[int],
+    bucket_targets: Sequence[int],
+    waivers: Mapping[int, str] | None = None,
 ) -> Iterable[PointHitTuple]:
     """
     Recompute point hit rows from per-bucket hits and targets, honouring the
     waiver semantics: a waived bucket contributes nothing to hits, hit_buckets
     or full_buckets and is instead counted in waived_buckets/waived_target.
 
-    bucket_hits and bucket_targets must cover the full bucket range of every
-    point (bucket_targets is indexed by global bucket index).
+    bucket_hits and bucket_targets are indexed by global bucket index and must
+    cover the full bucket range of every point.
     """
     waivers = waivers or {}
-    hits_by_index = {bh.start: bh.hits for bh in bucket_hits}
+    hits_by_index = bucket_hits
     for point in points:
         hits = 0
         hit_buckets = 0
@@ -333,7 +333,7 @@ def compute_point_hits(
                 waived_buckets += 1
                 waived_target += target
                 continue
-            bucket_hits = min(hits_by_index.get(index, 0), target)
+            bucket_hits = min(hits_by_index[index], target)
             if bucket_hits > 0:
                 hit_buckets += 1
                 if bucket_hits == target:
@@ -1016,7 +1016,7 @@ class MergeReadout(Readout):
     ) -> Iterable[PointHitTuple]:
         yield from compute_point_hits(
             self.iter_points(start, end, depth),
-            self.iter_bucket_hits(),
+            self.bucket_hits,
             self.bucket_targets,
             self.bucket_waivers,
         )
