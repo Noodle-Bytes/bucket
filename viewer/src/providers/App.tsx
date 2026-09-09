@@ -3,11 +3,6 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-/*
- * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
- */
-
 import * as React from "react";
 import { PropsWithChildren } from "react";
 import { ErrorBoundary } from "react-error-boundary";

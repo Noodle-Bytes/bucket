@@ -1,6 +1,6 @@
 <!--
   ~ SPDX-License-Identifier: MIT
-  ~ Copyright (c) 2025-2026 Noodle-Bytes. All Rights Reserved
+  ~ Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
   -->
 
 # Reading and Writing

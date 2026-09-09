@@ -4,11 +4,6 @@
  */
 
 /*
- * SPDX-License-Identifier: MIT
- * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
- */
-
-/*
  * Virtual Ant tables (rc-virtual-list) paint a CUSTOM scrollbar div — not a
  * native OS scrollbar. Default thumb is colorSplit / rgba(0,0,0,0.5) at 8px and
  * visibility:hidden when idle, which is why bars looked invisible in Electron.
