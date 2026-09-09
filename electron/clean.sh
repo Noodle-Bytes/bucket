@@ -53,6 +53,6 @@ echo ""
 if [ "$REMOVE_NODE_MODULES" = true ]; then
     echo "Note: node_modules was removed. Run ./build.sh to reinstall dependencies and rebuild."
 else
-    echo "To rebuild the app, run: ./build.sh"
+    echo "To rebuild the app, run: ./build.sh (or: node build.mjs)"
     echo "To also remove node_modules, run: ./clean.sh --node-modules"
 fi

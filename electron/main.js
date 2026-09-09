@@ -11,7 +11,7 @@ const packageJson = require('./package.json');
 const windowStateKeeper = require('electron-window-state');
 
 // Packaged builds get the real version baked into package.json via
-// electron-builder's extraMetadata (see build.sh); the source tree holds a
+// electron-builder's extraMetadata (see build.mjs); the source tree holds a
 // 0.0.0 placeholder, so dev runs fall back to BUCKET_VERSION when set.
 const appVersion = packageJson.version !== '0.0.0'
   ? packageJson.version
@@ -185,6 +185,46 @@ app.on('open-file', (event, filePath) => {
   event.preventDefault();
   openFilesInApp([filePath]);
 });
+
+/**
+ * Coverage archives passed on the command line. Windows and Linux deliver
+ * file-association launches this way (macOS uses the open-file event above).
+ * @param {string[]} argv - Raw process arguments
+ * @param {string} cwd - Directory relative paths are resolved against
+ */
+function archivePathsFromArgv(argv, cwd = process.cwd()) {
+  return argv
+    .slice(1)
+    .filter(arg => !arg.startsWith('-') && arg.toLowerCase().endsWith('.bktgz'))
+    .map(arg => path.resolve(cwd, arg))
+    .filter(filePath => fs.existsSync(filePath));
+}
+
+// Keep one running instance: double-clicking another archive on Windows or
+// Linux launches a second copy, whose arguments are forwarded here.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', (event, argv, workingDirectory) => {
+    const filePaths = archivePathsFromArgv(argv, workingDirectory);
+    if (filePaths.length > 0) {
+      openFilesInApp(filePaths);
+      return;
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.focus();
+    }
+  });
+
+  // Files from the initial launch are queued until the window has loaded.
+  const launchFilePaths = archivePathsFromArgv(process.argv);
+  if (launchFilePaths.length > 0) {
+    openFilesInApp(launchFilePaths);
+  }
+}
 
 /**
  * Update the "Open Recent" submenu in the File menu.
@@ -375,13 +415,20 @@ function showAboutDialog() {
     parent: mainWindow,
     modal: true,
     show: false,
-    titleBarStyle: 'hidden',
-    trafficLightPosition: { x: -20, y: -20 },
+    // Chromeless on every platform: macOS hides the traffic lights off-screen,
+    // elsewhere the frame is dropped outright (the body is a drag region and
+    // the OK button closes the window).
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hidden', trafficLightPosition: { x: -20, y: -20 } }
+      : { frame: false, autoHideMenuBar: true }),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
   });
+  if (process.platform !== 'darwin') {
+    aboutWindow.setMenuBarVisibility(false);
+  }
 
   const logoPath = app.isPackaged
     ? path.join(process.resourcesPath, 'viewer', 'dist', 'pwa-192x192.png')
@@ -459,24 +506,33 @@ function createMenu() {
     mainWindow.webContents.send('open-preferences');
   };
 
+  const isMac = process.platform === 'darwin';
+  const aboutItem = {
+    label: 'About Bucket',
+    click: showAboutDialog,
+  };
+
   const template = [
-    {
-      label: app.getName(),
-      submenu: [
-        {
-          label: 'About Bucket',
-          click: showAboutDialog,
-        },
-        { type: 'separator' },
-        { role: 'services', label: 'Services' },
-        { type: 'separator' },
-        { role: 'hide', label: 'Hide Bucket' },
-        { role: 'hideOthers', label: 'Hide Others' },
-        { role: 'unhide', label: 'Show All' },
-        { type: 'separator' },
-        { role: 'quit', label: 'Quit Bucket' },
-      ],
-    },
+    // macOS has an application menu; Windows and Linux put About under Help
+    // and Exit under File instead.
+    ...(isMac
+      ? [
+          {
+            label: app.getName(),
+            submenu: [
+              aboutItem,
+              { type: 'separator' },
+              { role: 'services', label: 'Services' },
+              { type: 'separator' },
+              { role: 'hide', label: 'Hide Bucket' },
+              { role: 'hideOthers', label: 'Hide Others' },
+              { role: 'unhide', label: 'Show All' },
+              { type: 'separator' },
+              { role: 'quit', label: 'Quit Bucket' },
+            ],
+          },
+        ]
+      : []),
     {
       label: 'File',
       submenu: [
@@ -504,11 +560,13 @@ function createMenu() {
         },
         {
           label: 'Preferences...',
-          accelerator: 'Command+,',
+          accelerator: 'CmdOrCtrl+,',
           click: openPreferences,
         },
         { type: 'separator' },
-        { role: 'close', label: 'Close Window' },
+        ...(isMac
+          ? [{ role: 'close', label: 'Close Window' }]
+          : [{ role: 'quit', label: 'Exit' }]),
       ],
     },
     {
@@ -544,6 +602,14 @@ function createMenu() {
         { role: 'close', label: 'Close' },
       ],
     },
+    ...(isMac
+      ? []
+      : [
+          {
+            label: 'Help',
+            submenu: [aboutItem],
+          },
+        ]),
   ];
 
   const menu = Menu.buildFromTemplate(template);

@@ -1,30 +1,71 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+#
+# Launch an interactive shell with the Bucket development environment active.
+#
+# Runs zsh when that is the user's login shell (the macOS default) and bash
+# otherwise (the Linux default), falling back to whichever is installed. Both
+# rc files source bin/setup-env.sh, which does the actual environment setup.
+
+set -e
+
+error() {
+    printf '[\033[0;31mERROR\033[0m] %s\n' "$1" >&2
+}
 
 # Check for BUCKET_ROOT already being set in the shell
 if [[ -n "$BUCKET_ROOT" ]]; then
-    echo "[\033[0;31mERROR\033[0m] Bucket shell is already activated!"
+    error "Bucket shell is already activated!"
     exit 1
 fi
 
 # Work out where the repository is located (portable: no readlink -f)
-BUCKET_ROOT=$(unset CDPATH; cd "${0:a:h}/.." && pwd -P)
+BUCKET_ROOT="$(unset CDPATH; cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 if [[ -z "$BUCKET_ROOT" ]]; then
-    echo "[\033[0;31mERROR\033[0m] Could not determine BUCKET_ROOT."
+    error "Could not determine BUCKET_ROOT."
     exit 1
 fi
 
-ZDOTDIR=$BUCKET_ROOT/bin/zsh
-if [[ ! -d "$ZDOTDIR" ]]; then
-    echo "[\033[0;31mERROR\033[0m] ZDOTDIR not found: $ZDOTDIR"
+# Prefer the user's login shell family, then whatever is available.
+case "$(basename "${SHELL:-}")" in
+    zsh) preferred=zsh ;;
+    bash) preferred=bash ;;
+    *) preferred="" ;;
+esac
+
+shell=""
+for candidate in $preferred zsh bash; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+        shell=$candidate
+        break
+    fi
+done
+
+if [[ -z "$shell" ]]; then
+    error "Neither zsh nor bash was found on PATH."
     exit 1
 fi
 
-USER_HISTFILE=${HISTFILE:-$HOME/.zsh_history}
+export BUCKET_ROOT
 
-BUCKET_ROOT=$BUCKET_ROOT \
-    USER_HISTFILE=$USER_HISTFILE \
-    ZDOTDIR=$ZDOTDIR \
-    /bin/zsh -i "$@"
+case "$shell" in
+    zsh)
+        ZDOTDIR="$BUCKET_ROOT/bin/zsh"
+        if [[ ! -d "$ZDOTDIR" ]]; then
+            error "ZDOTDIR not found: $ZDOTDIR"
+            exit 1
+        fi
+        # ZDOTDIR moves zsh's default history file, so pass the user's along.
+        USER_HISTFILE="${HISTFILE:-$HOME/.zsh_history}" ZDOTDIR="$ZDOTDIR" exec zsh -i "$@"
+        ;;
+    bash)
+        RCFILE="$BUCKET_ROOT/bin/bash/.bashrc"
+        if [[ ! -f "$RCFILE" ]]; then
+            error "rcfile not found: $RCFILE"
+            exit 1
+        fi
+        exec bash --rcfile "$RCFILE" -i "$@"
+        ;;
+esac
