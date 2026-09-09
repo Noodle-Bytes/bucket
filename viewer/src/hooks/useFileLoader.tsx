@@ -161,6 +161,9 @@ async function buildStoredSource(
                 if (source.fileHandle) {
                     try {
                         const file = await source.fileHandle.getFile();
+                        if (file.size > SESSION_PERSIST_MAX_SOURCE_BYTES) {
+                            return { status: "oversize", bytes: file.size };
+                        }
                         bytes = new Uint8Array(await file.arrayBuffer());
                     } catch {
                         bytes = null;
@@ -168,6 +171,9 @@ async function buildStoredSource(
                     row.fileHandle = source.fileHandle;
                 }
                 if (!bytes && source.fileObject) {
+                    if (source.fileObject.size > SESSION_PERSIST_MAX_SOURCE_BYTES) {
+                        return { status: "oversize", bytes: source.fileObject.size };
+                    }
                     bytes = new Uint8Array(await source.fileObject.arrayBuffer());
                 }
                 if (!bytes) {
@@ -178,6 +184,9 @@ async function buildStoredSource(
             case "fileObject":
                 if (!source.fileObject) {
                     return { status: "unavailable", detail: "file is no longer available" };
+                }
+                if (source.fileObject.size > SESSION_PERSIST_MAX_SOURCE_BYTES) {
+                    return { status: "oversize", bytes: source.fileObject.size };
                 }
                 bytes = new Uint8Array(await source.fileObject.arrayBuffer());
                 break;
@@ -1105,15 +1114,19 @@ export function useFileLoader() {
             recordCounterRef.current = Math.max(recordCounterRef.current, maxRecordCounter + 1);
 
             const loadedSet = new Set(stored.loadedRecordIds);
+            const storedRecordByKey = new Map(
+                stored.records.map((record) => [
+                    `${record.sourceRef}:${record.sourceRecordIndex}`,
+                    record,
+                ]),
+            );
             for (const [index, row] of stored.sources.entries()) {
                 try {
                     const { source, readouts } = await restoreStoredSource(row);
                     sources.push(source);
                     for (const [recordIndex, readout] of readouts.entries()) {
-                        const storedRecord = stored.records.find(
-                            (record) =>
-                                record.sourceRef === source.id
-                                && record.sourceRecordIndex === recordIndex,
+                        const storedRecord = storedRecordByKey.get(
+                            `${source.id}:${recordIndex}`,
                         );
                         const id = storedRecord?.id ?? `record-${recordCounterRef.current++}`;
                         records.push({

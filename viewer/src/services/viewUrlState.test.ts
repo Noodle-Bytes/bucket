@@ -173,6 +173,15 @@ describe("serialize / parse", () => {
             },
         });
         expect(parseViewUrlState("c=0&cs=both")).toEqual({ compare: { active: false } });
+        expect(parseViewUrlState("c=1&cs=all")).toEqual({
+            compare: {
+                active: true,
+                setMode: "all",
+                definition: undefined,
+                recordA: undefined,
+                recordB: undefined,
+            },
+        });
     });
 
     test("ignores unknown and malformed parameters", () => {

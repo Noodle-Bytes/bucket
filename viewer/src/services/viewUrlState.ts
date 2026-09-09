@@ -18,7 +18,8 @@
  * |       | (`table` / `point`) are omitted.                               |
  * | `q`   | Tree search text.                                              |
  * | `c`   | `1` when compare mode is active.                               |
- * | `cs`  | Compare set filter (`a_only`, `both`, `b_only`, `neither`).    |
+ * | `cs`  | Compare set filter (`a_only`, `both`, `b_only`, `neither`,   |
+ * |       | `all`).                                                      |
  * | `cd`  | Compare coverage definition (`met_goal`).                      |
  * | `ca`  | Compare record A as `<source label>~<record index>`.           |
  * | `cb`  | Compare record B, same form as `ca`.                           |
