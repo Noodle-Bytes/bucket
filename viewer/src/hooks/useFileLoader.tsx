@@ -12,6 +12,7 @@ import CoverageTree from "../features/Dashboard/lib/coveragetree";
 import {
     fetchExampleCoverageFile,
     isElectron,
+    loadReadoutsFromBytes,
     loadReadoutsFromElectronPath,
     loadReadoutsFromFileHandle,
     loadReadoutsFromFileObject,
@@ -24,7 +25,20 @@ import type {
     ExportFormat,
 } from "@/types/coverageSession";
 import { mergeReadoutsStrict } from "@/services/readoutUtils";
-import { serializeReadouts } from "@/services/exportSerializers";
+import { serializeReadouts, serializeReadoutsToArchiveBytes } from "@/services/exportSerializers";
+import {
+    SESSION_PERSIST_MAX_SOURCE_BYTES,
+    clearStoredSession,
+    deleteStoredSources,
+    isSessionPersistenceEnabled,
+    isSessionStoreAvailable,
+    readStoredSession,
+    setSessionPersistenceEnabled as writeSessionPersistenceSetting,
+    writeStoredSessionMeta,
+    writeStoredSources,
+    type StoredSession,
+    type StoredSessionSource,
+} from "@/services/sessionStore";
 import { getDefaultExportFileName, saveExportBytes } from "@/services/exportSaver";
 import { buildReadableReportHtml } from "@/services/readableReport";
 
@@ -65,6 +79,10 @@ type SourceLoadBatchResult = {
 
 /** Offer merge vs individual load when more than one archive is selected in one action. */
 const BULK_MERGE_THRESHOLD = 1;
+/** Coalesce rapid session changes into one IndexedDB write. */
+const SESSION_PERSIST_DEBOUNCE_MS = 400;
+/** StrictMode mounts twice in development; restore the stored session once. */
+let sessionRestoreStarted = false;
 /** Warn that loading many separate records may slow the viewer. */
 const BULK_LOAD_SLOW_WARNING_THRESHOLD = 50;
 
@@ -100,6 +118,138 @@ function getDefaultSession(): CoverageSession {
 
 function isNoCoverageError(errorMessage: string): boolean {
     return errorMessage.toLowerCase().includes("no coverage data");
+}
+
+/** Numeric suffix of a generated `source-N` / `record-N` id, or 0. */
+function parseIdCounter(id: string, prefix: string): number {
+    if (!id.startsWith(prefix)) {
+        return 0;
+    }
+    const value = Number(id.slice(prefix.length));
+    return Number.isInteger(value) && value > 0 ? value : 0;
+}
+
+function formatMegabytes(bytes: number): string {
+    return `${Math.round(bytes / (1024 * 1024))} MB`;
+}
+
+type StoredSourceBuildResult =
+    | { status: "ok"; row: StoredSessionSource }
+    | { status: "oversize"; bytes: number }
+    | { status: "unavailable"; detail: string };
+
+/** Capture what is needed to restore a source after a reload. */
+async function buildStoredSource(
+    source: CoverageSourceRef,
+    records: CoverageRecord[],
+): Promise<StoredSourceBuildResult> {
+    const row: StoredSessionSource = {
+        id: source.id,
+        kind: source.kind,
+        label: source.label,
+    };
+    let bytes: Uint8Array | null = null;
+    try {
+        switch (source.kind) {
+            case "electronPath":
+                if (!source.path) {
+                    return { status: "unavailable", detail: "missing file path" };
+                }
+                row.path = source.path;
+                break;
+            case "fileHandle": {
+                if (source.fileHandle) {
+                    try {
+                        const file = await source.fileHandle.getFile();
+                        bytes = new Uint8Array(await file.arrayBuffer());
+                    } catch {
+                        bytes = null;
+                    }
+                    row.fileHandle = source.fileHandle;
+                }
+                if (!bytes && source.fileObject) {
+                    bytes = new Uint8Array(await source.fileObject.arrayBuffer());
+                }
+                if (!bytes) {
+                    return { status: "unavailable", detail: "file is no longer readable" };
+                }
+                break;
+            }
+            case "fileObject":
+                if (!source.fileObject) {
+                    return { status: "unavailable", detail: "file is no longer available" };
+                }
+                bytes = new Uint8Array(await source.fileObject.arrayBuffer());
+                break;
+            case "virtualMerged": {
+                const readouts = records
+                    .filter((record) => record.sourceRef === source.id)
+                    .map((record) => record.readout);
+                if (readouts.length === 0) {
+                    return { status: "unavailable", detail: "merged record is empty" };
+                }
+                bytes = serializeReadoutsToArchiveBytes(readouts);
+                break;
+            }
+        }
+    } catch (err) {
+        return { status: "unavailable", detail: err instanceof Error ? err.message : String(err) };
+    }
+    if (bytes) {
+        if (bytes.byteLength > SESSION_PERSIST_MAX_SOURCE_BYTES) {
+            return { status: "oversize", bytes: bytes.byteLength };
+        }
+        row.bytes = bytes;
+    }
+    return { status: "ok", row };
+}
+
+/** Rebuild a coverage source (and parse its readouts) from a stored row. */
+async function restoreStoredSource(
+    stored: StoredSessionSource,
+): Promise<{ source: CoverageSourceRef; readouts: Readout[] }> {
+    const base: CoverageSourceRef = { id: stored.id, kind: stored.kind, label: stored.label };
+    switch (stored.kind) {
+        case "electronPath": {
+            if (!stored.path) {
+                throw new Error("no stored file path");
+            }
+            if (!isElectron()) {
+                throw new Error("desktop file paths can only be restored in the desktop app");
+            }
+            return {
+                source: { ...base, path: stored.path },
+                readouts: await loadReadoutsFromElectronPath(stored.path),
+            };
+        }
+        case "fileObject":
+        case "fileHandle": {
+            if (!stored.bytes) {
+                throw new Error("no stored archive bytes");
+            }
+            // The File keeps its own copy, so the parser may take the buffer.
+            // (IndexedDB never hands back a SharedArrayBuffer-backed view.)
+            const file = new File([stored.bytes as Uint8Array<ArrayBuffer>], stored.label, {
+                type: "application/gzip",
+            });
+            const readouts = await loadReadoutsFromBytes(stored.bytes);
+            const source: CoverageSourceRef = { ...base, fileObject: file };
+            if (stored.kind === "fileHandle") {
+                if (stored.fileHandle) {
+                    source.fileHandle = stored.fileHandle;
+                } else {
+                    source.kind = "fileObject";
+                }
+            }
+            return { source, readouts };
+        }
+        case "virtualMerged": {
+            if (!stored.bytes) {
+                throw new Error("no stored archive bytes");
+            }
+            return { source: base, readouts: await loadReadoutsFromBytes(stored.bytes) };
+        }
+    }
 }
 
 async function promptCoverageFileReselect(): Promise<File | null> {
@@ -326,6 +476,19 @@ export function useFileLoader() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const sourceCounterRef = useRef(1);
     const recordCounterRef = useRef(1);
+
+    const [persistSessionEnabled, setPersistSessionEnabledState] = useState(
+        isSessionPersistenceEnabled,
+    );
+    const [sessionRestoreComplete, setSessionRestoreComplete] = useState(false);
+    const persistEnabledRef = useRef(persistSessionEnabled);
+    persistEnabledRef.current = persistSessionEnabled;
+    /** Source ids whose rows are already in IndexedDB (no need to re-read bytes). */
+    const persistedSourceIdsRef = useRef<Set<string>>(new Set());
+    /** Source ids that cannot be persisted (oversize / unreadable); not retried. */
+    const unpersistableSourceIdsRef = useRef<Set<string>>(new Set());
+    const persistQueueRef = useRef<Promise<void>>(Promise.resolve());
+    const oversizeNoticeShownRef = useRef(false);
 
     const tree = useMemo(() => {
         const loadedSet = new Set(session.loadedRecordIds);
@@ -569,10 +732,31 @@ export function useFileLoader() {
         }
     };
 
+    const forgetPersistedSources = (): void => {
+        persistedSourceIdsRef.current = new Set();
+        unpersistableSourceIdsRef.current = new Set();
+    };
+
     const clearCoverage = (): void => {
         setSession(getDefaultSession());
         setError(null);
         setPendingCompareActivation(null);
+        forgetPersistedSources();
+        void clearStoredSession().catch(() => {
+            // Storage is best effort; the in-memory session is already cleared.
+        });
+    };
+
+    const setPersistSessionEnabled = (enabled: boolean): void => {
+        writeSessionPersistenceSetting(enabled);
+        setPersistSessionEnabledState(enabled);
+        // Re-enabling re-persists every source; disabling forgets what was stored.
+        forgetPersistedSources();
+        if (!enabled) {
+            void clearStoredSession().catch(() => {
+                // ignore
+            });
+        }
     };
 
     const clearPendingCompareActivation = (): void => {
@@ -706,6 +890,9 @@ export function useFileLoader() {
                 if (!refreshedReadouts) {
                     continue;
                 }
+
+                // Bytes changed on disk, so the stored copy must be rewritten.
+                persistedSourceIdsRef.current.delete(source.id);
 
                 for (const record of records) {
                     const refreshed = refreshedReadouts[record.sourceRecordIndex];
@@ -880,6 +1067,207 @@ export function useFileLoader() {
         }
     };
 
+    const restoreStoredSessionOnStartup = async (): Promise<void> => {
+        if (!isSessionPersistenceEnabled() || !isSessionStoreAvailable()) {
+            setSessionRestoreComplete(true);
+            return;
+        }
+        let stored: StoredSession | null = null;
+        try {
+            stored = await readStoredSession();
+        } catch {
+            stored = null;
+        }
+        if (!stored || stored.sources.length === 0) {
+            setSessionRestoreComplete(true);
+            return;
+        }
+
+        setIsLoading(true);
+        setLoadingProgress({ completed: 0, total: stored.sources.length, phase: "reading" });
+        const failures: string[] = [];
+        const sources: CoverageSourceRef[] = [];
+        const records: CoverageRecord[] = [];
+        // Every stored row is accounted for: rows that fail to restore are not
+        // in the session, so the next persist pass deletes them.
+        persistedSourceIdsRef.current = new Set(stored.sources.map((source) => source.id));
+
+        try {
+            let maxSourceCounter = 0;
+            let maxRecordCounter = 0;
+            for (const row of stored.sources) {
+                maxSourceCounter = Math.max(maxSourceCounter, parseIdCounter(row.id, "source-"));
+            }
+            for (const record of stored.records) {
+                maxRecordCounter = Math.max(maxRecordCounter, parseIdCounter(record.id, "record-"));
+            }
+            sourceCounterRef.current = Math.max(sourceCounterRef.current, maxSourceCounter + 1);
+            recordCounterRef.current = Math.max(recordCounterRef.current, maxRecordCounter + 1);
+
+            const loadedSet = new Set(stored.loadedRecordIds);
+            for (const [index, row] of stored.sources.entries()) {
+                try {
+                    const { source, readouts } = await restoreStoredSource(row);
+                    sources.push(source);
+                    for (const [recordIndex, readout] of readouts.entries()) {
+                        const storedRecord = stored.records.find(
+                            (record) =>
+                                record.sourceRef === source.id
+                                && record.sourceRecordIndex === recordIndex,
+                        );
+                        const id = storedRecord?.id ?? `record-${recordCounterRef.current++}`;
+                        records.push({
+                            id,
+                            readout,
+                            sourceRef: source.id,
+                            sourceRecordIndex: recordIndex,
+                            isLoaded: loadedSet.has(id),
+                        });
+                    }
+                } catch (err) {
+                    const detail = err instanceof Error ? err.message : String(err);
+                    failures.push(`${row.label}: ${detail}`);
+                }
+                setLoadingProgress({
+                    completed: index + 1,
+                    total: stored.sources.length,
+                    phase: "reading",
+                });
+            }
+
+            let loadedRecordIds = records
+                .filter((record) => record.isLoaded)
+                .map((record) => record.id);
+            if (loadedRecordIds.length === 0 && records.length > 0) {
+                loadedRecordIds = records.map((record) => record.id);
+                for (const record of records) {
+                    record.isLoaded = true;
+                }
+            }
+
+            if (sources.length > 0) {
+                await yieldToBrowser();
+                setSession((current) => ({
+                    sources: [...sources, ...current.sources],
+                    records: [...records, ...current.records],
+                    loadedRecordIds: [...loadedRecordIds, ...current.loadedRecordIds],
+                }));
+            }
+            if (failures.length > 0) {
+                notifyWarning({
+                    message: "Some coverage could not be restored",
+                    description: failures.join(" "),
+                    duration: 7,
+                });
+            }
+        } catch (err) {
+            notifyWarning({
+                message: "Could not restore previous session",
+                description: err instanceof Error ? err.message : String(err),
+                duration: 5,
+            });
+        } finally {
+            setIsLoading(false);
+            setLoadingProgress(null);
+            setSessionRestoreComplete(true);
+        }
+    };
+
+    useEffect(() => {
+        if (sessionRestoreStarted) {
+            return;
+        }
+        sessionRestoreStarted = true;
+        void restoreStoredSessionOnStartup();
+    }, []);
+
+    const persistSession = async (snapshot: CoverageSession): Promise<void> => {
+        if (!persistEnabledRef.current || !isSessionStoreAvailable()) {
+            return;
+        }
+        try {
+            const sessionSourceIds = new Set(snapshot.sources.map((source) => source.id));
+            const removed = Array.from(persistedSourceIdsRef.current).filter(
+                (id) => !sessionSourceIds.has(id),
+            );
+            const rows: StoredSessionSource[] = [];
+            for (const source of snapshot.sources) {
+                if (
+                    persistedSourceIdsRef.current.has(source.id)
+                    || unpersistableSourceIdsRef.current.has(source.id)
+                ) {
+                    continue;
+                }
+                const result = await buildStoredSource(source, snapshot.records);
+                if (result.status === "ok") {
+                    rows.push(result.row);
+                    continue;
+                }
+                unpersistableSourceIdsRef.current.add(source.id);
+                if (result.status === "oversize" && !oversizeNoticeShownRef.current) {
+                    oversizeNoticeShownRef.current = true;
+                    notifyInfo({
+                        message: "Archive too large to remember",
+                        description: `${source.label} (${formatMegabytes(result.bytes)}) is over the ${formatMegabytes(SESSION_PERSIST_MAX_SOURCE_BYTES)} limit and will need loading again after a reload.`,
+                        duration: 6,
+                    });
+                }
+            }
+            if (!persistEnabledRef.current) {
+                return;
+            }
+
+            const persistableSourceIds = new Set(
+                snapshot.sources
+                    .map((source) => source.id)
+                    .filter((id) => !unpersistableSourceIdsRef.current.has(id)),
+            );
+            const persistableRecords = snapshot.records.filter((record) =>
+                persistableSourceIds.has(record.sourceRef),
+            );
+            const persistableRecordIds = new Set(persistableRecords.map((record) => record.id));
+
+            await deleteStoredSources(removed);
+            await writeStoredSources(rows);
+            await writeStoredSessionMeta({
+                sourceOrder: Array.from(persistableSourceIds),
+                records: persistableRecords.map((record) => ({
+                    id: record.id,
+                    sourceRef: record.sourceRef,
+                    sourceRecordIndex: record.sourceRecordIndex,
+                })),
+                loadedRecordIds: snapshot.loadedRecordIds.filter((id) =>
+                    persistableRecordIds.has(id),
+                ),
+                savedAt: Date.now(),
+            });
+
+            const next = new Set(
+                Array.from(persistedSourceIdsRef.current).filter((id) => sessionSourceIds.has(id)),
+            );
+            for (const row of rows) {
+                next.add(row.id);
+            }
+            persistedSourceIdsRef.current = next;
+        } catch (err) {
+            console.warn("Session persistence failed", err);
+        }
+    };
+
+    useEffect(() => {
+        if (!sessionRestoreComplete || !persistSessionEnabled) {
+            return;
+        }
+        const timer = window.setTimeout(() => {
+            persistQueueRef.current = persistQueueRef.current
+                .then(() => persistSession(session))
+                .catch(() => {
+                    // persistSession reports its own failures
+                });
+        }, SESSION_PERSIST_DEBOUNCE_MS);
+        return () => window.clearTimeout(timer);
+    }, [session, sessionRestoreComplete, persistSessionEnabled]);
+
     useEffect(() => {
         if ("launchQueue" in window && window.launchQueue) {
             window.launchQueue.setConsumer(
@@ -975,5 +1363,8 @@ export function useFileLoader() {
         exportRecords,
         pendingCompareActivation,
         clearPendingCompareActivation,
+        persistSessionEnabled,
+        setPersistSessionEnabled,
+        sessionRestoreComplete,
     };
 }
