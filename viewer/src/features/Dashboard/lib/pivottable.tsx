@@ -4,11 +4,25 @@
  */
 
 import { PointNode } from "./coveragetree";
+import { natCompare } from "./compare";
 import { Table, TableProps, Tag, Space, Flex, Button, Tooltip } from "antd";
 import { view } from "../theme";
 import { Theme as ThemeType } from "@/theme";
 import Theme from "@/providers/Theme";
-import { getCoverageColor } from "@/utils/colors";
+import {
+    getCoverageColor,
+    getCompareCategoryBackground,
+    getCompareCategoryColor,
+    getCompareCategoryLabel,
+    type CompareBucketCategory,
+} from "@/utils/colors";
+import { classifyValidBucket, getBucketCategoryForIndex } from "@/services/coverageCompare";
+import type {
+    BucketCategory,
+    CompareSetMode,
+    CompareViewContext,
+    ComparisonResult,
+} from "@/types/coverageCompare";
 import React, { useMemo, useRef, useState } from "react";
 
 /** MDI wizard hat icon (Pictogrammers), accepts size and color via style. */
@@ -60,13 +74,58 @@ const KEY_SEP = "\u001f";
 type BucketRecord = {
     /** Axis name → value. Kept separate so names like "target" cannot clobber metrics. */
     axes: Record<string, string>;
+    /** Global bucket index in the readout; matches the compare result's bucket keys. */
+    bucketIndex: number;
     hitCount: number;
     goalTarget: number;
 };
 
+/** The four compare categories in display order (illegal/ignore buckets are never shown). */
+export const COMPARE_CATEGORIES: readonly CompareBucketCategory[] = [
+    "a_only",
+    "both",
+    "b_only",
+    "neither",
+];
+
+function isCompareCategory(category: BucketCategory): category is CompareBucketCategory {
+    return category !== "illegal" && category !== "ignore";
+}
+
+/**
+ * A pivot cell's buckets combined into one virtual bucket for comparison: hits and
+ * targets are summed over the cell's valid buckets (illegal/ignore are skipped) and
+ * the cell gets a single category from that total.
+ */
+export type PivotCompareInfo = {
+    /** Buckets in one of the four categories (excludes illegal/ignore). */
+    validBuckets: number;
+    hitsA: number;
+    hitsB: number;
+    target: number;
+    /** Undefined when the cell has no valid buckets. */
+    category?: CompareBucketCategory;
+};
+
+/** Short cell labels; the tooltip and grid use the full "A only"/"B only" wording. */
+const COMPARE_CELL_LABELS: Record<CompareBucketCategory, string> = {
+    a_only: "A",
+    both: "Both",
+    b_only: "B",
+    neither: "Neither",
+};
+
+function emptyCompareInfo(): PivotCompareInfo {
+    return { validBuckets: 0, hitsA: 0, hitsB: 0, target: 0 };
+}
+
+/** Axis name → its values in covertree definition order (the order the bucket table uses). */
+export type AxisValueOrder = Record<string, string[]>;
+
 export function buildBucketRecords(node: PointNode): {
     buckets: BucketRecord[];
     axisNames: string[];
+    axisValueOrder: AxisValueOrder;
 } {
     const pointData = node.data;
     const readout = pointData.readout;
@@ -103,12 +162,20 @@ export function buildBucketRecords(node: PointNode): {
         }
         buckets.push({
             axes: axisMap,
+            bucketIndex: bucketGoal.start,
             hitCount: bucketHit.hits,
             goalTarget: goal.target,
         });
     }
 
-    return { buckets, axisNames: axes.map((a) => a.name) };
+    const axisValueOrder: AxisValueOrder = {};
+    for (const axis of axes) {
+        axisValueOrder[axis.name] = axisValues
+            .slice(axis.value_start - axis_value_start, axis.value_end - axis_value_start)
+            .map((v) => String(v.value));
+    }
+
+    return { buckets, axisNames: axes.map((a) => a.name), axisValueOrder };
 }
 
 function keyFor(record: BucketRecord, axisNames: string[]): string {
@@ -116,17 +183,58 @@ function keyFor(record: BucketRecord, axisNames: string[]): string {
     return axisNames.map((name) => record.axes[name] ?? "").join(KEY_SEP);
 }
 
+/**
+ * Compare pivot keys axis by axis: values known from the definition order sort by
+ * their position there, anything else falls back to a natural (numeric-aware) sort.
+ */
+function makeKeyComparator(
+    axisNames: string[],
+    axisValueOrder?: AxisValueOrder,
+): (a: string, b: string) => number {
+    const ranks = axisNames.map((name) => {
+        const rank = new Map<string, number>();
+        (axisValueOrder?.[name] ?? []).forEach((value, index) => {
+            if (!rank.has(value)) rank.set(value, index);
+        });
+        return rank;
+    });
+    return (a, b) => {
+        if (a === b) return 0;
+        const aParts = a.split(KEY_SEP);
+        const bParts = b.split(KEY_SEP);
+        for (let i = 0; i < axisNames.length; i++) {
+            const av = aParts[i] ?? "";
+            const bv = bParts[i] ?? "";
+            if (av === bv) continue;
+            const ar = ranks[i].get(av);
+            const br = ranks[i].get(bv);
+            if (ar !== undefined && br !== undefined) return ar - br;
+            return natCompare(av, bv);
+        }
+        return 0;
+    };
+}
+
 export type PivotCellInfo = {
     sumHits: number;
     sumTargets: number;
     bucketCount: number;
+    /** Combined A/B comparison; only present when aggregating in compare mode. */
+    compare?: PivotCompareInfo;
 };
 
-/** Aggregate bucket metrics into pivot cells keyed by ``row\\tcol``. */
+/**
+ * Aggregate bucket metrics into pivot cells keyed by ``row\\tcol``.
+ * When ``comparison`` is given, each cell is also categorised as a whole: its
+ * buckets' A and B hits are combined, so a cell hit by A in one bucket and by B
+ * in another counts as "both".
+ */
 export function aggregatePivotCells(
     buckets: BucketRecord[],
     rowAxes: string[],
     colAxes: string[],
+    comparison?: ComparisonResult,
+    axisValueOrder?: AxisValueOrder,
 ): {
     rowKeys: string[];
     colKeys: string[];
@@ -140,26 +248,54 @@ export function aggregatePivotCells(
     }
     if (rowAxes.length === 0) rowKeySet.add("");
     if (colAxes.length === 0) colKeySet.add("");
-    const rowKeys = Array.from(rowKeySet).sort();
-    const colKeys = Array.from(colKeySet).sort();
+    const rowKeys = Array.from(rowKeySet).sort(makeKeyComparator(rowAxes, axisValueOrder));
+    const colKeys = Array.from(colKeySet).sort(makeKeyComparator(colAxes, axisValueOrder));
 
     const cellMap = new Map<string, PivotCellInfo>();
     for (const b of buckets) {
         const rk = rowAxes.length ? keyFor(b, rowAxes) : "";
         const ck = colAxes.length ? keyFor(b, colAxes) : "";
         const key = `${rk}\t${ck}`;
-        const cur = cellMap.get(key) ?? {
-            sumHits: 0,
-            sumTargets: 0,
-            bucketCount: 0,
-        };
+        let cur = cellMap.get(key);
+        if (!cur) {
+            cur = { sumHits: 0, sumTargets: 0, bucketCount: 0 };
+            if (comparison) cur.compare = emptyCompareInfo();
+            cellMap.set(key, cur);
+        }
         cur.sumHits += b.hitCount;
         cur.sumTargets += b.goalTarget;
         cur.bucketCount += 1;
-        cellMap.set(key, cur);
+        if (comparison && cur.compare) {
+            const category = getBucketCategoryForIndex(comparison, b.bucketIndex);
+            if (isCompareCategory(category)) {
+                cur.compare.validBuckets += 1;
+                cur.compare.hitsA += comparison.hitsAByIndex.get(b.bucketIndex) ?? 0;
+                cur.compare.hitsB += comparison.hitsBByIndex.get(b.bucketIndex) ?? 0;
+                cur.compare.target += b.goalTarget;
+            }
+        }
+    }
+
+    if (comparison) {
+        for (const cell of cellMap.values()) {
+            const info = cell.compare;
+            if (info && info.validBuckets > 0) {
+                info.category = classifyValidBucket(
+                    info.hitsA,
+                    info.hitsB,
+                    info.target,
+                    comparison.definition,
+                );
+            }
+        }
     }
 
     return { rowKeys, colKeys, cellMap };
+}
+
+/** Whether a cell category is the one selected by the set mode ("all" selects every category). */
+function isCategoryActive(category: CompareBucketCategory, setMode: CompareSetMode): boolean {
+    return setMode === "all" || setMode === category;
 }
 
 function labelForKey(key: string): string {
@@ -254,29 +390,32 @@ type RecordWithRatio = {
 
 type ColumnType = NonNullable<TableProps["columns"]>[number];
 type HoveredCell = { rowKey: string; colKey: string } | null;
-type CellInfo = { sumHits: number; sumTargets: number; bucketCount: number };
 
 function buildNestedColumnHeaders(
     colKeys: string[],
     colAxes: string[],
     theme: ThemeType,
-    cellMap: Map<string, CellInfo>,
+    cellMap: Map<string, PivotCellInfo>,
     hoveredCell: HoveredCell,
     setHoveredCell: (cell: HoveredCell) => void,
+    compare?: CompareViewContext,
 ): ColumnType[] {
+    const width = 90;
+
     if (colAxes.length <= 1) {
         return colKeys.map(
             (colKey): ColumnType => ({
                 title: labelForKey(colKey),
                 dataIndex: colKey,
                 key: colKey,
-                width: 90,
+                width,
                 ...getCoverageColumnConfig(
                     theme,
                     colKey,
                     cellMap,
                     hoveredCell,
                     setHoveredCell,
+                    compare,
                 ),
             }),
         );
@@ -290,13 +429,14 @@ function buildNestedColumnHeaders(
                     title: colKey.split(KEY_SEP).pop() ?? labelForKey(colKey),
                     dataIndex: colKey,
                     key: colKey,
-                    width: 90,
+                    width,
                     ...getCoverageColumnConfig(
                         theme,
                         colKey,
                         cellMap,
                         hoveredCell,
                         setHoveredCell,
+                        compare,
                     ),
                 }),
             );
@@ -320,25 +460,80 @@ function buildNestedColumnHeaders(
     return groupByDepth(colKeys, 0);
 }
 
-function formatCellTooltip(cell: CellInfo | undefined): string {
+function bucketNoun(count: number): string {
+    return count === 1 ? "bucket" : "buckets";
+}
+
+function formatCellTooltip(cell: PivotCellInfo | undefined): string {
     if (!cell) return "No data";
     const pct =
         cell.sumTargets !== 0
             ? `${((cell.sumHits / cell.sumTargets) * 100).toFixed(1)}%`
             : "—";
-    const bucketLabel = cell.bucketCount === 1 ? "bucket" : "buckets";
-    return `${cell.bucketCount} ${bucketLabel}, ${cell.sumHits}/${cell.sumTargets} hits (${pct})`;
+    return `${cell.bucketCount} ${bucketNoun(cell.bucketCount)}, ${cell.sumHits}/${cell.sumTargets} hits (${pct})`;
+}
+
+function formatCompareCellTooltip(cell: PivotCellInfo | undefined): React.ReactNode {
+    const info = cell?.compare;
+    if (!cell || !info) return "No data";
+    if (!info.category) {
+        return `${cell.bucketCount} ${bucketNoun(cell.bucketCount)}, all ignored or illegal`;
+    }
+    const skipped = cell.bucketCount - info.validBuckets;
+    return (
+        <>
+            <div>
+                {getCompareCategoryLabel(info.category)}: {info.validBuckets}{" "}
+                {bucketNoun(info.validBuckets)} combined
+                {skipped > 0 ? ` (+${skipped} ignored/illegal)` : ""}
+            </div>
+            <div>
+                Hits A {info.hitsA}, hits B {info.hitsB}, target {info.target}
+            </div>
+        </>
+    );
+}
+
+/** Cell text in compare mode: the combined cell's category, in that category's colour. */
+function renderCompareDisplay(
+    cell: PivotCellInfo | undefined,
+    setMode: CompareSetMode,
+): React.ReactNode {
+    const category = cell?.compare?.category;
+    if (!category) return "-";
+    const active = isCategoryActive(category, setMode);
+    return (
+        <span
+            style={{
+                color: getCompareCategoryColor(category),
+                fontWeight: active ? 600 : 400,
+                opacity: active ? 1 : 0.7,
+            }}
+        >
+            {COMPARE_CELL_LABELS[category]}
+        </span>
+    );
+}
+
+/** Cell tint in compare mode, matching the bucket grid's row tint for the same category. */
+export function getCompareCellBackground(
+    info: PivotCompareInfo | undefined,
+    setMode: CompareSetMode,
+): string | undefined {
+    if (!info?.category) return undefined;
+    return getCompareCategoryBackground(info.category, isCategoryActive(info.category, setMode));
 }
 
 function getCoverageColumnConfig(
     theme: ThemeType,
     columnKey: string,
-    cellMap?: Map<string, CellInfo>,
+    cellMap?: Map<string, PivotCellInfo>,
     hoveredCell?: HoveredCell,
     setHoveredCell?: (cell: HoveredCell) => void,
+    compare?: CompareViewContext,
 ): {
     render: (ratio: number, record?: RecordWithRatio & { rowKey?: string }) => React.ReactNode;
-    onCell: (record: RecordWithRatio) => { style: React.CSSProperties };
+    onCell: (record: RecordWithRatio & { rowKey?: string }) => { style: React.CSSProperties };
 } {
     const renderDisplay = (ratio: number) => {
         if (Number.isNaN(ratio) || Object.is(ratio, -0)) return "-";
@@ -348,11 +543,16 @@ function getCoverageColumnConfig(
 
     return {
         render: (ratio: number, record?: RecordWithRatio & { rowKey?: string }) => {
-            const display = renderDisplay(ratio);
+            const cell =
+                cellMap && record?.rowKey != null
+                    ? cellMap.get(`${record.rowKey}\t${columnKey}`)
+                    : undefined;
+            const display = compare
+                ? renderCompareDisplay(cell, compare.setMode)
+                : renderDisplay(ratio);
             if (!cellMap || record?.rowKey == null) return display;
 
-            const cell = cellMap.get(`${record.rowKey}\t${columnKey}`);
-            const title = formatCellTooltip(cell);
+            const title = compare ? formatCompareCellTooltip(cell) : formatCellTooltip(cell);
             const open =
                 hoveredCell != null &&
                 hoveredCell.rowKey === record.rowKey &&
@@ -396,7 +596,20 @@ function getCoverageColumnConfig(
                 </span>
             );
         },
-        onCell: (record: RecordWithRatio) => {
+        onCell: (record: RecordWithRatio & { rowKey?: string }) => {
+            if (compare) {
+                const cell =
+                    cellMap && record.rowKey != null
+                        ? cellMap.get(`${record.rowKey}\t${columnKey}`)
+                        : undefined;
+                return {
+                    style: {
+                        position: "relative",
+                        backgroundColor: getCompareCellBackground(cell?.compare, compare.setMode),
+                    },
+                };
+            }
+
             const ratio = record[columnKey] as number;
             let backgroundColor = "unset";
             let fontWeight = "unset";
@@ -425,9 +638,55 @@ function getCoverageColumnConfig(
 
 export type PointPivotViewProps = {
     node: PointNode;
+    /** When set, cells show compare categories instead of hit ratios. */
+    compare?: CompareViewContext;
 };
 
-export function PointPivotView({ node }: PointPivotViewProps) {
+function CompareLegend({
+    compare,
+    theme,
+}: {
+    compare: CompareViewContext;
+    theme: ThemeType;
+}) {
+    const colors = theme.theme.colors;
+    const hint = "Each cell combines its buckets' A and B hits before categorising";
+    return (
+        <Space size={12} wrap align="center">
+            {COMPARE_CATEGORIES.map((category) => {
+                const active = isCategoryActive(category, compare.setMode);
+                return (
+                    <Space key={category} size={4} align="center">
+                        <span
+                            aria-hidden="true"
+                            style={{
+                                display: "inline-block",
+                                width: 12,
+                                height: 12,
+                                borderRadius: 2,
+                                background: getCompareCategoryBackground(category, active),
+                                border: `1px solid ${getCompareCategoryColor(category)}`,
+                            }}
+                        />
+                        <span
+                            style={{
+                                fontSize: 12,
+                                color: active
+                                    ? colors.primarytxt.value
+                                    : colors.desaturatedtxt.value,
+                            }}
+                        >
+                            {COMPARE_CELL_LABELS[category]}
+                        </span>
+                    </Space>
+                );
+            })}
+            <span style={{ fontSize: 12, color: colors.desaturatedtxt.value }}>{hint}</span>
+        </Space>
+    );
+}
+
+export function PointPivotView({ node, compare }: PointPivotViewProps) {
     const [rowAxes, setRowAxes] = useState<string[]>([]);
     const [colAxes, setColAxes] = useState<string[]>([]);
     const [suggestionIndex, setSuggestionIndex] = useState(0);
@@ -435,13 +694,20 @@ export function PointPivotView({ node }: PointPivotViewProps) {
     /** Fallback for Electron where dataTransfer.getData() can be empty on drop */
     const lastDragDataRef = useRef<AxisDragData | null>(null);
 
-    const { buckets, axisNames } = useMemo(
+    const { buckets, axisNames, axisValueOrder } = useMemo(
         () => buildBucketRecords(node),
         [node],
     );
 
+    const comparison = compare?.comparison;
     const { rowKeys, colKeys, cellMap, rowKeyToLabel, rowSpans } = useMemo(() => {
-        const { rowKeys, colKeys, cellMap } = aggregatePivotCells(buckets, rowAxes, colAxes);
+        const { rowKeys, colKeys, cellMap } = aggregatePivotCells(
+            buckets,
+            rowAxes,
+            colAxes,
+            comparison,
+            axisValueOrder,
+        );
 
         const rowKeyToLabel = new Map<string, string>();
         for (const rk of rowKeys) rowKeyToLabel.set(rk, labelForKey(rk));
@@ -474,7 +740,7 @@ export function PointPivotView({ node }: PointPivotViewProps) {
         }
 
         return { rowKeys, colKeys, cellMap, rowKeyToLabel, rowSpans };
-    }, [buckets, rowAxes, colAxes]);
+    }, [buckets, rowAxes, colAxes, comparison, axisValueOrder]);
 
     const addToRow = (axisName: string, atIndex?: number) => {
         if (!axisNames.includes(axisName)) return;
@@ -625,6 +891,7 @@ export function PointPivotView({ node }: PointPivotViewProps) {
                                     title="Suggest axes to show holes and patterns (click again to try another suggestion)"
                                 />
                             )}
+                            {compare && <CompareLegend compare={compare} theme={theme} />}
                         </Flex>
                         <Flex gap="large" wrap="wrap">
                             <div
@@ -780,6 +1047,7 @@ export function PointPivotView({ node }: PointPivotViewProps) {
                                         cellMap,
                                         hoveredCell,
                                         setHoveredCell,
+                                        compare,
                                     ),
                                 ]}
                                 rowKey="rowKey"

@@ -42,7 +42,7 @@ function isBucketCovered(
     return hits >= target;
 }
 
-function classifyValidBucket(
+export function classifyValidBucket(
     hitsA: number,
     hitsB: number,
     target: number,
