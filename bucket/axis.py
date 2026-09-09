@@ -47,6 +47,10 @@ class AxisAmbiguousValues(AxisException):
     pass
 
 
+class AxisNameAlreadyInUse(AxisException):
+    pass
+
+
 class AxisLookupMode(Enum):
     GENERIC = auto()
     SCALAR_ONLY = auto()

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Callable
 
 from pydantic import validate_call
 
-from .axis import Axis
+from .axis import Axis, AxisNameAlreadyInUse
 from .base import CoverBase
 from .bucket import Bucket
 from .common.chain import Link, OpenLink
@@ -91,7 +91,8 @@ class Coverpoint(CoverBase):
         self.error = log.error
 
         # List of axes used by this coverpoint
-        self._axes: list[Axis] = []  # TODO make a dict
+        # Axes in definition order (bucket index order); names are unique
+        self._axes: list[Axis] = []
         # Hit count per bucket, indexed in itertools.product order
         self._hits: list[int] = []
         # Dictionary of defined goals
@@ -239,6 +240,12 @@ class Coverpoint(CoverBase):
         """
         Add axis with values to process later
         """
+        if any(axis.name == name for axis in self._axes):
+            # add_axis runs inside setup(), before _name is assigned
+            owner = getattr(self, "_name", None) or type(self).__name__
+            raise AxisNameAlreadyInUse(
+                f"Coverpoint '{owner}' already has an axis named '{name}'"
+            )
         self._axes.append(Axis(name, values, description, enable_other))
 
     @validate_call
