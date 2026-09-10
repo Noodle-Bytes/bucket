@@ -9,6 +9,7 @@ output.
 
 import json
 import sqlite3
+import tarfile
 from io import StringIO
 from types import SimpleNamespace
 
@@ -34,7 +35,7 @@ from bucket.rw.common import (
     PointHitTuple,
 )
 from bucket.rw.point import PointReader
-from bucket.rw.sql import BucketWaiverRow, PointHitRow
+from bucket.rw.sql import PointHitRow
 from bucket.waiver import (
     Waiver,
     WaiverAxisError,
@@ -220,6 +221,7 @@ class TestWaiverModel:
         waiver = Waiver(point="Top", reason="r")
         assert waiver.axes == {}
         assert waiver.author == ""
+        assert waiver.disabled is False
 
     def test_load_waivers(self, tmp_path):
         path = tmp_path / "waivers.json"
@@ -407,6 +409,14 @@ class TestMatching:
     def test_unmatched_point_is_not_an_error(self, readout):
         assert matched(readout, {"point": "Nowhere.*", "reason": "r"}) == {}
         assert match_waivers(readout, WaiverFile(waivers=[])) == []
+
+    def test_disabled_waiver_is_skipped(self, readout):
+        assert (
+            matched(
+                readout, {"point": "*", "reason": "temporarily off", "disabled": True}
+            )
+            == {}
+        )
 
     def test_result_is_ordered_by_bucket_index(self, readout):
         result = match_waivers(readout, waiver_file({"point": "*", "reason": "r"}))
@@ -610,10 +620,11 @@ ACCESSORS = [
 
 
 def assert_waivers_roundtrip(away, back):
-    assert readouts_are_equal(away, back)
-    assert list(back.iter_bucket_waivers()) == list(away.iter_bucket_waivers())
-    assert list(back.iter_point_hits()) == list(away.iter_point_hits())
-    assert any(ph.waived_buckets for ph in back.iter_point_hits())
+    assert list(back.iter_bucket_waivers()) == []
+    assert list(back.iter_point_hits()) == [
+        PointHitTuple(*ph[:5]) for ph in away.iter_point_hits()
+    ]
+    assert list(back.iter_bucket_hits()) == list(away.iter_bucket_hits())
     assert back.get_format_version() == FORMAT_VERSION
 
 
@@ -638,10 +649,6 @@ class TestRoundTrip:
         ref = accessor.write(away)
         back = accessor.read(ref)
         assert_waivers_roundtrip(away, back)
-        assert [w.reason for w in back.iter_bucket_waivers()] == [
-            'Reason №1 with "quotes", commas ✓',
-            "1234",
-        ]
 
     def test_multiple_records_keep_their_own_waivers(self, tmp_path, make_accessor):
         accessor = make_accessor(tmp_path)
@@ -650,11 +657,33 @@ class TestRoundTrip:
         waived.waive_buckets({waived.waivable_buckets()[0]: "only here"})
         refs = [accessor.write(plain), accessor.write(waived), accessor.write(plain)]
         assert list(accessor.read(refs[0]).iter_bucket_waivers()) == []
-        assert list(accessor.read(refs[1]).iter_bucket_waivers()) == list(
-            waived.iter_bucket_waivers()
-        )
+        assert list(accessor.read(refs[1]).iter_bucket_waivers()) == []
         assert list(accessor.read(refs[2]).iter_bucket_waivers()) == []
-        assert readouts_are_equal(waived, accessor.read(refs[1]))
+        assert_waivers_roundtrip(waived, accessor.read(refs[1]))
+
+    def test_serialized_layout_has_no_waiver_storage(
+        self, tmp_path, make_accessor, readout
+    ):
+        waived = WaivedReadout(readout, waiver_file(RED_LARGE))
+
+        archive_path = tmp_path / "storage.bktgz"
+        ArchiveAccessor(archive_path).write(waived)
+        with tarfile.open(archive_path, "r:gz") as archive:
+            assert "bucket_waiver" not in archive.getnames()
+
+        json_path = tmp_path / "storage.json"
+        JSONAccessor(json_path).write(waived)
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+        assert "bucket_waiver" not in payload["tables"]
+        assert "bucket_waiver" not in payload["records"][0]
+        assert all(len(row) == 5 for row in payload["records"][0]["point_hit"])
+
+        sql = SQLAccessor.File(tmp_path / "storage.db")
+        sql.write(waived)
+        assert not inspect(sql.engine).has_table("bucket_waiver")
+        assert not {"waived_buckets", "waived_target"} & sql_columns(
+            sql, PointHitRow.__tablename__
+        )
 
 
 LEGACY_POINT_HIT_DDL = (
@@ -670,7 +699,9 @@ def sql_columns(accessor, table) -> set[str]:
 
 
 class TestLegacySQL:
-    def test_writing_into_a_legacy_database_adds_the_columns(self, tmp_path, readout):
+    def test_writing_into_a_legacy_database_does_not_add_waiver_storage(
+        self, tmp_path, readout
+    ):
         path = tmp_path / "legacy.db"
         with sqlite3.connect(path) as connection:
             connection.execute(LEGACY_POINT_HIT_DDL)
@@ -683,23 +714,33 @@ class TestLegacySQL:
         away = WaivedReadout(readout, waiver_file(RED_LARGE))
         ref = accessor.write(away)
 
-        assert {"waived_buckets", "waived_target"} <= sql_columns(
+        assert not {"waived_buckets", "waived_target"} & sql_columns(
             accessor, PointHitRow.__tablename__
         )
-        assert inspect(accessor.engine).has_table(BucketWaiverRow.__tablename__)
+        assert not inspect(accessor.engine).has_table("bucket_waiver")
         assert_waivers_roundtrip(away, accessor.read(ref))
 
     @pytest.mark.skipif(
         tuple(int(x) for x in sqlite3.sqlite_version.split(".")[:2]) < (3, 35),
         reason="ALTER TABLE DROP COLUMN needs SQLite 3.35",
     )
-    def test_reading_a_legacy_database_defaults_waivers(self, tmp_path, readout):
+    def test_reading_legacy_waiver_columns_defaults_waivers(self, tmp_path, readout):
         path = tmp_path / "legacy.db"
         ref = SQLAccessor.File(path).write(readout)
         with sqlite3.connect(path) as connection:
-            connection.execute("ALTER TABLE point_hit DROP COLUMN waived_buckets")
-            connection.execute("ALTER TABLE point_hit DROP COLUMN waived_target")
-            connection.execute("DROP TABLE bucket_waiver")
+            connection.execute(
+                "ALTER TABLE point_hit ADD COLUMN waived_buckets INTEGER NOT NULL DEFAULT 0"
+            )
+            connection.execute(
+                "ALTER TABLE point_hit ADD COLUMN waived_target INTEGER NOT NULL DEFAULT 0"
+            )
+            connection.execute(
+                "CREATE TABLE bucket_waiver "
+                "(run INTEGER, start INTEGER, reason TEXT)"
+            )
+            connection.execute(
+                "INSERT INTO bucket_waiver VALUES (?, ?, ?)", (ref, 0, "legacy")
+            )
 
         accessor = SQLAccessor.File(path)
         back = accessor.read(ref)
@@ -710,7 +751,7 @@ class TestLegacySQL:
             for ph in back.iter_point_hits()
         )
 
-        # Subsequent writes migrate the table and store waivers as normal.
+        # Subsequent writes continue to ignore legacy waiver storage.
         away = WaivedReadout(readout, waiver_file(RED_LARGE))
         assert_waivers_roundtrip(away, accessor.read(accessor.write(away)))
         assert readouts_are_equal(readout, accessor.read(ref))
@@ -776,9 +817,7 @@ class TestMerge:
         ArchiveAccessor(path).write(waived)
         ArchiveAccessor(path).write(build_readout())
         merged = ArchiveAccessor.merge_files([path])
-        assert [w.start for w in merged.iter_bucket_waivers()] == [
-            colours["red", "large"]
-        ]
+        assert list(merged.iter_bucket_waivers()) == []
         out = tmp_path / "merged.bktgz"
         ArchiveAccessor(out).write(merged)
         assert_waivers_roundtrip(merged, next(ArchiveAccessor(out).read_all()))
@@ -792,7 +831,7 @@ class TestMerge:
 class TestConsole:
     def render(self, readout, **options) -> str:
         output = StringIO()
-        console = Console(file=output, width=1000, legacy_windows=False)
+        console = Console(file=output, width=1000, legacy_windows=False, _environ={})
         ConsoleWriter(console=console, **options).write(readout)
         return output.getvalue()
 

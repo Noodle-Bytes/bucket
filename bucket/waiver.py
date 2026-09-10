@@ -7,7 +7,7 @@ Coverage waivers (exclusions).
 A waiver file excuses buckets that were not (fully) hit from scoring after the
 fact, so that verification sign-off can distinguish "unhit" from "unhit but
 excused". Waivers are matched against a readout by coverpoint path and axis
-value names; the matched buckets are recorded per record as
+value names; matched buckets are represented in memory as
 ``BucketWaiverTuple`` rows and excluded from the point hit totals (see
 ``bucket.rw.common.compute_point_hits`` for the scoring semantics).
 
@@ -62,6 +62,7 @@ class Waiver(BaseModel):
     axes: dict[str, str | list[str]] = {}
     reason: str = Field(min_length=1)
     author: str = ""
+    disabled: bool = False
 
     @field_validator("reason")
     @classmethod
@@ -176,7 +177,9 @@ def match_waivers(readout: Readout, waiver_file: WaiverFile) -> list[BucketWaive
             continue
 
         applicable = [
-            waiver for waiver in waiver_file.waivers if waiver.matches_point(path)
+            waiver
+            for waiver in waiver_file.waivers
+            if not waiver.disabled and waiver.matches_point(path)
         ]
         if not applicable:
             continue

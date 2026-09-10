@@ -197,11 +197,11 @@ describe("mergeReadoutsStrict", () => {
     });
 });
 
-describe("export serializers: waivers (format 3)", () => {
+describe("export serializers: sidecar-only waivers", () => {
     const waivers: BucketWaiverTuple[] = [{ start: 1, reason: 'needs "quoting", commas' }];
 
     test.each(["json", "archive"] as const)(
-        "%s round-trips waivers and the point_hit waiver columns",
+        "%s strips waivers and point_hit waiver columns",
         async (format) => {
             const readout = createReadout({ bucketHits: [3, 5], waivers });
             const bytes =
@@ -211,24 +211,21 @@ describe("export serializers: waivers (format 3)", () => {
             const restored = await readSingle(bytes);
 
             expect(restored.get_format_version?.()).toBe(SUPPORTED_FORMAT_VERSION);
-            expect(Array.from(restored.iter_bucket_waivers(0, null))).toEqual(waivers);
+            expect(Array.from(restored.iter_bucket_waivers(0, null))).toEqual([]);
             expect(Array.from(restored.iter_bucket_hits(0, null)).map((value) => value.hits)).toEqual(
                 [3, 5],
-            );
-            expect(Array.from(restored.iter_point_hits())).toEqual(
-                Array.from(readout.iter_point_hits()),
             );
             expect(Array.from(restored.iter_point_hits())[0]).toMatchObject({
                 hits: 3,
                 hit_buckets: 1,
                 full_buckets: 1,
-                waived_buckets: 1,
-                waived_target: 2,
+                waived_buckets: 0,
+                waived_target: 0,
             });
         },
     );
 
-    test("archive: each record reads only its own waivers", async () => {
+    test("archive: no record embeds waivers", async () => {
         const readoutA = createReadout({ recSha: "rec-a", sourceKey: "a", waivers: [] });
         const readoutB = createReadout({
             recSha: "rec-b",
@@ -248,32 +245,27 @@ describe("export serializers: waivers (format 3)", () => {
         );
         expect(restored.map((readout) => Array.from(readout.iter_bucket_waivers(0, null)))).toEqual([
             [],
-            [{ start: 0, reason: "b0" }],
-            [
-                { start: 0, reason: "c0" },
-                { start: 1, reason: "c1" },
-            ],
+            [],
+            [],
         ]);
     });
 
-    test("json payload carries the format 3 tables", () => {
+    test("json payload uses the short format 2 tables", () => {
         const readout = createReadout({ waivers });
         const payload = JSON.parse(
             new TextDecoder().decode(serializeReadoutsToJsonBytes([readout])),
         );
-        expect(payload.tables.bucket_waiver).toEqual(["start", "reason"]);
+        expect(payload.tables.bucket_waiver).toBeUndefined();
         expect(payload.tables.point_hit).toEqual([
             "start",
             "depth",
             "hits",
             "hit_buckets",
             "full_buckets",
-            "waived_buckets",
-            "waived_target",
         ]);
-        expect(payload.records[0].bucket_waiver).toEqual([[1, 'needs "quoting", commas']]);
-        expect(payload.records[0].point_hit[0]).toHaveLength(7);
-        expect(payload.records[0].format_version).toBe(3);
+        expect(payload.records[0].bucket_waiver).toBeUndefined();
+        expect(payload.records[0].point_hit[0]).toHaveLength(5);
+        expect(payload.records[0].format_version).toBe(2);
     });
 });
 

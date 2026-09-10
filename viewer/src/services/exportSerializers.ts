@@ -41,19 +41,8 @@ const JSON_TABLES: Record<string, string[]> = {
     axis_value: ["start", "value"],
     goal: ["start", "target", "name", "description"],
     bucket_goal: ["start", "goal"],
-    // Format 3: waived_buckets / waived_target trail the original columns.
-    point_hit: [
-        "start",
-        "depth",
-        "hits",
-        "hit_buckets",
-        "full_buckets",
-        "waived_buckets",
-        "waived_target",
-    ],
+    point_hit: ["start", "depth", "hits", "hit_buckets", "full_buckets"],
     bucket_hit: ["start", "hits"],
-    // Format 3: sparse per-record table of waived buckets.
-    bucket_waiver: ["start", "reason"],
 };
 
 function pointHitRow(pointHit: PointHitTuple): CsvValue[] {
@@ -63,13 +52,7 @@ function pointHitRow(pointHit: PointHitTuple): CsvValue[] {
         pointHit.hits,
         pointHit.hit_buckets,
         pointHit.full_buckets,
-        pointHit.waived_buckets ?? 0,
-        pointHit.waived_target ?? 0,
     ];
-}
-
-function bucketWaiverRow(waiver: BucketWaiverTuple): CsvValue[] {
-    return [waiver.start, waiver.reason];
 }
 
 class CsvTableBuilder {
@@ -238,7 +221,6 @@ export function serializeReadoutsToJsonBytes(readouts: Readout[]): Uint8Array {
                 bucketHit.start,
                 bucketHit.hits,
             ]),
-            bucket_waiver: data.bucketWaivers.map(bucketWaiverRow),
         });
     }
 
@@ -253,7 +235,6 @@ export function serializeReadoutsToArchiveBytes(readouts: Readout[]): Uint8Array
     const bucketGoalTable = new CsvTableBuilder();
     const pointHitTable = new CsvTableBuilder();
     const bucketHitTable = new CsvTableBuilder();
-    const bucketWaiverTable = new CsvTableBuilder();
     const definitionTable = new CsvTableBuilder();
     const recordTable = new CsvTableBuilder();
 
@@ -310,10 +291,6 @@ export function serializeReadoutsToArchiveBytes(readouts: Readout[]): Uint8Array
             data.bucketHits.map((bucketHit) => [bucketHit.hits]),
         );
 
-        const bucketWaiverSpan = bucketWaiverTable.writeRows(
-            data.bucketWaivers.map(bucketWaiverRow),
-        );
-
         const definitionSpan = definitionTable.writeRows([
             [
                 data.defSha,
@@ -344,10 +321,6 @@ export function serializeReadoutsToArchiveBytes(readouts: Readout[]): Uint8Array
                 // Always stamp the serializer's own format, not the source
                 // readout's: it describes how this record row is laid out.
                 SUPPORTED_FORMAT_VERSION,
-                // Format 3: byte range of this record's waivers, after
-                // format_version so older readers still parse the row.
-                bucketWaiverSpan.start,
-                bucketWaiverSpan.end,
             ],
         ]);
     }
@@ -362,7 +335,6 @@ export function serializeReadoutsToArchiveBytes(readouts: Readout[]): Uint8Array
         { name: "bucket_goal", data: bucketGoalTable.toBytes() },
         { name: "point_hit", data: pointHitTable.toBytes() },
         { name: "bucket_hit", data: bucketHitTable.toBytes() },
-        { name: "bucket_waiver", data: bucketWaiverTable.toBytes() },
     ]);
 
     return gzipSync(tarBytes);

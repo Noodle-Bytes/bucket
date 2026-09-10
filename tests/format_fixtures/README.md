@@ -22,12 +22,8 @@ Each `v<N>/` contains files written by the code that produced format `N`:
 The records are deterministic (fixed seeds) and deliberately exercise format
 edge cases: point groups, multi-axis points, illegal (`-1`) and ignore (`0`)
 goals, all tier/tags/motivation variants, and non-ASCII / quoted / comma text
-in CSV fields. From format 3 each record also waives two buckets, so the
-`bucket_waiver` table (`start,reason` rows) and the `waived_buckets` /
-`waived_target` columns of `point_hit` are covered; `expected.json` lists them
-as `bucket_waivers: [[start, reason], ...]` per record. Snapshots from older
-formats have neither key — readers of `expected.json` treat a missing
-`bucket_waivers` as empty and missing `point_hit` waived fields as `0`.
+in CSV fields. Waivers are sidecar-only and are not seeded into storage
+fixtures.
 
 ## Consumed by
 

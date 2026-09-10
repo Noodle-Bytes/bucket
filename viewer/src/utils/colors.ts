@@ -84,15 +84,24 @@ export function getCoverageColor(
 }
 
 /**
- * Muted slate for buckets excluded from scoring by a waiver. Deliberately
- * outside the red/green coverage gradient and distinct from the grey used
- * for "neither" in compare mode.
+ * Distinct violet for buckets excluded from scoring by a waiver — outside the
+ * red/green coverage gradient and distinct from compare "neither" grey.
  */
-export const WAIVED_BUCKET_COLOR = "#7a8ca3";
+export const WAIVED_BUCKET_COLOR = "#6d5a9c";
+/** Stronger rose-violet when a waived bucket still recorded hits. */
+export const WAIVED_HIT_BUCKET_COLOR = "#a33d7c";
 export const WAIVED_BUCKET_LABEL = "Waived";
+export const WAIVED_HIT_BUCKET_LABEL = "Waived (hit)";
 
-export function getWaivedBucketBackground(alpha: number = 0.18): string {
-    return hexToRgba(WAIVED_BUCKET_COLOR, alpha);
+export function getWaivedBucketBackground(
+    alpha: number = 0.18,
+    hasHits: boolean = false,
+): string {
+    return hexToRgba(hasHits ? WAIVED_HIT_BUCKET_COLOR : WAIVED_BUCKET_COLOR, alpha);
+}
+
+export function getWaivedBucketForeground(hasHits: boolean = false): string {
+    return hasHits ? WAIVED_HIT_BUCKET_COLOR : WAIVED_BUCKET_COLOR;
 }
 
 export function getCompareCategoryColor(category: CompareBucketCategory): string {

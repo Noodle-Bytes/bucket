@@ -12,8 +12,12 @@ import { buildCompareDisplayReadout, getCompareCompatibility } from "@/services/
 import { CoverageLoadingOverlay } from "@/components/CoverageLoadingOverlay";
 import { notifyInfo, notifyWarning } from "@/utils/themedStaticNotification";
 import { checkForNewerRelease } from "@/services/updateCheck";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, type ChangeEvent } from "react";
 import type { CompareViewContext } from "@/types/coverageCompare";
+import { useWaiverSession } from "@/hooks/useWaiverSession";
+import { applyWaiverFileToReadout, isWaiverProblemStatus } from "@/services/matchWaivers";
+import type { WaiverFileSpec } from "@/services/waiverSpec";
+import WaiversPanel from "@/features/Dashboard/components/WaiversPanel";
 
 declare const __APP_VERSION__: string;
 
@@ -52,6 +56,13 @@ function useUpdateNotification() {
     }, []);
 }
 
+function applyWaiversToReadouts(readouts: Readout[], file: WaiverFileSpec): Readout[] {
+    if (file.waivers.length === 0) {
+        return readouts;
+    }
+    return readouts.map((readout) => applyWaiverFileToReadout(readout, file).readout);
+}
+
 export const AppRoutes = () => {
     useUpdateNotification();
     const {
@@ -74,6 +85,33 @@ export const AppRoutes = () => {
         persistSessionEnabled,
         setPersistSessionEnabled,
     } = useFileLoader();
+
+    const waivers = useWaiverSession();
+    const waiverInputRef = useRef<HTMLInputElement>(null);
+
+    const loadedReadouts = useMemo(
+        () =>
+            session.records
+                .filter((record) => record.isLoaded)
+                .map((record) => record.readout),
+        [session.records],
+    );
+
+    const setActiveReadouts = waivers.setActiveReadouts;
+    useEffect(() => {
+        setActiveReadouts(loadedReadouts);
+    }, [loadedReadouts, setActiveReadouts]);
+
+    const waivedBaseTree = useMemo(() => {
+        if (waivers.file.waivers.length === 0) {
+            return tree;
+        }
+        const waived = applyWaiversToReadouts(loadedReadouts, waivers.file);
+        if (waived.length === 0) {
+            return tree;
+        }
+        return CoverageTree.fromReadouts(waived);
+    }, [tree, loadedReadouts, waivers.file]);
 
     const compareRecordRows = useMemo(
         () =>
@@ -102,18 +140,20 @@ export const AppRoutes = () => {
                     recordsInSource <= 1
                         ? base
                         : `${base} (record ${record.sourceRecordIndex + 1})`;
+                const readout =
+                    waivers.file.waivers.length > 0
+                        ? applyWaiversToReadouts([record.readout], waivers.file)[0]
+                        : record.readout;
                 return {
                     id: record.id,
                     label,
-                    readout: record.readout,
+                    readout,
                 };
             }),
-        [session.records, session.sources],
+        [session.records, session.sources, waivers.file],
     );
 
     const compare = useCoverageCompare(compareRecordRows);
-    // Destructure stable setters so the effect can depend on them without
-    // taking the whole `compare` object (new identity every render).
     const {
         setRecordIdA: setCompareRecordIdA,
         setRecordIdB: setCompareRecordIdB,
@@ -172,8 +212,14 @@ export const AppRoutes = () => {
             );
             return CoverageTree.fromReadouts([readout]);
         }
-        return tree;
-    }, [compare.active, compare.readoutA, compare.readoutB, compare.setMode, tree]);
+        return waivedBaseTree;
+    }, [
+        compare.active,
+        compare.readoutA,
+        compare.readoutB,
+        compare.setMode,
+        waivedBaseTree,
+    ]);
 
     const compareContext = useMemo((): CompareViewContext | undefined => {
         if (!compare.active || !compare.comparison) {
@@ -185,19 +231,39 @@ export const AppRoutes = () => {
         };
     }, [compare.active, compare.comparison, compare.setMode]);
 
+    const openWaiverFileDialog = () => {
+        waiverInputRef.current?.click();
+    };
+
+    const handleWaiverInput = async (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (!file) {
+            return;
+        }
+        const text = await file.text();
+        waivers.loadFromText(text, file.name);
+    };
+
     const element = useRoutes([
         {
             path: "*",
             element: (
                 <>
-                    {/* Hidden file input for web browsers */}
                     <input
                         type="file"
                         ref={fileInputRef}
                         onChange={handleFileInput}
                         accept=".bktgz"
                         multiple
-                        style={{ display: 'none' }}
+                        style={{ display: "none" }}
+                    />
+                    <input
+                        type="file"
+                        ref={waiverInputRef}
+                        onChange={(event) => void handleWaiverInput(event)}
+                        accept=".json,application/json"
+                        style={{ display: "none" }}
                     />
                     <Dashboard
                         tree={displayTree}
@@ -215,7 +281,16 @@ export const AppRoutes = () => {
                         isDragging={isDragging}
                         persistSessionEnabled={persistSessionEnabled}
                         onPersistSessionChange={setPersistSessionEnabled}
+                        onLoadWaivers={openWaiverFileDialog}
+                        onOpenWaiversPanel={() => waivers.setPanelOpen(true)}
+                        waiverRuleCount={waivers.file.waivers.length}
+                        waiverProblemCount={
+                            waivers.report?.diagnostics.filter((row) =>
+                                isWaiverProblemStatus(row.status),
+                            ).length ?? 0
+                        }
                     />
+                    <WaiversPanel />
                     <CoverageLoadingOverlay open={isLoading} loadingProgress={loadingProgress} />
                 </>
             ),

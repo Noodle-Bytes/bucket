@@ -24,9 +24,11 @@ import {
     Divider,
     Dropdown,
     Input,
+    Modal,
     Segmented,
     Select,
     Space,
+    Spin,
     Table,
     TableProps,
     Tag,
@@ -56,8 +58,10 @@ import {
     getCompareCategoryBackground,
     getCompareCategoryLabel,
     getWaivedBucketBackground,
+    getWaivedBucketForeground,
     WAIVED_BUCKET_COLOR,
     WAIVED_BUCKET_LABEL,
+    WAIVED_HIT_BUCKET_LABEL,
 } from "@/utils/colors";
 import { coverageInfoChromeOuterBox } from "./coverageInfoChrome";
 import { confirmThemed } from "@/utils/themedStaticModal";
@@ -72,8 +76,17 @@ import type {
     ExcludedBucketCategory,
 } from "@/types/coverageCompare";
 import {
+    bucketsMatchingAxisFilters,
+    type SelectedBucket,
+} from "@/services/inferWaiverRules";
+import { iterPointPaths } from "@/services/matchWaivers";
+import CreateWaiverModal from "../components/CreateWaiverModal";
+import SelectByAxisModal from "../components/SelectByAxisModal";
+import { useWaiverSession } from "@/hooks/useWaiverSession";
+import {
     CSSProperties,
     Dispatch,
+    Key,
     MouseEvent,
     SetStateAction,
     useCallback,
@@ -177,6 +190,8 @@ const SUMMARY_COLUMN_HELP = {
 
 /** Show tag filter search when many distinct tags would clutter the checklist. */
 const SUMMARY_TAG_FILTER_SEARCH_THRESHOLD = 12;
+/** Show a processing modal when selecting this many unhit buckets (table update can take seconds). */
+const SELECT_UNHIT_PROCESSING_MODAL_THRESHOLD = 5_000;
 
 function summaryTableHeaderTitle(label: string, tooltip: string) {
     return (
@@ -191,6 +206,7 @@ type RecordWithRatio = {
     hit_ratio?: number;
     buckets_hit_ratio?: number;
     buckets_full_ratio?: number;
+    hits?: number;
     /** Bucket rows: excluded from scoring by a waiver. */
     waived?: boolean;
 };
@@ -370,7 +386,15 @@ function SummaryTagFilterDropdown({
     );
 }
 
-type HitClassFilter = "all" | "full" | "partial" | "empty" | "illegal" | "ignore" | "waived";
+type HitClassFilter =
+    | "all"
+    | "full"
+    | "partial"
+    | "empty"
+    | "illegal"
+    | "ignore"
+    | "waived"
+    | "waived_hit";
 type LargeCompareCategoryFilter = "all" | "a_only" | "both" | "b_only" | "neither";
 type LargeSortOption =
     | "bucket_asc"
@@ -471,10 +495,18 @@ function getCoverageColumnConfig(theme: ThemeType, columnKey: string) {
         // `record` is typed loosely: this config is spread into bucket-row
         // and summary-row columns alike, and only bucket rows carry `waived`.
         render: (ratio: number, record?: unknown) => {
-            if ((record as { waived?: boolean } | undefined)?.waived) {
+            const row = record as { waived?: boolean; hits?: number; target?: number } | undefined;
+            if (row?.waived) {
+                const hasHits = (row.hits ?? 0) > 0;
                 return (
-                    <span style={{ color: WAIVED_BUCKET_COLOR, fontStyle: "italic" }}>
-                        {WAIVED_BUCKET_LABEL}
+                    <span
+                        style={{
+                            color: getWaivedBucketForeground(hasHits),
+                            fontStyle: "italic",
+                            fontWeight: hasHits ? 700 : 500,
+                        }}
+                    >
+                        {hasHits ? WAIVED_HIT_BUCKET_LABEL : WAIVED_BUCKET_LABEL}
                     </span>
                 );
             }
@@ -491,7 +523,8 @@ function getCoverageColumnConfig(theme: ThemeType, columnKey: string) {
             let backgroundColor = "unset";
             let fontWeight = "unset";
             if (record.waived) {
-                backgroundColor = getWaivedBucketBackground(0.3);
+                const hasHits = (record.hits ?? 0) > 0;
+                backgroundColor = getWaivedBucketBackground(hasHits ? 0.42 : 0.22, hasHits);
             } else if (ratio >= 1) {
                 backgroundColor = getCoverageColor(ratio, theme.theme.colors);
             } else if (Number.isNaN(ratio) || Object.is(ratio, -0)) {
@@ -787,7 +820,7 @@ function classifyHitClass(
         return "ignore";
     }
     if (waived) {
-        return "waived";
+        return hits > 0 ? "waived_hit" : "waived";
     }
     if (hits >= target) {
         return "full";
@@ -796,6 +829,22 @@ function classifyHitClass(
         return "partial";
     }
     return "empty";
+}
+
+function matchesHitClassFilter(
+    filter: HitClassFilter,
+    target: number,
+    hits: number,
+    waived: boolean,
+): boolean {
+    if (filter === "all") {
+        return true;
+    }
+    const hitClass = classifyHitClass(target, hits, waived);
+    if (filter === "waived") {
+        return hitClass === "waived" || hitClass === "waived_hit";
+    }
+    return hitClass === filter;
 }
 
 function sortLargeRows(
@@ -871,6 +920,8 @@ function sortLargeRows(
 
 /** Width of the waiver reason column (only shown when the point has waivers). */
 const WAIVER_COLUMN_WIDTH = 200;
+/** Ant Design checkbox selection column; must be included in virtual scroll.x. */
+const SELECTION_COLUMN_WIDTH = 48;
 
 /**
  * Waiver reason column, ellipsised with the full reason in a tooltip. Shared
@@ -893,10 +944,22 @@ function getWaiverColumn<RecordType extends { waiver_reason?: string; waived?: b
             if (!record.waived) {
                 return "-";
             }
+            const hits = (record as { hits?: number }).hits ?? 0;
+            const hasHits = hits > 0;
             const text = reason && reason.trim() ? reason : "(no reason given)";
+            const title = hasHits ? `${text} (has hits)` : text;
             return (
-                <Tooltip title={text} placement="topLeft">
-                    <span style={{ color: WAIVED_BUCKET_COLOR, fontStyle: "italic" }}>{text}</span>
+                <Tooltip title={title} placement="topLeft">
+                    <span
+                        style={{
+                            color: getWaivedBucketForeground(hasHits),
+                            fontStyle: "italic",
+                            fontWeight: hasHits ? 600 : undefined,
+                        }}
+                    >
+                        {text}
+                        {hasHits ? " · has hits" : ""}
+                    </span>
                 </Tooltip>
             );
         },
@@ -1138,12 +1201,19 @@ function getFullColumns(
                         { text: "Illegal", value: "illegal" },
                         { text: "Ignore", value: "ignore" },
                         ...(model.hasWaivers
-                            ? [{ text: WAIVED_BUCKET_LABEL, value: "waived" }]
+                            ? [
+                                  { text: WAIVED_BUCKET_LABEL, value: "waived" },
+                                  { text: WAIVED_HIT_BUCKET_LABEL, value: "waived_hit" },
+                              ]
                             : []),
                     ],
                     onFilter: (value, record) =>
-                        classifyHitClass(record.target, record.hits, record.waived === true)
-                        === value,
+                        matchesHitClassFilter(
+                            value as HitClassFilter,
+                            record.target,
+                            record.hits,
+                            record.waived === true,
+                        ),
                     filterMode: "tree",
                     filterSearch: true,
                     ...getCoverageColumnConfig(theme, "hit_ratio"),
@@ -1153,7 +1223,20 @@ function getFullColumns(
     );
 
     if (model.hasWaivers) {
-        columns.push(getWaiverColumn<CoverageRecord>());
+        // Nest under a group so the two-row header aligns with Axes / Total Hits.
+        columns.push({
+            title: "Waiver",
+            children: [
+                {
+                    ...getWaiverColumn<CoverageRecord>(),
+                    title: (
+                        <Tooltip title="Why this bucket is excluded from scoring (from the waiver file)">
+                            <span>Reason</span>
+                        </Tooltip>
+                    ),
+                },
+            ],
+        });
     }
 
     return columns;
@@ -1228,7 +1311,19 @@ function getLargeColumns(
     );
 
     if (model.hasWaivers) {
-        columns.push(getWaiverColumn<LargeCoverageRecord>());
+        columns.push({
+            title: "Waiver",
+            children: [
+                {
+                    ...getWaiverColumn<LargeCoverageRecord>(),
+                    title: (
+                        <Tooltip title="Why this bucket is excluded from scoring (from the waiver file)">
+                            <span>Reason</span>
+                        </Tooltip>
+                    ),
+                },
+            ],
+        });
     }
 
     return columns;
@@ -1259,16 +1354,19 @@ function getCompareRowStyle(category: BucketCategory | undefined, compare: Compa
     };
 }
 
-/** Row tint: compare category colour in compare mode, muted slate for waived rows. */
+/** Row tint: compare category colour in compare mode, violet for waived rows. */
 function getBucketRowStyle(
-    record: { waived?: boolean; compare_category?: BucketCategory },
+    record: { waived?: boolean; hits?: number; compare_category?: BucketCategory },
     compare: CompareViewContext | undefined,
 ): CSSProperties {
     if (compare) {
         return getCompareRowStyle(record.compare_category, compare);
     }
     if (record.waived) {
-        return { backgroundColor: getWaivedBucketBackground(0.12) };
+        const hasHits = (record.hits ?? 0) > 0;
+        return {
+            backgroundColor: getWaivedBucketBackground(hasHits ? 0.2 : 0.1, hasHits),
+        };
     }
     return {};
 }
@@ -1350,12 +1448,38 @@ export function PointGrid({ node, compare }: PointGridProps) {
         columnKey: null,
         order: null,
     });
+    const [selectedBucketKeys, setSelectedBucketKeys] = useState<number[]>([]);
+    /** Axis → selected values. Same axis OR; different axes AND. */
+    const [axisValueFilters, setAxisValueFilters] = useState<Record<string, string[]>>({});
+    const [showSelectedOnly, setShowSelectedOnly] = useState(false);
+    const [createWaiverOpen, setCreateWaiverOpen] = useState(false);
+    const [selectByAxisOpen, setSelectByAxisOpen] = useState(false);
+    const [selectUnhitBusy, setSelectUnhitBusy] = useState(false);
+    const [selectUnhitShowModal, setSelectUnhitShowModal] = useState(false);
+    const [metadataActiveKeys, setMetadataActiveKeys] = useState<string[]>(["metadata"]);
+    const { creatingWaivers, setCreatingWaivers } = useWaiverSession();
     const pointTags = useMemo(() => parsePointTags(node.data.point.tags), [node.data.point.tags]);
     const pointTier = normalizePointTier(node.data.point.tier);
     const pointDescription = String(node.data.point.description ?? "").trim();
     const pointMotivation = String(node.data.point.motivation ?? "").trim();
 
     const model = useMemo(() => buildPointTableModel(node), [node]);
+
+    const pointPath = useMemo(() => {
+        const paths = iterPointPaths(node.data.readout);
+        for (const { path, index } of paths) {
+            const points = Array.from(node.data.readout.iter_points());
+            const point = points[index];
+            if (
+                point
+                && point.start === node.data.point.start
+                && point.end === node.data.point.end
+            ) {
+                return path;
+            }
+        }
+        return node.data.point.name;
+    }, [node]);
 
     useEffect(() => {
         setOverrideState(
@@ -1368,7 +1492,28 @@ export function PointGrid({ node, compare }: PointGridProps) {
         setIsLargeBannerDismissed(false);
         setAxisSortState({ axisName: null, mode: "none" });
         setGoalSortState({ columnKey: null, order: null });
+        setSelectedBucketKeys([]);
+        setAxisValueFilters({});
+        setShowSelectedOnly(false);
+        setCreateWaiverOpen(false);
+        setSelectUnhitBusy(false);
+        setSelectUnhitShowModal(false);
+        // Prefer collapsed Details when already in create mode for this coverpoint.
+        setMetadataActiveKeys(creatingWaivers ? [] : ["metadata"]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset UI when navigating nodes
     }, [node.key]);
+
+    useEffect(() => {
+        if (creatingWaivers) {
+            setMetadataActiveKeys([]);
+        } else {
+            setSelectedBucketKeys([]);
+            setAxisValueFilters({});
+            setShowSelectedOnly(false);
+            setSelectUnhitBusy(false);
+            setSelectUnhitShowModal(false);
+        }
+    }, [creatingWaivers]);
 
     // Note: CompareViewContext has no `active` field; compare being enabled or
     // disabled is observable via setMode flipping between defined/undefined.
@@ -1455,8 +1600,12 @@ export function PointGrid({ node, compare }: PointGridProps) {
                     continue;
                 }
             } else if (
-                largeHitFilter !== "all"
-                && classifyHitClass(goal.target, hits, isRowWaived(model, row)) !== largeHitFilter
+                !matchesHitClassFilter(
+                    largeHitFilter,
+                    goal.target,
+                    hits,
+                    isRowWaived(model, row),
+                )
             ) {
                 continue;
             }
@@ -1549,6 +1698,124 @@ export function PointGrid({ node, compare }: PointGridProps) {
         }
         return rows;
     }, [isLargeMode, model, compare]);
+
+    const allWaivableBuckets = useMemo((): SelectedBucket[] => {
+        const buckets: SelectedBucket[] = [];
+        for (let row = 0; row < model.rowCount; row += 1) {
+            const target = model.goals[model.goalIndices[row]].target;
+            if (target <= 0) {
+                continue;
+            }
+            const axisValues: Record<string, string> = {};
+            for (let axisIdx = 0; axisIdx < model.axisModels.length; axisIdx += 1) {
+                axisValues[model.axisModels[axisIdx].name] = getAxisValue(model, row, axisIdx);
+            }
+            buckets.push({
+                start: model.bucketKeys[row],
+                axisValues,
+                target,
+                hits: model.hits[row],
+            });
+        }
+        return buckets;
+    }, [model]);
+
+    const applyAxisFilters = useCallback(
+        (filters: Record<string, string[]>) => {
+            setAxisValueFilters(filters);
+            setSelectedBucketKeys(bucketsMatchingAxisFilters(allWaivableBuckets, filters));
+        },
+        [allWaivableBuckets],
+    );
+
+    const clearBucketSelection = useCallback(() => {
+        setSelectedBucketKeys([]);
+        setAxisValueFilters({});
+        // Keep the view toggle: with an empty selection it becomes "Show waivers".
+    }, []);
+
+    const axisFilterActive = Object.values(axisValueFilters).some((values) => values.length > 0);
+
+    const axisFilterSummary = useMemo(() => {
+        const parts = Object.entries(axisValueFilters)
+            .filter(([, values]) => values.length > 0)
+            .map(([axis, values]) =>
+                values.length === 1 ? `${axis}=${values[0]}` : `${axis}∈{${values.join(",")}}`,
+            );
+        return parts.join(" ∧ ");
+    }, [axisValueFilters]);
+
+    const axisValueOptions = useMemo(() => {
+        return model.axisModels.map((axis, axisIdx) => {
+            const values = [
+                ...new Set(
+                    Array.from({ length: model.rowCount }, (_, row) =>
+                        getAxisValue(model, row, axisIdx),
+                    ),
+                ),
+            ].sort(natCompare);
+            return { name: axis.name, values };
+        });
+    }, [model]);
+
+    // Precompute while in create mode so "Select unhit" is mostly a state swap.
+    const visibleUnhitBucketKeys = useMemo(() => {
+        if (!creatingWaivers || compare) {
+            return [] as number[];
+        }
+        const source = isLargeMode ? largeDataSource : fullDataSource;
+        const keys: number[] = [];
+        for (const record of source) {
+            if (record.target > 0 && record.hits === 0 && !record.waived) {
+                keys.push(record.key);
+            }
+        }
+        return keys;
+    }, [creatingWaivers, compare, isLargeMode, largeDataSource, fullDataSource]);
+
+    const selectUnhitVisible = useCallback(() => {
+        if (selectUnhitBusy) {
+            return;
+        }
+        const keys = visibleUnhitBucketKeys;
+        const showModal = keys.length >= SELECT_UNHIT_PROCESSING_MODAL_THRESHOLD;
+        // Always grey the button; only show a modal when the apply is likely slow.
+        setSelectUnhitBusy(true);
+        const startedAt = showModal ? performance.now() : 0;
+        if (showModal) {
+            setSelectUnhitShowModal(true);
+        }
+        window.setTimeout(() => {
+            setAxisValueFilters({});
+            setSelectedBucketKeys(keys);
+            const finish = () => {
+                setSelectUnhitBusy(false);
+                setSelectUnhitShowModal(false);
+            };
+            if (!showModal) {
+                window.setTimeout(finish, 0);
+                return;
+            }
+            // Keep the modal up for at least 1s so it doesn't flash away.
+            const remaining = Math.max(0, 1000 - (performance.now() - startedAt));
+            window.setTimeout(finish, remaining);
+        }, 0);
+    }, [selectUnhitBusy, visibleUnhitBucketKeys]);
+
+    const bucketRowSelection =
+        compare || !creatingWaivers
+            ? undefined
+            : {
+                  columnWidth: SELECTION_COLUMN_WIDTH,
+                  selectedRowKeys: selectedBucketKeys,
+                  onChange: (keys: Key[]) => {
+                      setAxisValueFilters({});
+                      setSelectedBucketKeys(keys.map((key) => Number(key)));
+                  },
+                  getCheckboxProps: (record: CoverageRecord | LargeCoverageRecord) => ({
+                      disabled: record.target <= 0,
+                  }),
+              };
 
     const clearAxisSort = useCallback(() => {
         setAxisSortState({ axisName: null, mode: "none" });
@@ -1767,19 +2034,58 @@ export function PointGrid({ node, compare }: PointGridProps) {
         setOverrideState((prev) => withForcedFullFeatures(prev, false));
     };
 
+    const stopCreatingWaivers = () => {
+        setCreatingWaivers(false);
+        clearBucketSelection();
+    };
+
+    const selectedKeySet = useMemo(() => new Set(selectedBucketKeys), [selectedBucketKeys]);
+
+    const filterCreateModeRows = useCallback(
+        <T extends { key: number; waived?: boolean }>(rows: T[]): T[] => {
+            if (!showSelectedOnly) {
+                return rows;
+            }
+            if (selectedKeySet.size > 0) {
+                return rows.filter((record) => selectedKeySet.has(record.key));
+            }
+            return rows.filter((record) => record.waived === true);
+        },
+        [showSelectedOnly, selectedKeySet],
+    );
+
+    const displayedLargeDataSource = useMemo(
+        () => filterCreateModeRows(largeDataSource),
+        [largeDataSource, filterCreateModeRows],
+    );
+
+    const displayedFullDataSource = useMemo(
+        () => filterCreateModeRows(sortedFullDataSource),
+        [sortedFullDataSource, filterCreateModeRows],
+    );
+
         const pointMetadata = (
             <div
-                style={coverageInfoChromeOuterBox({
-                    accentbg: theme.theme.colors.accentbg,
-                    primarybg: theme.theme.colors.primarybg,
-                    secondarybg: theme.theme.colors.secondarybg,
-                    saturatedtxt: theme.theme.colors.saturatedtxt,
-                    primarytxt: theme.theme.colors.primarytxt,
-                })}>
+                style={{
+                    ...coverageInfoChromeOuterBox({
+                        accentbg: theme.theme.colors.accentbg,
+                        primarybg: theme.theme.colors.primarybg,
+                        secondarybg: theme.theme.colors.secondarybg,
+                        saturatedtxt: theme.theme.colors.saturatedtxt,
+                        primarytxt: theme.theme.colors.primarytxt,
+                    }),
+                    marginBottom: creatingWaivers ? 8 : 12,
+                }}>
                 <Collapse
                     size="small"
                     ghost
-                    defaultActiveKey={["metadata"]}
+                    destroyInactivePanel
+                    activeKey={metadataActiveKeys}
+                    onChange={(keys) =>
+                        setMetadataActiveKeys(
+                            Array.isArray(keys) ? keys.map(String) : [String(keys)],
+                        )
+                    }
                     className="point-metadata-collapse"
                     items={[
                         {
@@ -2045,7 +2351,13 @@ export function PointGrid({ node, compare }: PointGridProps) {
                                     { label: "Illegal", value: "illegal" },
                                     { label: "Ignore", value: "ignore" },
                                     ...(model.hasWaivers
-                                        ? [{ label: WAIVED_BUCKET_LABEL, value: "waived" }]
+                                        ? [
+                                              { label: WAIVED_BUCKET_LABEL, value: "waived" },
+                                              {
+                                                  label: WAIVED_HIT_BUCKET_LABEL,
+                                                  value: "waived_hit",
+                                              },
+                                          ]
                                         : []),
                                 ]}
                                 style={{ minWidth: 160 }}
@@ -2097,33 +2409,125 @@ export function PointGrid({ node, compare }: PointGridProps) {
                         rows
                     </Typography.Text>
                 )}
-                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
                     {largeActionButton}
                 </div>
             </div>
         ) : null;
 
+        const waiverSelectControls =
+            !compare && creatingWaivers ? (
+            <div
+                style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 8,
+                    alignItems: "center",
+                    marginBottom: 8,
+                    paddingLeft: 8,
+                }}
+            >
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {selectedBucketKeys.length} selected
+                    {axisFilterSummary ? ` · ${axisFilterSummary}` : ""}
+                </Typography.Text>
+                <Button
+                    size="small"
+                    loading={selectUnhitBusy}
+                    disabled={selectUnhitBusy}
+                    onClick={selectUnhitVisible}
+                >
+                    Select unhit
+                </Button>
+                <Button
+                    size="small"
+                    type={axisFilterActive ? "primary" : "default"}
+                    title="Build a selection from axis values"
+                    onClick={() => setSelectByAxisOpen(true)}
+                >
+                    Select by axis
+                    {axisFilterActive ? "…" : ""}
+                </Button>
+                <Button size="small" onClick={clearBucketSelection}>
+                    Clear selection
+                </Button>
+                <Button
+                    size="small"
+                    type="primary"
+                    disabled={selectedBucketKeys.length === 0}
+                    onClick={() => setCreateWaiverOpen(true)}
+                >
+                    Create waiver…
+                </Button>
+                <Checkbox
+                    checked={showSelectedOnly}
+                    onChange={(event) => setShowSelectedOnly(event.target.checked)}
+                    style={{ marginLeft: "auto" }}
+                >
+                    {selectedBucketKeys.length > 0 ? "Selected only" : "Show waivers"}
+                </Checkbox>
+                <Button
+                    size="small"
+                    type="primary"
+                    onClick={stopCreatingWaivers}
+                    style={{ marginRight: 8 }}
+                >
+                    Done
+                </Button>
+            </div>
+        ) : null;
+
+        const selectUnhitBusyModal = (
+            <Modal
+                open={selectUnhitShowModal}
+                footer={null}
+                closable={false}
+                maskClosable={false}
+                centered
+                width={320}
+            >
+                <div
+                    style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 12,
+                        padding: "12px 0 4px",
+                    }}
+                >
+                    <Spin />
+                    <Typography.Text>Selecting unhit buckets…</Typography.Text>
+                </div>
+            </Modal>
+        );
+
         if (isLargeMode) {
             // Virtual tables require a numeric scroll.x (strings such as
             // "max-content" are clamped to 1px, collapsing the layout), so
             // sum the explicit column widths for each mode.
+            const selectionWidth = creatingWaivers ? SELECTION_COLUMN_WIDTH : 0;
+            const waiverWidth = model.hasWaivers ? WAIVER_COLUMN_WIDTH : 0;
             const largeScrollX = compare
                 ? 90 + model.axisModels.length * 160 + 244
-                : 72
+                : selectionWidth
+                  + 72
                   + model.axisModels.length * 140
                   + 460
-                  + (model.hasWaivers ? WAIVER_COLUMN_WIDTH : 0);
+                  + waiverWidth;
             return (
                 <>
                     {pointMetadata}
                     {banner}
                     {largeControls}
+                    {waiverSelectControls}
+                    {selectUnhitBusyModal}
                     <Table<LargeCoverageRecord>
                         {...(view.body.content.table.props as unknown as TableProps<LargeCoverageRecord>)}
-                        key={`${node.key}-${compare ? "compare" : "normal"}`}
-                        tableLayout={compare ? "fixed" : "auto"}
+                        key={`${node.key}-${compare ? "compare" : "normal"}-${creatingWaivers ? "create" : "view"}`}
+                        tableLayout={compare ? "fixed" : "fixed"}
                         columns={largeColumns}
-                        dataSource={largeDataSource}
+                        dataSource={displayedLargeDataSource}
+                        rowSelection={bucketRowSelection}
                         onRow={(record) => ({
                             style: getBucketRowStyle(record, compare),
                         })}
@@ -2133,29 +2537,51 @@ export function PointGrid({ node, compare }: PointGridProps) {
                             y: tableScrollY,
                         }}
                     />
+                    <CreateWaiverModal
+                        open={createWaiverOpen}
+                        onClose={() => setCreateWaiverOpen(false)}
+                        onCreated={clearBucketSelection}
+                        pointPath={pointPath}
+                        selectedKeys={selectedBucketKeys}
+                        allWaivable={allWaivableBuckets}
+                    />
+                    <SelectByAxisModal
+                        open={selectByAxisOpen}
+                        onClose={() => setSelectByAxisOpen(false)}
+                        onApply={applyAxisFilters}
+                        axes={axisValueOptions}
+                        initialFilters={axisValueFilters}
+                        allWaivable={allWaivableBuckets}
+                    />
                 </>
             );
         }
 
         // See largeScrollX: virtual tables require a numeric scroll.x.
+        const selectionWidth = creatingWaivers ? SELECTION_COLUMN_WIDTH : 0;
+        const waiverWidth = model.hasWaivers ? WAIVER_COLUMN_WIDTH : 0;
         const fullScrollX = compare
             ? 90 + model.axisModels.length * 160 + 244
-            : 90
+            : selectionWidth
+              + 90
               + model.axisModels.length * 160
               + 520
-              + (model.hasWaivers ? WAIVER_COLUMN_WIDTH : 0);
+              + waiverWidth;
 
         return (
             <>
                 {pointMetadata}
                 {banner}
                 {largeControls}
+                {waiverSelectControls}
+                {selectUnhitBusyModal}
                 <Table<CoverageRecord>
                     {...(view.body.content.table.props as unknown as TableProps<CoverageRecord>)}
-                    key={`${node.key}-${compare ? "compare" : "normal"}`}
+                    key={`${node.key}-${compare ? "compare" : "normal"}-${creatingWaivers ? "create" : "view"}`}
                     tableLayout="fixed"
                     columns={fullColumns}
-                    dataSource={sortedFullDataSource}
+                    dataSource={displayedFullDataSource}
+                    rowSelection={bucketRowSelection}
                     onRow={(record) => ({
                         style: getBucketRowStyle(record, compare),
                     })}
@@ -2164,6 +2590,22 @@ export function PointGrid({ node, compare }: PointGridProps) {
                         x: fullScrollX,
                         y: tableScrollY,
                     }}
+                />
+                <CreateWaiverModal
+                    open={createWaiverOpen}
+                    onClose={() => setCreateWaiverOpen(false)}
+                    onCreated={clearBucketSelection}
+                    pointPath={pointPath}
+                    selectedKeys={selectedBucketKeys}
+                    allWaivable={allWaivableBuckets}
+                />
+                <SelectByAxisModal
+                    open={selectByAxisOpen}
+                    onClose={() => setSelectByAxisOpen(false)}
+                    onApply={applyAxisFilters}
+                    axes={axisValueOptions}
+                    initialFilters={axisValueFilters}
+                    allWaivable={allWaivableBuckets}
                 />
             </>
         );

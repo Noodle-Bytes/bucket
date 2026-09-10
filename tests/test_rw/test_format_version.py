@@ -68,7 +68,7 @@ class TestFormatVersion:
         viewer/src/utils/versionCompat.ts), document the change in the
         format history, then update this snapshot.
         """
-        assert FORMAT_VERSION == 3
+        assert FORMAT_VERSION == 2
         # The archive and JSON formats are versioned independently but by
         # policy always bump in lockstep.
         assert ARCHIVE_FORMAT_VERSION == FORMAT_VERSION

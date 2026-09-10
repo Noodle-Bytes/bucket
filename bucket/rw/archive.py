@@ -333,7 +333,11 @@ class ArchiveWriter(Writer):
                 work_path / POINT_PATH, readout.iter_points()
             )
             point_hit_offset, point_hit_end = _write(
-                work_path / POINT_HIT_PATH, readout.iter_point_hits()
+                work_path / POINT_HIT_PATH,
+                (
+                    (ph.start, ph.depth, ph.hits, ph.hit_buckets, ph.full_buckets)
+                    for ph in readout.iter_point_hits()
+                ),
             )
 
             # For non-point tables, skip the first column (offset) as it can be reconstructed
@@ -355,11 +359,6 @@ class ArchiveWriter(Writer):
             bucket_hit_offset, bucket_hit_end = _write(
                 work_path / BUCKET_HIT_PATH,
                 (bh[1:] for bh in readout.iter_bucket_hits()),
-            )
-            # Waivers are sparse, so the bucket index is kept in the row.
-            bucket_waiver_offset, bucket_waiver_end = _write(
-                work_path / BUCKET_WAIVER_PATH,
-                (tuple(bw) for bw in readout.iter_bucket_waivers()),
             )
             # Store offsets in definition and record tables so we can seek later
             definition_offset, _ = _write(
@@ -388,7 +387,7 @@ class ArchiveWriter(Writer):
             record_offset, _ = _write(
                 work_path / RECORD_PATH,
                 [
-                    ArchiveRecordTuple(
+                    (
                         readout.get_rec_sha(),
                         definition_offset,
                         point_hit_offset,
@@ -402,8 +401,6 @@ class ArchiveWriter(Writer):
                         # readout's: it describes how these bytes are laid
                         # out, not where the data came from.
                         ARCHIVE_FORMAT_VERSION,
-                        bucket_waiver_offset,
-                        bucket_waiver_end,
                     )
                 ],
             )

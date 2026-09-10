@@ -48,9 +48,10 @@ def _get_bucket_version() -> str:
 #      version keys
 #   2: archive record rows carry the format_version column; JSON records
 #      carry the bucket_version and format_version keys
-#   3: point_hit rows carry waived_buckets and waived_target; records carry a
-#      bucket_waiver table (start, reason)
-FORMAT_VERSION = 3
+#   3: briefly added embedded waiver rows and point_hit waiver columns; this
+#      was dropped before release. Writers use format 2 and waivers are
+#      sidecar-only, in-memory data.
+FORMAT_VERSION = 2
 ARCHIVE_FORMAT_VERSION = FORMAT_VERSION
 JSON_FORMAT_VERSION = FORMAT_VERSION
 

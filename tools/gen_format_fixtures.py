@@ -102,19 +102,6 @@ def build_readout(record_index: int) -> GeneratedReadout:
         for index, point in enumerate(readout.points)
     ]
 
-    # Format 3+: waive two waivable buckets (chosen from the shared
-    # definition, so both records waive the same buckets). Text again keeps
-    # byte offsets != character offsets and exercises CSV quoting. Older trees
-    # have no waiver support, so skip there.
-    if hasattr(readout, "waive_buckets"):
-        waivable = readout.waivable_buckets()
-        readout.waive_buckets(
-            {
-                waivable[0]: 'Waived №0 - "quoted, commas" ✓',
-                waivable[len(waivable) // 2]: "Waived №1 - not reachable in this DUT",
-            }
-        )
-
     readout.def_sha = f"def-sha-{DEF_SEED}"
     # Shared rec_sha so the two records can be merged (same regression).
     readout.rec_sha = f"rec-sha-{DEF_SEED}"
@@ -130,9 +117,6 @@ def record_snapshot(readout) -> dict:
     """
     get_format = getattr(readout, "get_format_version", None)
     get_bucket_version = getattr(readout, "get_bucket_version", None)
-    # Format 3+ (older trees have no waivers). point_hit rows carry the
-    # waived_buckets/waived_target fields through _asdict() from format 3.
-    iter_bucket_waivers = getattr(readout, "iter_bucket_waivers", None)
     return {
         "def_sha": readout.get_def_sha(),
         "rec_sha": readout.get_rec_sha(),
@@ -147,10 +131,6 @@ def record_snapshot(readout) -> dict:
         "bucket_goal": [bg._asdict() for bg in readout.iter_bucket_goals()],
         "point_hit": [ph._asdict() for ph in readout.iter_point_hits()],
         "bucket_hit": [bh._asdict() for bh in readout.iter_bucket_hits()],
-        "bucket_waivers": [
-            [bw.start, bw.reason]
-            for bw in (iter_bucket_waivers() if iter_bucket_waivers else [])
-        ],
     }
 
 

@@ -10,6 +10,7 @@ import { ErrorBoundary } from "react-error-boundary";
 // GitHub Pages without any server-side routing.
 import { HashRouter as Router } from "react-router-dom";
 import Theme from "./Theme";
+import { WaiverSessionProvider } from "@/hooks/useWaiverSession";
 
 function ErrorFallback({ error, resetErrorBoundary }: { error?: Error; resetErrorBoundary?: () => void }) {
     return (
@@ -143,7 +144,9 @@ export default function AppProvider({ children }: PropsWithChildren) {
                     console.error('Error caught by boundary:', error, errorInfo);
                 }}>
                 <Theme.Provider>
-                    <Router>{children}</Router>
+                    <WaiverSessionProvider>
+                        <Router>{children}</Router>
+                    </WaiverSessionProvider>
                 </Theme.Provider>
             </ErrorBoundary>
         </React.Suspense>

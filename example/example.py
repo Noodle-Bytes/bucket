@@ -169,7 +169,7 @@ def merge(log, archive_path_1, archive_path_2, merged_archive_path):
     return merged_readout
 
 
-def waive(log, merged_readout, waived_archive_path):
+def waive(log, merged_readout):
     """
     Apply the example waiver file to the merged coverage. Waivers excuse
     buckets from scoring after the fact (see docs/waivers.md); the same file
@@ -180,9 +180,6 @@ def waive(log, merged_readout, waived_archive_path):
     waiver_file = load_waivers(Path(__file__).parent / "waivers.json")
     waived_readout = WaivedReadout(merged_readout, waiver_file)
     log.info(f"Waived {len(waived_readout.matched)} buckets using example/waivers.json")
-
-    ArchiveAccessor(waived_archive_path).writer().write(waived_readout)
-    log.info(f"Waived coverage exported to archive: {waived_archive_path}")
 
     log.info("This is the merged coverage with the example waivers applied.")
     ConsoleWriter().write(waived_readout)
@@ -211,7 +208,7 @@ def run(output_dir: Path = Path(".")):
     merged_readout = merge(log, archive_path_1, archive_path_2, merged_archive_path)
 
     # Apply the example waivers to the merged coverage
-    waive(log, merged_readout, output_dir / "example_merged_waived_file_store.bktgz")
+    waive(log, merged_readout)
 
 
 if __name__ == "__main__":

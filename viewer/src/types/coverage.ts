@@ -56,8 +56,8 @@ type PointHitTuple = {
     hit_buckets: number;
     full_buckets: number;
     /**
-     * Storage format 3+: buckets in the point excluded from scoring by a
-     * waiver, and the sum of their hit targets. Older files omit both (0).
+     * Buckets in the point excluded from scoring by an applied waiver, and the
+     * sum of their hit targets. Zero when no waiver overlay is active.
      */
     waived_buckets?: number;
     waived_target?: number;

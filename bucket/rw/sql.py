@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Iterable, overload
 
-from sqlalchemy import Integer, String, create_engine, insert, select, text
+from sqlalchemy import Integer, String, create_engine, insert, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
@@ -17,7 +17,6 @@ from .common import (
     AxisValueTuple,
     BucketGoalTuple,
     BucketHitTuple,
-    BucketWaiverTuple,
     GoalTuple,
     MergeReadout,
     PointHitTuple,
@@ -130,18 +129,6 @@ class PointHitRow(BaseRow):
     hits: Mapped[int] = mapped_column(Integer)
     hit_buckets: Mapped[int] = mapped_column(Integer)
     full_buckets: Mapped[int] = mapped_column(Integer)
-    # Added in storage format 3; databases written earlier lack these columns
-    # and are migrated in place by SQLWriter (see _migrate_point_hit_columns).
-    waived_buckets: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
-    waived_target: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
-
-
-# Columns of point_hit that databases written before format 3 do not have.
-WAIVED_POINT_HIT_COLUMNS = ("waived_buckets", "waived_target")
 
 
 class BucketHitRow(BaseRow):
@@ -149,59 +136,6 @@ class BucketHitRow(BaseRow):
     run: Mapped[int] = mapped_column(Integer, primary_key=True)
     start: Mapped[int] = mapped_column(Integer, primary_key=True)
     hits: Mapped[int] = mapped_column(Integer)
-
-
-class BucketWaiverRow(BaseRow):
-    __tablename__ = "bucket_waiver"
-    run: Mapped[int] = mapped_column(Integer, primary_key=True)
-    start: Mapped[int] = mapped_column(Integer, primary_key=True)
-    reason: Mapped[str] = mapped_column(String(300), nullable=False, default="")
-
-
-def _point_hit_columns(bind) -> set[str]:
-    """Names of the columns the point_hit table currently has ({} if absent)."""
-    inspector = inspect(bind)
-    if not inspector.has_table(PointHitRow.__tablename__):
-        return set()
-    return {
-        column["name"] for column in inspector.get_columns(PointHitRow.__tablename__)
-    }
-
-
-def _migrate_point_hit_columns(engine) -> bool:
-    """
-    Add the format-3 waiver columns to a pre-existing point_hit table that
-    lacks them (SQLite supports ADD COLUMN ... DEFAULT). Returns True when the
-    table has every column of PointHitRow afterwards, False if the migration
-    could not be applied (e.g. a read-only database).
-    """
-    existing = _point_hit_columns(engine)
-    if not existing:
-        # No table yet: metadata.create_all makes it with the full schema.
-        return True
-    missing = [
-        column for column in PointHitRow.__table__.columns if column.key not in existing
-    ]
-    if not missing:
-        return True
-    try:
-        with engine.begin() as connection:
-            for column in missing:
-                connection.execute(
-                    text(
-                        f"ALTER TABLE {PointHitRow.__tablename__} "
-                        f"ADD COLUMN {column.key} INTEGER NOT NULL DEFAULT 0"
-                    )
-                )
-    except OperationalError as exc:
-        log.warning(
-            "Could not add columns %s to %s (%s); waiver counts will not be stored",
-            [column.key for column in missing],
-            PointHitRow.__tablename__,
-            exc,
-        )
-        return False
-    return True
 
 
 ###############################################################################
@@ -216,15 +150,8 @@ class SQLWriter(Writer):
 
     def __init__(self, engine):
         self.engine = engine
-        # SQLAccessor creates any missing tables (point_meta, bucket_waiver)
-        # up front; these flags only stay False when that migration failed.
+        # SQLAccessor creates the optional point metadata table up front.
         self._has_point_meta = inspect(engine).has_table(PointMetaRow.__tablename__)
-        self._has_bucket_waiver = inspect(engine).has_table(
-            BucketWaiverRow.__tablename__
-        )
-        # Columns cannot be added by create_all, so pre-format-3 point_hit
-        # tables are altered in place here.
-        self._has_waived_columns = _migrate_point_hit_columns(engine)
 
     def write(self, readout: Readout):
         # Rows are inserted with bulk executemany statements rather than
@@ -279,11 +206,8 @@ class SQLWriter(Writer):
                 "run",
                 rec_ref,
                 readout.iter_point_hits(),
-                skip=() if self._has_waived_columns else WAIVED_POINT_HIT_COLUMNS,
             )
             bulk(BucketHitRow, "run", rec_ref, readout.iter_bucket_hits())
-            if self._has_bucket_waiver:
-                bulk(BucketWaiverRow, "run", rec_ref, readout.iter_bucket_waivers())
 
             session.commit()
 
@@ -371,18 +295,8 @@ class SQLReader(Reader):
             for bucket_goal_row in session.execute(bucket_goal_st).all():
                 readout.bucket_goals.append(BucketGoalTuple(*bucket_goal_row[1:]))
 
-            # A read-only pre-format-3 database still lacks the waived
-            # columns; select only what is there and let the tuple default
-            # them to 0.
-            point_hit_columns = _point_hit_columns(session.bind)
             point_hit_st = (
-                select(
-                    *(
-                        column
-                        for column in PointHitRow.__table__.columns
-                        if column.key in point_hit_columns
-                    )
-                )
+                select_tup(PointHitRow)
                 .where(PointHitRow.run == rec_ref)
                 .order_by(PointHitRow.start, PointHitRow.depth)
             )
@@ -397,17 +311,6 @@ class SQLReader(Reader):
 
             for bucket_hit_row in session.execute(bucket_hit_st).all():
                 readout.bucket_hits.append(BucketHitTuple(*bucket_hit_row[1:]))
-
-            if inspect(session.bind).has_table(BucketWaiverRow.__tablename__):
-                bucket_waiver_st = (
-                    select_tup(BucketWaiverRow)
-                    .where(BucketWaiverRow.run == rec_ref)
-                    .order_by(BucketWaiverRow.start)
-                )
-                for bucket_waiver_row in session.execute(bucket_waiver_st).all():
-                    readout.bucket_waivers.append(
-                        BucketWaiverTuple(*bucket_waiver_row[1:])
-                    )
 
         return readout
 

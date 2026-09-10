@@ -200,15 +200,16 @@ class TestCli:
 
         back = next(JSONAccessor(out).reader().read_all())
         assert back.get_rec_sha() == readout_1.get_rec_sha()
-        assert [w.start for w in back.iter_bucket_waivers()] == (
-            readout_1.waivable_buckets()
-        )
-        assert {w.reason for w in back.iter_bucket_waivers()} == {"waive everything"}
-        # Every targeted bucket is waived, so nothing scores any more.
-        for point, point_hit in zip(back.iter_points(), back.iter_point_hits()):
+        assert list(back.iter_bucket_waivers()) == []
+        payload = json.loads(out.read_text(encoding="utf-8"))
+        assert "bucket_waiver" not in payload["tables"]
+        assert "bucket_waiver" not in payload["records"][0]
+        assert all(len(row) == 5 for row in payload["records"][0]["point_hit"])
+        # Waiver-adjusted core scores are written, but waiver metadata is not.
+        for point_hit in back.iter_point_hits():
             assert point_hit.hits == 0
-            assert point_hit.waived_buckets == point.target_buckets
-            assert point_hit.waived_target == point.target
+            assert point_hit.waived_buckets == 0
+            assert point_hit.waived_target == 0
 
     def test_write_with_waivers_applies_after_merge(self, waivable_archives, tmp_path):
         path_1, path_2, readout_1, _ = waivable_archives
@@ -226,13 +227,13 @@ class TestCli:
         assert result.exit_code == 0, result.output
 
         merged = next(JSONAccessor(out).reader().read_all())
-        waived = [w.start for w in merged.iter_bucket_waivers()]
-        assert waived == [
+        expected_waived = [
             index
             for index in readout_1.waivable_buckets()
             if child.bucket_start <= index < child.bucket_end
         ]
-        assert len(waived) > 0
+        assert expected_waived
+        assert list(merged.iter_bucket_waivers()) == []
         # Merged hits are the per-bucket sums, untouched by the waivers.
         merged_hits = {bh.start: bh.hits for bh in merged.iter_bucket_hits()}
         assert all(2 <= hits <= 4 for hits in merged_hits.values())
@@ -253,13 +254,8 @@ class TestCli:
         )
         assert result.exit_code == 0, result.output
         back = next(JSONAccessor(out).reader().read_all())
-        reasons = {w.start: w.reason for w in back.iter_bucket_waivers()}
-        assert set(reasons) == set(readout_1.waivable_buckets())
-        in_child = [
-            index for index in reasons if child.bucket_start <= index < child.bucket_end
-        ]
-        assert in_child and all(reasons[index] == "first file" for index in in_child)
-        assert any(reason == "second file" for reason in reasons.values())
+        assert list(back.iter_bucket_waivers()) == []
+        assert all(point_hit.hits == 0 for point_hit in back.iter_point_hits())
 
     def test_waivers_with_unknown_axis_error_cleanly(self, waivable_archives, tmp_path):
         path_1, *_ = waivable_archives
