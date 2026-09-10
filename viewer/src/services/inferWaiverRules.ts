@@ -408,6 +408,26 @@ export function mergeWaiverSpecs(
     return result;
 }
 
+/** Append without folding into existing / sibling rules. */
+export function appendWaiverSpecsWithoutMerge(
+    existing: WaiverSpec[],
+    incoming: WaiverSpec[],
+): WaiverSpec[] {
+    return [...existing, ...incoming];
+}
+
+/** True when merging would produce fewer rules than appending separately. */
+export function wouldCondenseWaiverSpecs(
+    existing: WaiverSpec[],
+    incoming: WaiverSpec[],
+): boolean {
+    if (incoming.length === 0) {
+        return false;
+    }
+    const merged = mergeWaiverSpecs(existing, incoming);
+    return merged.length < existing.length + incoming.length;
+}
+
 /**
  * Axis-value rule builder: values on the same axis are OR'd (additive);
  * different axes are AND'd (constraining). Empty filters match nothing.

@@ -130,6 +130,69 @@ export function iterPointPaths(readout: Readout): Array<{ path: string; index: n
     return result;
 }
 
+export type CoverpointAxisOption = {
+    name: string;
+    values: string[];
+};
+
+/**
+ * Axis names/values for coverpoints matched by a waiver point pattern.
+ * Prefer `preferredPath` when it matches, so edit UI follows the open coverpoint.
+ */
+export function collectAxisOptionsForPoint(
+    readout: Readout,
+    pointPattern: string,
+    preferredPath: string | null = null,
+): CoverpointAxisOption[] {
+    const points = Array.from(readout.iter_points());
+    const allAxes = Array.from(readout.iter_axes(0, null));
+    const allAxisValues = Array.from(readout.iter_axis_values(0, null));
+    const paths = iterPointPaths(readout);
+
+    const matching = paths.filter(({ path, index }) => {
+        const point = points[index];
+        if (!point || point.end !== point.start + 1) {
+            return false;
+        }
+        return matchesPointPath(path, pointPattern);
+    });
+
+    const preferred = preferredPath
+        ? matching.filter(({ path }) => path === preferredPath)
+        : [];
+    const selected = preferred.length > 0 ? preferred : matching;
+
+    const byAxis = new Map<string, Set<string>>();
+    for (const { index } of selected) {
+        const point = points[index];
+        const axes = allAxes.filter(
+            (axis) => axis.start >= point.axis_start && axis.start < point.axis_end,
+        );
+        for (const axis of axes) {
+            if (!byAxis.has(axis.name)) {
+                byAxis.set(axis.name, new Set());
+            }
+            const values = byAxis.get(axis.name)!;
+            for (let offset = axis.value_start; offset < axis.value_end; offset += 1) {
+                const value = allAxisValues[offset]?.value;
+                if (value !== undefined && value !== "") {
+                    values.add(value);
+                }
+            }
+        }
+    }
+
+    const natCompare = (a: string, b: string) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+
+    return [...byAxis.entries()]
+        .sort(([a], [b]) => natCompare(a, b))
+        .map(([name, values]) => ({
+            name,
+            values: [...values].sort(natCompare),
+        }));
+}
+
 function decodeAxisValues(
     row: number,
     axisModels: Array<{ name: string; offset: number; size: number; stride: number }>,

@@ -4,18 +4,14 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Modal, Checkbox, Flex, Typography, Button, Space, Tag, Divider } from "antd";
-import {
-    bucketsMatchingAxisFilters,
-    formatAxisFilterSummary,
-    toggleAxisFilterValue,
-} from "@/services/inferWaiverRules";
+import { Modal, Flex, Typography, Button, Space } from "antd";
+import { bucketsMatchingAxisFilters } from "@/services/inferWaiverRules";
 import type { SelectedBucket } from "@/services/inferWaiverRules";
+import AxisFilterPicker, {
+    type AxisValueOption,
+} from "../AxisFilterPicker";
 
-export type AxisValueOption = {
-    name: string;
-    values: string[];
-};
+export type { AxisValueOption };
 
 type SelectByAxisModalProps = {
     open: boolean;
@@ -47,13 +43,6 @@ export default function SelectByAxisModal({
         [allWaivable, draft],
     );
 
-    const summary = useMemo(() => formatAxisFilterSummary(draft), [draft]);
-    const hasFilters = Object.values(draft).some((values) => values.length > 0);
-
-    const toggle = (axis: string, value: string) => {
-        setDraft((prev) => toggleAxisFilterValue(prev, axis, value));
-    };
-
     const apply = () => {
         onApply(draft);
         onClose();
@@ -83,61 +72,13 @@ export default function SelectByAxisModal({
                 axes to <strong>narrow</strong> the set (AND).
             </Typography.Paragraph>
 
-            <Flex
-                vertical
-                gap={4}
-                style={{
-                    marginBottom: 12,
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    background: "rgba(0,0,0,0.04)",
-                }}
-            >
-                <Space wrap size={[6, 6]}>
-                    <Tag color={hasFilters ? "blue" : "default"}>
-                        {matchCount.toLocaleString()} bucket{matchCount === 1 ? "" : "s"}
-                    </Tag>
-                    {summary ? (
-                        <Typography.Text code style={{ fontSize: 12 }}>
-                            {summary}
-                        </Typography.Text>
-                    ) : (
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                            No axis values selected yet
-                        </Typography.Text>
-                    )}
-                </Space>
-            </Flex>
-
-            <Flex vertical gap={14} style={{ maxHeight: "50vh", overflowY: "auto" }}>
-                {axes.map((axis, index) => {
-                    const selected = new Set(draft[axis.name] ?? []);
-                    return (
-                        <div key={axis.name}>
-                            {index > 0 && <Divider style={{ margin: "4px 0 12px" }} />}
-                            <Flex justify="space-between" align="center" style={{ marginBottom: 8 }}>
-                                <Typography.Text strong>{axis.name}</Typography.Text>
-                                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                                    {selected.size > 0
-                                        ? `${selected.size} of ${axis.values.length}`
-                                        : "any value"}
-                                </Typography.Text>
-                            </Flex>
-                            <Flex wrap="wrap" gap={8}>
-                                {axis.values.map((value) => (
-                                    <Checkbox
-                                        key={`${axis.name}::${value}`}
-                                        checked={selected.has(value)}
-                                        onChange={() => toggle(axis.name, value)}
-                                    >
-                                        {value}
-                                    </Checkbox>
-                                ))}
-                            </Flex>
-                        </div>
-                    );
-                })}
-            </Flex>
+            <AxisFilterPicker
+                axes={axes}
+                filters={draft}
+                onChange={setDraft}
+                matchCount={matchCount}
+                emptySummary="No axis values selected yet"
+            />
         </Modal>
     );
 }

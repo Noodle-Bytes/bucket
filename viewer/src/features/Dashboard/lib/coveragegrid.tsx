@@ -1457,7 +1457,7 @@ export function PointGrid({ node, compare }: PointGridProps) {
     const [selectUnhitBusy, setSelectUnhitBusy] = useState(false);
     const [selectUnhitShowModal, setSelectUnhitShowModal] = useState(false);
     const [metadataActiveKeys, setMetadataActiveKeys] = useState<string[]>(["metadata"]);
-    const { creatingWaivers, setCreatingWaivers } = useWaiverSession();
+    const { creatingWaivers, setCreatingWaivers, setActivePointPath } = useWaiverSession();
     const pointTags = useMemo(() => parsePointTags(node.data.point.tags), [node.data.point.tags]);
     const pointTier = normalizePointTier(node.data.point.tier);
     const pointDescription = String(node.data.point.description ?? "").trim();
@@ -1480,6 +1480,11 @@ export function PointGrid({ node, compare }: PointGridProps) {
         }
         return node.data.point.name;
     }, [node]);
+
+    useEffect(() => {
+        setActivePointPath(pointPath);
+        return () => setActivePointPath(null);
+    }, [pointPath, setActivePointPath]);
 
     useEffect(() => {
         setOverrideState(

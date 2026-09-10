@@ -4,24 +4,34 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Modal, Input, Form, AutoComplete, Typography, Switch, Alert } from "antd";
+import {
+    Modal,
+    Input,
+    Form,
+    AutoComplete,
+    Typography,
+    Switch,
+    Alert,
+    Button,
+    Flex,
+    Space,
+} from "antd";
 import { useWaiverSession } from "@/hooks/useWaiverSession";
 import {
     parseWaiverSpec,
     WaiverSpecError,
-    type WaiverAxes,
+    waiverAxesToFilters,
+    filtersToWaiverAxes,
     type WaiverSpec,
 } from "@/services/waiverSpec";
+import { collectAxisOptionsForPoint } from "@/services/matchWaivers";
+import AxisFilterPicker from "../AxisFilterPicker";
 
 type EditWaiverModalProps = {
     open: boolean;
     ruleIndex: number | null;
     onClose: () => void;
 };
-
-function axesToText(axes: WaiverAxes): string {
-    return JSON.stringify(axes, null, 2);
-}
 
 export default function EditWaiverModal({ open, ruleIndex, onClose }: EditWaiverModalProps) {
     const waivers = useWaiverSession();
@@ -31,7 +41,7 @@ export default function EditWaiverModal({ open, ruleIndex, onClose }: EditWaiver
     const [point, setPoint] = useState("");
     const [reason, setReason] = useState("");
     const [author, setAuthor] = useState("");
-    const [axesText, setAxesText] = useState("{}");
+    const [axisFilters, setAxisFilters] = useState<Record<string, string[]>>({});
     const [disabled, setDisabled] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -42,7 +52,7 @@ export default function EditWaiverModal({ open, ruleIndex, onClose }: EditWaiver
         setPoint(rule.point);
         setReason(rule.reason);
         setAuthor(rule.author);
-        setAxesText(axesToText(rule.axes));
+        setAxisFilters(waiverAxesToFilters(rule.axes));
         setDisabled(rule.disabled);
         setError(null);
     }, [open, rule]);
@@ -75,22 +85,49 @@ export default function EditWaiverModal({ open, ruleIndex, onClose }: EditWaiver
         return options;
     }, [waivers.file.waivers]);
 
+    const axisOptions = useMemo(() => {
+        const readout = waivers.activeReadouts[0];
+        if (!readout || !point.trim()) {
+            return [];
+        }
+        const collected = collectAxisOptionsForPoint(
+            readout,
+            point.trim(),
+            waivers.activePointPath,
+        );
+        // Keep any patterns already on the saved rule visible/toggleable.
+        const byName = new Map(collected.map((axis) => [axis.name, new Set(axis.values)]));
+        if (rule) {
+            for (const [axis, patterns] of Object.entries(rule.axes)) {
+                if (!byName.has(axis)) {
+                    byName.set(axis, new Set());
+                }
+                const set = byName.get(axis)!;
+                for (const value of typeof patterns === "string" ? [patterns] : patterns) {
+                    set.add(value);
+                }
+            }
+        }
+        const natCompare = (a: string, b: string) =>
+            a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+        return [...byName.entries()]
+            .sort(([a], [b]) => natCompare(a, b))
+            .map(([name, values]) => ({
+                name,
+                values: [...values].sort(natCompare),
+            }));
+    }, [waivers.activeReadouts, waivers.activePointPath, point, rule]);
+
     const submit = () => {
         if (ruleIndex === null) {
             return;
         }
         try {
-            let axesRaw: unknown = {};
-            try {
-                axesRaw = JSON.parse(axesText || "{}");
-            } catch {
-                throw new WaiverSpecError("axes must be valid JSON (object of string or string[])");
-            }
             const parsed = parseWaiverSpec({
                 point,
                 reason,
                 author,
-                axes: axesRaw,
+                axes: filtersToWaiverAxes(axisFilters),
                 disabled,
             });
             waivers.updateRule(ruleIndex, parsed);
@@ -105,13 +142,22 @@ export default function EditWaiverModal({ open, ruleIndex, onClose }: EditWaiver
             title={rule ? `Edit waiver · ${rule.point}` : "Edit waiver"}
             open={open && ruleIndex !== null && rule !== null}
             onCancel={onClose}
-            onOk={submit}
-            okText="Save"
             destroyOnClose
-            width={520}
+            width={560}
+            footer={
+                <Flex justify="space-between" align="center" wrap="wrap" gap={8}>
+                    <Button onClick={() => setAxisFilters({})}>Clear axes</Button>
+                    <Space>
+                        <Button onClick={onClose}>Cancel</Button>
+                        <Button type="primary" onClick={submit}>
+                            Save
+                        </Button>
+                    </Space>
+                </Flex>
+            }
         >
             <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-                Update reason, author, coverpoint path, or axis patterns. Scoring updates live when
+                Update reason, author, coverpoint path, or axis values. Scoring updates live when
                 you save.
             </Typography.Paragraph>
 
@@ -158,14 +204,14 @@ export default function EditWaiverModal({ open, ruleIndex, onClose }: EditWaiver
                     />
                 </Form.Item>
                 <Form.Item
-                    label="Axes (JSON)"
-                    extra='Example: {"x": ["0","1"]} or {"kind": "A"}'
+                    label="Axes"
+                    extra="Tick values on an axis to add them (OR). Tick values on other axes to narrow (AND). Leave an axis unticked for any value."
                 >
-                    <Input.TextArea
-                        value={axesText}
-                        onChange={(event) => setAxesText(event.target.value)}
-                        rows={5}
-                        style={{ fontFamily: "monospace", fontSize: 12 }}
+                    <AxisFilterPicker
+                        axes={axisOptions}
+                        filters={axisFilters}
+                        onChange={setAxisFilters}
+                        emptySummary="No axis constraints (entire coverpoint)"
                     />
                 </Form.Item>
                 <Form.Item label="Enabled">

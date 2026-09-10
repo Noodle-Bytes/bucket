@@ -22,6 +22,7 @@ import {
     bucketsMatchingAxisFilters,
     toggleAxisFilterValue,
     mergeWaiverSpecs,
+    wouldCondenseWaiverSpecs,
 } from "./inferWaiverRules";
 import { InMemoryReadout } from "./readoutUtils";
 
@@ -375,6 +376,33 @@ describe("mergeWaiverSpecs", () => {
             ],
         );
         expect(merged).toHaveLength(2);
+    });
+
+    test("wouldCondenseWaiverSpecs detects merges", () => {
+        const existing = [
+            {
+                point: "top.point",
+                axes: { x: "0" },
+                reason: "corner",
+                author: "a",
+                disabled: false,
+            },
+        ];
+        const incoming = [
+            {
+                point: "top.point",
+                axes: { x: "1" },
+                reason: "corner",
+                author: "a",
+                disabled: false,
+            },
+        ];
+        expect(wouldCondenseWaiverSpecs(existing, incoming)).toBe(true);
+        expect(
+            wouldCondenseWaiverSpecs(existing, [
+                { ...incoming[0], reason: "other" },
+            ]),
+        ).toBe(false);
     });
 });
 

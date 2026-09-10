@@ -19,10 +19,14 @@ import {
 import {
     inferWaiverRules,
     inferredRulesToSpecs,
+    mergeWaiverSpecs,
+    wouldCondenseWaiverSpecs,
     type InferredWaiverRule,
     type SelectedBucket,
 } from "@/services/inferWaiverRules";
+import type { WaiverSpec } from "@/services/waiverSpec";
 import { useWaiverSession } from "@/hooks/useWaiverSession";
+import WaiverAxesList from "../WaiverAxesList";
 
 const COLLAPSED_RULE_COUNT = 3;
 
@@ -48,8 +52,11 @@ export default function CreateWaiverModal({
     const [reason, setReason] = useState("");
     const [author, setAuthor] = useState("");
     const [rulesExpanded, setRulesExpanded] = useState(false);
+    const [openAxisRules, setOpenAxisRules] = useState<Set<number>>(() => new Set());
     const [rules, setRules] = useState<InferredWaiverRule[]>([]);
     const [inferring, setInferring] = useState(false);
+    const [condensePromptOpen, setCondensePromptOpen] = useState(false);
+    const [pendingSpecs, setPendingSpecs] = useState<WaiverSpec[] | null>(null);
 
     // First create in the session: blank author. After that, reuse last used.
     useEffect(() => {
@@ -57,6 +64,9 @@ export default function CreateWaiverModal({
             setReason("");
             setAuthor(waivers.lastAuthor);
             setRulesExpanded(false);
+            setOpenAxisRules(new Set());
+            setCondensePromptOpen(false);
+            setPendingSpecs(null);
         }
     }, [open, waivers.lastAuthor]);
 
@@ -128,19 +138,51 @@ export default function CreateWaiverModal({
             ? rules
             : rules.slice(0, COLLAPSED_RULE_COUNT);
 
+    const finishAdd = (condense: boolean) => {
+        if (!pendingSpecs || pendingSpecs.length === 0) {
+            return;
+        }
+        waivers.appendRules(pendingSpecs, { condense });
+        setPendingSpecs(null);
+        setCondensePromptOpen(false);
+        setReason("");
+        onCreated?.();
+        onClose();
+    };
+
     const submit = () => {
         const trimmed = reason.trim();
         if (!trimmed || inferring || rules.length === 0) {
             return;
         }
         const specs = inferredRulesToSpecs(rules, trimmed, author.trim());
-        waivers.appendRules(specs);
+        if (wouldCondenseWaiverSpecs(waivers.file.waivers, specs)) {
+            setPendingSpecs(specs);
+            setCondensePromptOpen(true);
+            return;
+        }
+        waivers.appendRules(specs, { condense: true });
         setReason("");
         onCreated?.();
         onClose();
     };
 
+    const condensePreview = useMemo(() => {
+        if (!pendingSpecs) {
+            return null;
+        }
+        const separateTotal = waivers.file.waivers.length + pendingSpecs.length;
+        const condensedTotal = mergeWaiverSpecs(waivers.file.waivers, pendingSpecs).length;
+        return {
+            incoming: pendingSpecs.length,
+            separateTotal,
+            condensedTotal,
+            absorbed: separateTotal - condensedTotal,
+        };
+    }, [pendingSpecs, waivers.file.waivers]);
+
     return (
+        <>
         <Modal
             title={`Create waiver · ${pointPath}`}
             open={open}
@@ -232,28 +274,83 @@ export default function CreateWaiverModal({
                             </Button>
                         ) : null
                     }
-                    renderItem={(rule) => (
-                        <List.Item>
-                            <Space direction="vertical" size={2} style={{ width: "100%" }}>
-                                <Typography.Text code style={{ fontSize: 12 }}>
-                                    {rule.point}
-                                    {Object.keys(rule.axes).length > 0
-                                        ? ` · ${JSON.stringify(rule.axes)}`
-                                        : " · (all axes)"}
-                                </Typography.Text>
-                                <Space size={6}>
-                                    <Tag>
-                                        {rule.selectedCovered} selected
-                                    </Tag>
-                                    {rule.extraCount > 0 && (
-                                        <Tag color="orange">+{rule.extraCount} extra</Tag>
-                                    )}
+                    renderItem={(rule, index) => {
+                        const axesOpen = openAxisRules.has(index);
+                        return (
+                            <List.Item>
+                                <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                                    <Typography.Text strong style={{ fontSize: 12 }}>
+                                        {rule.point}
+                                    </Typography.Text>
+                                    <Space size={6}>
+                                        <Tag>
+                                            {rule.selectedCovered} selected
+                                        </Tag>
+                                        {rule.extraCount > 0 && (
+                                            <Tag color="orange">+{rule.extraCount} extra</Tag>
+                                        )}
+                                    </Space>
+                                    <Button
+                                        type="link"
+                                        size="small"
+                                        style={{ paddingInline: 0, height: "auto" }}
+                                        onClick={() =>
+                                            setOpenAxisRules((prev) => {
+                                                const next = new Set(prev);
+                                                if (next.has(index)) {
+                                                    next.delete(index);
+                                                } else {
+                                                    next.add(index);
+                                                }
+                                                return next;
+                                            })
+                                        }
+                                    >
+                                        {axesOpen ? "Hide rule" : "Show rule"}
+                                    </Button>
+                                    {axesOpen && <WaiverAxesList axes={rule.axes} />}
                                 </Space>
-                            </Space>
-                        </List.Item>
-                    )}
+                            </List.Item>
+                        );
+                    }}
                 />
             )}
         </Modal>
+            <Modal
+                title="Condense with existing rules?"
+                open={condensePromptOpen}
+                onCancel={() => {
+                    setCondensePromptOpen(false);
+                    setPendingSpecs(null);
+                }}
+                destroyOnClose
+                footer={
+                    <Space style={{ width: "100%", justifyContent: "flex-end" }}>
+                        <Button
+                            onClick={() => {
+                                setCondensePromptOpen(false);
+                                setPendingSpecs(null);
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button onClick={() => finishAdd(false)}>Keep separate</Button>
+                        <Button type="primary" onClick={() => finishAdd(true)}>
+                            Condense
+                        </Button>
+                    </Space>
+                }
+            >
+                <Typography.Paragraph style={{ marginTop: 0 }}>
+                    {condensePreview
+                        ? `These ${condensePreview.incoming} rule${condensePreview.incoming === 1 ? "" : "s"} share a reason and compatible axes with rules already in the session. Condensing would store ${condensePreview.condensedTotal} rule${condensePreview.condensedTotal === 1 ? "" : "s"} total instead of ${condensePreview.separateTotal}.`
+                        : "These rules can merge with existing session rules that share the same reason and compatible axes."}
+                </Typography.Paragraph>
+                <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                    Condensing combines axis values into fewer rules. Keep separate leaves every new
+                    rule as its own entry.
+                </Typography.Paragraph>
+            </Modal>
+        </>
     );
 }

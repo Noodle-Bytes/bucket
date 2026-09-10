@@ -168,3 +168,49 @@ export function axisPatterns(waiver: WaiverSpec): Record<string, string[]> {
     }
     return result;
 }
+
+/** Expand waiver axes to a multi-value filter map (preserves original casing). */
+export function waiverAxesToFilters(axes: WaiverAxes): Record<string, string[]> {
+    const filters: Record<string, string[]> = {};
+    for (const [axis, patterns] of Object.entries(axes)) {
+        filters[axis] = typeof patterns === "string" ? [patterns] : [...patterns];
+    }
+    return filters;
+}
+
+/** Compact a filter map back to waiver axes (single value stays a string). */
+export function filtersToWaiverAxes(filters: Record<string, string[]>): WaiverAxes {
+    const axes: WaiverAxes = {};
+    for (const [axis, values] of Object.entries(filters)) {
+        if (values.length === 0) {
+            continue;
+        }
+        axes[axis] = values.length === 1 ? values[0] : [...values];
+    }
+    return axes;
+}
+
+/** Human-readable axes, e.g. `hazard_type=RAW ∧ stall_cycles∈{0, 2}`. */
+export function formatWaiverAxesSummary(axes: WaiverAxes): string {
+    const entries = waiverAxesEntries(axes);
+    if (entries.length === 0) {
+        return "all axes";
+    }
+    return entries
+        .map(({ axis, values }) =>
+            values.length === 1
+                ? `${axis}=${values[0]}`
+                : `${axis}∈{${values.join(", ")}}`,
+        )
+        .join(" ∧ ");
+}
+
+/** One entry per axis for scannable multi-line display. */
+export function waiverAxesEntries(
+    axes: WaiverAxes,
+): Array<{ axis: string; values: string[] }> {
+    return Object.entries(axes).map(([axis, patterns]) => ({
+        axis,
+        values: typeof patterns === "string" ? [patterns] : [...patterns],
+    }));
+}

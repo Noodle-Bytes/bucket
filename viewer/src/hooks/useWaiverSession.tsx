@@ -25,7 +25,7 @@ import {
     isWaiverProblemStatus,
     type WaiverApplyReport,
 } from "@/services/matchWaivers";
-import { mergeWaiverSpecs, unionWaiverAxes } from "@/services/inferWaiverRules";
+import { mergeWaiverSpecs, appendWaiverSpecsWithoutMerge, unionWaiverAxes } from "@/services/inferWaiverRules";
 import { notifyError, notifySuccess } from "@/utils/themedStaticNotification";
 
 function waiverFingerprint(file: WaiverFileSpec): string {
@@ -39,6 +39,11 @@ type WaiverSessionValue = {
     setPanelOpen: (open: boolean) => void;
     creatingWaivers: boolean;
     setCreatingWaivers: (creating: boolean) => void;
+    /** Dotted path of the coverpoint currently open in the viewer, if any. */
+    activePointPath: string | null;
+    setActivePointPath: (path: string | null) => void;
+    /** Readouts currently loaded in the viewer (used for axis pickers / apply). */
+    activeReadouts: Readout[];
     /** True when the draft differs from the last loaded/saved snapshot. */
     isDirty: boolean;
     report: WaiverApplyReport | null;
@@ -51,7 +56,7 @@ type WaiverSessionValue = {
     removeRule: (index: number) => WaiverSpec | null;
     restoreRule: (index: number, rule: WaiverSpec) => void;
     updateRule: (index: number, rule: WaiverSpec) => void;
-    appendRules: (rules: WaiverSpec[]) => void;
+    appendRules: (rules: WaiverSpec[], options?: { condense?: boolean }) => void;
     /** Replace a covered rule and the earlier rules that claimed its buckets with one merged rule. */
     mergeCoveredRule: (index: number, reason?: string) => void;
     disableAllProblems: () => void;
@@ -72,6 +77,7 @@ export function WaiverSessionProvider({ children }: PropsWithChildren) {
     const [fileName, setFileName] = useState<string | null>(null);
     const [panelOpen, setPanelOpen] = useState(false);
     const [creatingWaivers, setCreatingWaivers] = useState(false);
+    const [activePointPath, setActivePointPath] = useState<string | null>(null);
     const [activeReadouts, setActiveReadoutsState] = useState<Readout[]>([]);
     const [lastAuthor, setLastAuthor] = useState("");
 
@@ -166,25 +172,41 @@ export function WaiverSessionProvider({ children }: PropsWithChildren) {
         notifySuccess({ message: "Waiver rule updated" });
     }, []);
 
-    const appendRules = useCallback((rules: WaiverSpec[]) => {
+    const appendRules = useCallback((
+        rules: WaiverSpec[],
+        options: { condense?: boolean } = {},
+    ) => {
         if (rules.length === 0) {
             return;
         }
+        const condense = options.condense !== false;
         const author = rules.map((rule) => rule.author.trim()).find((value) => value.length > 0);
         if (author) {
             setLastAuthor(author);
         }
-        setFile((prev) => {
-            const waivers = mergeWaiverSpecs(prev.waivers, rules);
-            return { waivers };
-        });
+        const beforeCount = file.waivers.length;
+        const nextWaivers = condense
+            ? mergeWaiverSpecs(file.waivers, rules)
+            : appendWaiverSpecsWithoutMerge(file.waivers, rules);
+        const absorbed = beforeCount + rules.length - nextWaivers.length;
+        setFile({ waivers: nextWaivers });
         setPanelOpen(true);
-        notifySuccess({
-            message: "Waiver rules added",
-            description:
-                "Same-reason rules with matching axes are condensed; different reasons stay separate",
-        });
-    }, []);
+        if (condense && absorbed > 0) {
+            notifySuccess({
+                message: "Waiver rules added",
+                description: `Condensed with existing rules (${absorbed} fewer than adding separately).`,
+            });
+        } else if (!condense) {
+            notifySuccess({
+                message: rules.length === 1 ? "Waiver rule added" : `Added ${rules.length} waiver rules`,
+                description: "Kept separate from existing rules (no axis condensation).",
+            });
+        } else {
+            notifySuccess({
+                message: rules.length === 1 ? "Waiver rule added" : `Added ${rules.length} waiver rules`,
+            });
+        }
+    }, [file.waivers]);
 
     const mergeCoveredRule = useCallback((index: number, reason?: string) => {
         if (!report) {
@@ -290,6 +312,9 @@ export function WaiverSessionProvider({ children }: PropsWithChildren) {
         setPanelOpen,
         creatingWaivers,
         setCreatingWaivers,
+        activePointPath,
+        setActivePointPath,
+        activeReadouts,
         isDirty,
         report,
         setActiveReadouts,

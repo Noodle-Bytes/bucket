@@ -3,10 +3,11 @@
  * Copyright (c) 2026 Noodle-Bytes. All Rights Reserved
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     Alert,
     Button,
+    Checkbox,
     Drawer,
     Flex,
     Input,
@@ -23,15 +24,19 @@ import {
     DownloadOutlined,
     CopyOutlined,
     EditOutlined,
+    SearchOutlined,
 } from "@ant-design/icons";
 import { useWaiverSession } from "@/hooks/useWaiverSession";
 import {
     isWaiverProblemStatus,
+    matchesPointPath,
     type WaiverRuleStatus,
 } from "@/services/matchWaivers";
 import { notifySuccess, notifyInfo } from "@/utils/themedStaticNotification";
 import { saveExportBytes } from "@/services/exportSaver";
+import { formatWaiverAxesSummary } from "@/services/waiverSpec";
 import EditWaiverModal from "../EditWaiverModal";
+import WaiverAxesList from "../WaiverAxesList";
 
 type FilterMode = "all" | "applied" | "disabled" | "problems";
 
@@ -72,23 +77,53 @@ function statusLabel(status: WaiverRuleStatus): string {
     }
 }
 
+function ruleNumber(index: number): string {
+    return `#${index + 1}`;
+}
+
 function coveredOverlapLabels(
     coveredByIndexes: number[],
     rules: Array<{ reason: string }>,
-): string[] {
+): Array<{ index: number; label: string }> {
     return coveredByIndexes.map((index) => {
         const reason = rules[index]?.reason.trim();
-        return reason || `Rule #${index + 1}`;
+        return {
+            index,
+            label: reason ? `${ruleNumber(index)} · ${reason}` : ruleNumber(index),
+        };
     });
+}
+
+function ruleSearchHaystack(
+    index: number,
+    status: WaiverRuleStatus,
+    rule: { point: string; reason: string; author: string; axes: Record<string, string | string[]> },
+): string {
+    return [
+        ruleNumber(index),
+        statusLabel(status),
+        rule.point,
+        rule.reason,
+        rule.author,
+        formatWaiverAxesSummary(rule.axes),
+        JSON.stringify(rule.axes),
+    ]
+        .join("\n")
+        .toLowerCase();
 }
 
 export default function WaiversPanel() {
     const waivers = useWaiverSession();
     const [filter, setFilter] = useState<FilterMode>("all");
+    const [search, setSearch] = useState("");
+    const [currentPointOnly, setCurrentPointOnly] = useState(false);
     const [includeDisabledOnSave, setIncludeDisabledOnSave] = useState(true);
     const [editIndex, setEditIndex] = useState<number | null>(null);
     const [mergeIndex, setMergeIndex] = useState<number | null>(null);
     const [mergeReason, setMergeReason] = useState("");
+    const [scrollToIndex, setScrollToIndex] = useState<number | null>(null);
+    const [expandedAxes, setExpandedAxes] = useState<Set<number>>(() => new Set());
+    const ruleRefs = useRef(new Map<number, HTMLDivElement>());
 
     const diagnostics = waivers.report?.diagnostics ?? waivers.file.waivers.map((rule, index) => ({
         index,
@@ -104,30 +139,96 @@ export default function WaiversPanel() {
         ? null
         : diagnostics.find((row) => row.index === mergeIndex) ?? null;
 
+    const activePointPath = waivers.activePointPath;
+
+    useEffect(() => {
+        if (!activePointPath) {
+            setCurrentPointOnly(false);
+        }
+    }, [activePointPath]);
+
     const filtered = useMemo(() => {
+        const query = search.trim().toLowerCase();
         return diagnostics.filter((row) => {
-            if (filter === "all") {
-                return true;
+            if (filter === "applied" && row.status !== "applied") {
+                return false;
             }
-            if (filter === "applied") {
-                return row.status === "applied";
+            if (filter === "disabled" && !(row.status === "disabled" || row.rule.disabled)) {
+                return false;
             }
-            if (filter === "disabled") {
-                return row.status === "disabled" || row.rule.disabled;
+            if (
+                filter === "problems"
+                && !isWaiverProblemStatus(row.status)
+            ) {
+                return false;
             }
-            return (
-                row.status === "no_match"
-                || row.status === "covered"
-                || row.status === "bad_axis"
-                || row.status === "parse_error"
-            );
+            if (currentPointOnly && activePointPath) {
+                const applies =
+                    matchesPointPath(activePointPath, row.rule.point)
+                    || row.coverpointPaths.includes(activePointPath);
+                if (!applies) {
+                    return false;
+                }
+            }
+            if (query) {
+                const haystack = ruleSearchHaystack(row.index, row.status, row.rule);
+                if (!haystack.includes(query)) {
+                    return false;
+                }
+            }
+            return true;
         });
-    }, [diagnostics, filter]);
+    }, [diagnostics, filter, search, currentPointOnly, activePointPath]);
+
+    useEffect(() => {
+        if (scrollToIndex === null) {
+            return;
+        }
+        const node = ruleRefs.current.get(scrollToIndex);
+        if (node) {
+            node.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            setScrollToIndex(null);
+        }
+    }, [scrollToIndex, filtered]);
 
     const disabledCount = waivers.file.waivers.filter((rule) => rule.disabled).length;
     const problemCount = diagnostics.filter((row) =>
         isWaiverProblemStatus(row.status),
     ).length;
+    const currentPointCount = activePointPath
+        ? diagnostics.filter(
+            (row) =>
+                matchesPointPath(activePointPath, row.rule.point)
+                || row.coverpointPaths.includes(activePointPath),
+        ).length
+        : 0;
+
+    const jumpToRule = (index: number) => {
+        setFilter("all");
+        setSearch("");
+        setCurrentPointOnly(false);
+        setExpandedAxes((prev) => {
+            if (prev.has(index)) {
+                return prev;
+            }
+            const next = new Set(prev);
+            next.add(index);
+            return next;
+        });
+        setScrollToIndex(index);
+    };
+
+    const toggleAxesExpanded = (index: number) => {
+        setExpandedAxes((prev) => {
+            const next = new Set(prev);
+            if (next.has(index)) {
+                next.delete(index);
+            } else {
+                next.add(index);
+            }
+            return next;
+        });
+    };
 
     const openMergeCovered = (index: number) => {
         const row = diagnostics.find((diag) => diag.index === index);
@@ -242,6 +343,16 @@ export default function WaiversPanel() {
                         : ""}
                 </Typography.Text>
 
+                <Input
+                    allowClear
+                    size="small"
+                    prefix={<SearchOutlined />}
+                    placeholder="Search rules by #, point, reason, author…"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    disabled={waivers.file.waivers.length === 0}
+                />
+
                 <Radio.Group
                     size="small"
                     value={filter}
@@ -254,6 +365,23 @@ export default function WaiversPanel() {
                         { label: `Problems (${problemCount})`, value: "problems" },
                     ]}
                 />
+
+                <Tooltip
+                    title={
+                        activePointPath
+                            ? `Show rules whose point pattern matches ${activePointPath}`
+                            : "Open a coverpoint to filter waivers for it"
+                    }
+                >
+                    <Checkbox
+                        checked={currentPointOnly}
+                        disabled={!activePointPath}
+                        onChange={(event) => setCurrentPointOnly(event.target.checked)}
+                    >
+                        Current coverpoint
+                        {activePointPath ? ` (${currentPointCount})` : ""}
+                    </Checkbox>
+                </Tooltip>
 
                 <Flex gap={8} wrap>
                     <Button size="small" onClick={waivers.disableAllProblems} disabled={problemCount === 0}>
@@ -297,6 +425,13 @@ export default function WaiversPanel() {
                         return (
                             <div
                                 key={row.index}
+                                ref={(node) => {
+                                    if (node) {
+                                        ruleRefs.current.set(row.index, node);
+                                    } else {
+                                        ruleRefs.current.delete(row.index);
+                                    }
+                                }}
                                 style={{
                                     border: "1px solid var(--ant-color-border, #d9d9d9)",
                                     borderRadius: 8,
@@ -312,6 +447,12 @@ export default function WaiversPanel() {
                                         wrap="wrap"
                                     >
                                         <Space size={6} wrap>
+                                            <Typography.Text
+                                                strong
+                                                style={{ fontSize: 12, fontVariantNumeric: "tabular-nums" }}
+                                            >
+                                                {ruleNumber(row.index)}
+                                            </Typography.Text>
                                             <Tag color={statusColor(row.status)}>
                                                 {statusLabel(row.status)}
                                             </Tag>
@@ -378,9 +519,23 @@ export default function WaiversPanel() {
                                                 <Typography.Text style={{ fontSize: 12 }}>
                                                     Already covered by earlier rule
                                                     {overlapLabels.length === 1 ? "" : "s"}{" "}
-                                                    {overlapLabels
-                                                        .map((label) => `“${label}”`)
-                                                        .join(", ")}
+                                                    {overlapLabels.map((item, itemIndex) => (
+                                                        <span key={item.index}>
+                                                            {itemIndex > 0 ? ", " : ""}
+                                                            <Button
+                                                                type="link"
+                                                                size="small"
+                                                                style={{
+                                                                    padding: 0,
+                                                                    height: "auto",
+                                                                    fontSize: 12,
+                                                                }}
+                                                                onClick={() => jumpToRule(item.index)}
+                                                            >
+                                                                {item.label}
+                                                            </Button>
+                                                        </span>
+                                                    ))}
                                                     .
                                                 </Typography.Text>
                                             }
@@ -409,32 +564,40 @@ export default function WaiversPanel() {
                                         />
                                     ) : null}
 
-                                    {extraPaths.length > 0 && (
-                                        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                                            {extraPaths.join(", ")}
-                                        </Typography.Text>
-                                    )}
-                                    <Typography.Text
-                                        code
-                                        style={{ fontSize: 11, whiteSpace: "pre-wrap" }}
+                                    <Button
+                                        type="link"
+                                        size="small"
+                                        style={{ paddingInline: 0, height: "auto", alignSelf: "flex-start" }}
+                                        onClick={() => toggleAxesExpanded(row.index)}
                                     >
-                                        {JSON.stringify(
-                                            {
-                                                point: row.rule.point,
-                                                axes: row.rule.axes,
-                                                ...(row.rule.author ? { author: row.rule.author } : {}),
-                                                ...(row.rule.disabled ? { disabled: true } : {}),
-                                            },
-                                            null,
-                                            0,
-                                        )}
-                                    </Typography.Text>
+                                        {expandedAxes.has(row.index) ? "Hide rule" : "Show rule"}
+                                    </Button>
+
+                                    {expandedAxes.has(row.index) && (
+                                        <Flex vertical gap={8}>
+                                            {extraPaths.length > 0 && (
+                                                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                                                    {extraPaths.join(", ")}
+                                                </Typography.Text>
+                                            )}
+                                            <WaiverAxesList axes={row.rule.axes} />
+                                            {row.rule.author ? (
+                                                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                                                    Author: {row.rule.author}
+                                                </Typography.Text>
+                                            ) : null}
+                                        </Flex>
+                                    )}
                                 </Flex>
                             </div>
                         );
                     })}
                     {filtered.length === 0 && (
-                        <Typography.Text type="secondary">No rules in this filter.</Typography.Text>
+                        <Typography.Text type="secondary">
+                            {waivers.file.waivers.length === 0
+                                ? "No rules in this filter."
+                                : "No rules match the current search/filters."}
+                        </Typography.Text>
                     )}
                 </Flex>
             </Flex>
@@ -460,12 +623,12 @@ export default function WaiversPanel() {
                 </Typography.Paragraph>
                 {(mergeRow?.coveredByIndexes?.length ?? 0) > 0 && (
                     <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-                        Overlapping reasons:{" "}
+                        Overlapping rules:{" "}
                         {coveredOverlapLabels(
                             mergeRow?.coveredByIndexes ?? [],
                             waivers.file.waivers,
                         )
-                            .map((label) => `“${label}”`)
+                            .map((item) => item.label)
                             .join(", ")}
                     </Typography.Paragraph>
                 )}
