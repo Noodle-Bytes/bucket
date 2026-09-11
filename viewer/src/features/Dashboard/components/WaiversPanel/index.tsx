@@ -30,6 +30,7 @@ import { useWaiverSession } from "@/hooks/useWaiverSession";
 import {
     isWaiverProblemStatus,
     matchesPointPath,
+    type WaiverRuleDiagnostic,
     type WaiverRuleStatus,
 } from "@/services/matchWaivers";
 import { notifySuccess, notifyInfo } from "@/utils/themedStaticNotification";
@@ -125,15 +126,16 @@ export default function WaiversPanel() {
     const [expandedAxes, setExpandedAxes] = useState<Set<number>>(() => new Set());
     const ruleRefs = useRef(new Map<number, HTMLDivElement>());
 
-    const diagnostics = waivers.report?.diagnostics ?? waivers.file.waivers.map((rule, index) => ({
-        index,
-        rule,
-        status: (rule.disabled ? "disabled" : "no_match") as WaiverRuleStatus,
-        matchCount: 0,
-        matchedBucketStarts: [] as number[],
-        coverpointPaths: [] as string[],
-        message: undefined as string | undefined,
-    }));
+    const diagnostics: WaiverRuleDiagnostic[] =
+        waivers.report?.diagnostics
+        ?? waivers.file.waivers.map((rule, index) => ({
+            index,
+            rule,
+            status: (rule.disabled ? "disabled" : "no_match") as WaiverRuleStatus,
+            matchCount: 0,
+            matchedBucketStarts: [],
+            coverpointPaths: [],
+        }));
 
     const mergeRow = mergeIndex === null
         ? null
