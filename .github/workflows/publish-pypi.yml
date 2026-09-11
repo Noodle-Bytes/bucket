@@ -183,7 +183,7 @@ jobs:
           echo "::notice title=Nothing to publish::Built ${VERSION} from ${GITHUB_REF}, which is not a plain x.y.z release. The most recent tag is ${tag} (${state}). To publish it, re-run with 'Use workflow from: ${tag}'."
 
       - name: Upload distributions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-dist
           path: dist/
