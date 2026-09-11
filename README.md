@@ -9,12 +9,18 @@
 
 # Bucket
 
+Bucket is functional coverage written in Python: define coverpoints once, sample
+from simulators, models, or log parsers, then merge, compare, waive, and inspect
+results without a commercial EDA tool.
 
-Bucket is a python library to create nicer functional coverpoints. There are several benefits writing the coverage in python, such as:
-
-* Easier integration into cocotb and other python testbenches
-* No commercial EDA license required
-* Vendor independence - easily collect coverage from multiple tools/sources (eg. models, log parsers, etc)
+- **Python coverage model** — coverpoints, covergroups, and covertops that fit
+  cocotb and other Python testbenches
+- **Vendor-independent sampling** — collect hits from DUT traces, reference
+  models, or offline parsers
+- **Regression workflow** — export `.bktgz` / SQL / JSON, merge runs, compare
+  coverage sets, and apply waiver sidecars
+- **Viewer** — hosted web app and desktop app for browsing, filtering, and
+  comparing coverage
 
 ## Install
 
@@ -22,45 +28,43 @@ Bucket is a python library to create nicer functional coverpoints. There are sev
 pip install noodle-bucket
 ```
 
-This installs the Python library (`import bucket`) and the `bucket` CLI.
-It is enough to write coverpoints, collect coverage, and export `.bktgz` /
-SQL / JSON / console output. View results in the [hosted viewer](https://noodle-bytes.github.io/bucket/)
-or the desktop app.
+This installs the Python library (`import bucket`) and the `bucket` CLI. That is
+enough to write coverpoints, collect coverage, and export `.bktgz` / SQL / JSON /
+console output. Open results in the [hosted viewer](https://noodle-bytes.github.io/bucket/)
+or the [desktop app](electron/README.md).
 
-Generating standalone HTML (`bucket write html` / `bucket write report`)
-needs a source checkout of this repository and Node.js; it is not part of
-the pip package.
+Generating standalone HTML (`bucket write html` / `bucket write report`) needs a
+source checkout of this repository and Node.js; it is not part of the pip package.
 
 ## Documentation
 
-The user documentation lives in the `docs/` directory and can be read directly on GitHub, starting from [`docs/index.md`](docs/index.md).
-
-For a richer browsing experience, you can also run the MkDocs site locally:
+User docs live in [`docs/`](docs/index.md). To browse them locally:
 
 ```bash
 ./bin/shell
 mkdocs serve
 ```
 
-Then open `http://127.0.0.1:8000/` in your browser.
+Then open `http://127.0.0.1:8000/`.
 
 ## Viewer
 
-A copy of the viewer is hosted at: https://noodle-bytes.github.io/bucket/
+- Hosted: https://noodle-bytes.github.io/bucket/
+- Desktop app: see [`electron/README.md`](electron/README.md)
+- Viewer development: see [`viewer/README.md`](viewer/README.md)
 
 ## Support
 
-This library is being actively built, and is expected to change while it matures and key features are added.
-We are not providing external support for use of this library, however we are aiming to make it as easy to use as possible.
+Bucket is provided as-is under the MIT licence. We are not offering external
+support, but the docs and examples are meant to make it straightforward to adopt.
 
-As per the licence:
 > THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+> SOFTWARE.
 
 ## Contributions
 
