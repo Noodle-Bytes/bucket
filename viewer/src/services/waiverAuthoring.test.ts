@@ -404,6 +404,85 @@ describe("mergeWaiverSpecs", () => {
             ]),
         ).toBe(false);
     });
+
+    test("does not merge rules that differ on two axes (would waive product corners)", () => {
+        // Diagonal unhit cells must stay separate — unioning both axes would
+        // also match the off-diagonal (often hit) buckets.
+        const existing = [
+            {
+                point: "top.point",
+                axes: { x: "0", y: "a" },
+                reason: "unhit",
+                author: "",
+                disabled: false,
+            },
+        ];
+        const incoming = [
+            {
+                point: "top.point",
+                axes: { x: "1", y: "b" },
+                reason: "unhit",
+                author: "",
+                disabled: false,
+            },
+        ];
+        expect(wouldCondenseWaiverSpecs(existing, incoming)).toBe(false);
+        expect(mergeWaiverSpecs(existing, incoming)).toEqual([
+            ...existing,
+            ...incoming,
+        ]);
+    });
+
+    test("still merges when only one axis differs", () => {
+        const existing = [
+            {
+                point: "top.point",
+                axes: { x: "0", y: "a" },
+                reason: "unhit",
+                author: "",
+                disabled: false,
+            },
+        ];
+        const incoming = [
+            {
+                point: "top.point",
+                axes: { x: "1", y: "a" },
+                reason: "unhit",
+                author: "",
+                disabled: false,
+            },
+        ];
+        expect(mergeWaiverSpecs(existing, incoming)).toEqual([
+            {
+                point: "top.point",
+                axes: { x: ["0", "1"], y: "a" },
+                reason: "unhit",
+                author: "",
+                disabled: false,
+            },
+        ]);
+    });
+
+    test("does not fold diagonal inferred rules into each other on empty session", () => {
+        const incoming = [
+            {
+                point: "top.point",
+                axes: { x: "0", y: "a" },
+                reason: "unhit",
+                author: "",
+                disabled: false,
+            },
+            {
+                point: "top.point",
+                axes: { x: "1", y: "b" },
+                reason: "unhit",
+                author: "",
+                disabled: false,
+            },
+        ];
+        expect(wouldCondenseWaiverSpecs([], incoming)).toBe(false);
+        expect(mergeWaiverSpecs([], incoming)).toEqual(incoming);
+    });
 });
 
 describe("axis value filters", () => {

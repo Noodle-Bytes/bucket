@@ -3,7 +3,7 @@
  * Copyright (c) 2026 Noodle-Bytes. All Rights Reserved
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     Alert,
     Button,
@@ -147,38 +147,36 @@ export default function WaiversPanel() {
         }
     }, [activePointPath]);
 
-    const filtered = useMemo(() => {
-        const query = search.trim().toLowerCase();
-        return diagnostics.filter((row) => {
-            if (filter === "applied" && row.status !== "applied") {
+    const query = search.trim().toLowerCase();
+    const filtered = diagnostics.filter((row) => {
+        if (filter === "applied" && row.status !== "applied") {
+            return false;
+        }
+        if (filter === "disabled" && !(row.status === "disabled" || row.rule.disabled)) {
+            return false;
+        }
+        if (
+            filter === "problems"
+            && !isWaiverProblemStatus(row.status)
+        ) {
+            return false;
+        }
+        if (currentPointOnly && activePointPath) {
+            const applies =
+                matchesPointPath(activePointPath, row.rule.point)
+                || row.coverpointPaths.includes(activePointPath);
+            if (!applies) {
                 return false;
             }
-            if (filter === "disabled" && !(row.status === "disabled" || row.rule.disabled)) {
+        }
+        if (query) {
+            const haystack = ruleSearchHaystack(row.index, row.status, row.rule);
+            if (!haystack.includes(query)) {
                 return false;
             }
-            if (
-                filter === "problems"
-                && !isWaiverProblemStatus(row.status)
-            ) {
-                return false;
-            }
-            if (currentPointOnly && activePointPath) {
-                const applies =
-                    matchesPointPath(activePointPath, row.rule.point)
-                    || row.coverpointPaths.includes(activePointPath);
-                if (!applies) {
-                    return false;
-                }
-            }
-            if (query) {
-                const haystack = ruleSearchHaystack(row.index, row.status, row.rule);
-                if (!haystack.includes(query)) {
-                    return false;
-                }
-            }
-            return true;
-        });
-    }, [diagnostics, filter, search, currentPointOnly, activePointPath]);
+        }
+        return true;
+    });
 
     useEffect(() => {
         if (scrollToIndex === null) {

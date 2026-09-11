@@ -351,15 +351,32 @@ export function inferredRulesToSpecs(
     }));
 }
 
+function patternSetsEqual(a: string | string[], b: string | string[]): boolean {
+    const left = uniqueSorted(patternList(a));
+    const right = uniqueSorted(patternList(b));
+    return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 /**
- * Union axis patterns when two rules share the same axis key set.
- * Returns null when key sets differ (not safe to condense).
+ * Union axis patterns when two rules share the same axis key set and differ on
+ * at most one axis. Differing on two+ axes fills cartesian corners
+ * (e.g. {x:0,y:a} ∪ {x:1,y:b} would also match (0,b) and (1,a)).
+ * Returns null when key sets differ or the merge would expand coverage.
  */
 export function unionWaiverAxes(a: WaiverAxes, b: WaiverAxes): WaiverAxes | null {
     const keysA = Object.keys(a).sort();
     const keysB = Object.keys(b).sort();
     if (keysA.length !== keysB.length || keysA.some((key, index) => key !== keysB[index])) {
         return null;
+    }
+    let differingAxes = 0;
+    for (const axis of keysA) {
+        if (!patternSetsEqual(a[axis], b[axis])) {
+            differingAxes += 1;
+            if (differingAxes > 1) {
+                return null;
+            }
+        }
     }
     const out: WaiverAxes = {};
     for (const axis of keysA) {
@@ -373,7 +390,8 @@ export function unionWaiverAxes(a: WaiverAxes, b: WaiverAxes): WaiverAxes | null
 
 /**
  * Fold incoming rules into an existing draft. Rules condense into one multi-value
- * axis rule only when point, reason, author, and disabled match and axis keys align.
+ * axis rule only when point, reason, author, and disabled match, axis keys align,
+ * and the union differs on at most one axis (exact coverage preserved).
  * Different reasons never merge.
  */
 export function mergeWaiverSpecs(

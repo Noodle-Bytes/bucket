@@ -19,7 +19,6 @@ import {
 import { useWaiverSession } from "@/hooks/useWaiverSession";
 import {
     parseWaiverSpec,
-    WaiverSpecError,
     waiverAxesToFilters,
     filtersToWaiverAxes,
     type WaiverSpec,
