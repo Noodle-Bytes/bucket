@@ -46,6 +46,7 @@ import {
     ExclamationCircleFilled,
     InfoCircleFilled,
     DiffOutlined,
+    LinkOutlined,
 } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 import Sider, { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "./components/Sider";
@@ -79,6 +80,8 @@ import { getPointNodeCompareCounts, getPointNodeCoverageMetrics } from "./lib/co
 import type { UseCoverageCompareResult } from "@/hooks/useCoverageCompare";
 import type { CompareRecordRow } from "@/hooks/useCoverageCompare";
 import type { CompareViewContext } from "@/types/coverageCompare";
+import { useViewUrlState } from "@/hooks/useViewUrlState";
+import { notifyError, notifySuccess } from "@/utils/themedStaticNotification";
 
 declare const __APP_VERSION__: string;
 
@@ -786,6 +789,9 @@ export type DashboardProps = {
         fileBaseName?: string;
     }) => Promise<void> | void;
     isDragging?: boolean;
+    /** Whether loaded coverage is remembered across reloads (Settings). */
+    persistSessionEnabled?: boolean;
+    onPersistSessionChange?: (enabled: boolean) => void;
 };
 
 export default function Dashboard({
@@ -802,6 +808,8 @@ export default function Dashboard({
     onRefreshRecords,
     onExportRecords,
     isDragging = false,
+    persistSessionEnabled,
+    onPersistSessionChange,
 }: DashboardProps) {
     const isElectronRuntime = typeof window !== "undefined" && window.electronAPI !== undefined;
 
@@ -1094,6 +1102,42 @@ export default function Dashboard({
             [selectedTreeKeys[0]]: newView,
         });
     };
+
+    const setContentViewForKey = useCallback((key: TreeKey, view: string) => {
+        setTreeKeyContentKey((current) => ({ ...current, [key]: view }));
+    }, []);
+
+    const { copyLink } = useViewUrlState({
+        tree,
+        records,
+        sources,
+        compare,
+        selectedTreeKeys,
+        currentContentKey,
+        summaryViewMode,
+        treeSearchValue,
+        onSelectNode: onSelect,
+        onSetContentView: setContentViewForKey,
+        setSummaryViewMode,
+        setTreeSearchValue,
+    });
+
+    const handleCopyLink = useCallback(async () => {
+        const copied = await copyLink();
+        if (copied) {
+            notifySuccess({
+                message: "Link copied",
+                description: "The URL for this view is on the clipboard.",
+                duration: 2.5,
+            });
+        } else {
+            notifyError({
+                message: "Could not copy link",
+                description: "Copy the address bar URL instead.",
+                duration: 4,
+            });
+        }
+    }, [copyLink]);
 
     const compareTreeBadge = useCallback(
         (node: TreeNode) => {
@@ -1429,6 +1473,24 @@ export default function Dashboard({
                                                                         color: headerIconColor,
                                                                         opacity: backDisabled ? 0.42 : 1,
                                                                     },
+                                                                }}
+                                                                style={{
+                                                                    width: 24,
+                                                                    minWidth: 24,
+                                                                    paddingInline: 0,
+                                                                    display: "inline-flex",
+                                                                    justifyContent: "center",
+                                                                }}
+                                                            />
+                                                            <Button
+                                                                size="small"
+                                                                type="text"
+                                                                icon={<LinkOutlined />}
+                                                                onClick={() => void handleCopyLink()}
+                                                                title="Copy link to this view"
+                                                                aria-label="Copy link to this view"
+                                                                styles={{
+                                                                    icon: { color: headerIconColor },
                                                                 }}
                                                                 style={{
                                                                     width: 24,
@@ -2121,7 +2183,7 @@ export default function Dashboard({
 
                             return (
                                 <Flex align="center" gap={12}>
-                                    <Typography.Text strong style={{ fontSize: 14, minWidth: 52 }}>
+                                    <Typography.Text strong style={{ fontSize: 14, minWidth: 60 }}>
                                         Theme
                                     </Typography.Text>
                                     <Select
@@ -2164,6 +2226,36 @@ export default function Dashboard({
                             );
                         }}
                     </Theme.Consumer>
+                    {onPersistSessionChange && (
+                        <Theme.Consumer>
+                            {({ theme }) => (
+                                <Flex align="center" gap={12}>
+                                    <Typography.Text strong style={{ fontSize: 14, minWidth: 60 }}>
+                                        Session
+                                    </Typography.Text>
+                                    <Switch
+                                        checked={persistSessionEnabled ?? true}
+                                        onChange={(checked) => onPersistSessionChange(checked)}
+                                        aria-label="Remember loaded coverage across reloads"
+                                    />
+                                    <Flex vertical style={{ minWidth: 0 }}>
+                                        <Typography.Text style={{ fontSize: 13 }}>
+                                            Remember loaded coverage across reloads
+                                        </Typography.Text>
+                                        <Typography.Text
+                                            style={{
+                                                fontSize: 12,
+                                                color: theme.theme.colors.desaturatedtxt.value,
+                                            }}
+                                        >
+                                            Archives are kept in this browser's storage only.
+                                            Turning this off clears the stored session.
+                                        </Typography.Text>
+                                    </Flex>
+                                </Flex>
+                            )}
+                        </Theme.Consumer>
+                    )}
                     <Theme.Consumer>
                         {({ theme }) => (
                             <Typography.Text
@@ -2183,154 +2275,6 @@ export default function Dashboard({
                         )}
                     </Theme.Consumer>
 
-                </Flex>
-            </Modal>
-
-            <Modal
-                title="Edit Records"
-                open={editModalOpen}
-                onCancel={() => setEditModalOpen(false)}
-                width={900}
-                footer={[
-                    <Button key="cancel" onClick={() => setEditModalOpen(false)}>
-                        Cancel
-                    </Button>,
-                    <Button
-                        key="merge"
-                        onClick={() => void runMergeSelected()}
-                        disabled={mergeSelectedIds.length < 2}
-                        loading={editActionBusy}>
-                        Merge Selected
-                    </Button>,
-                    <Button key="apply" type="primary" onClick={applyLoadedEdits}>
-                        Apply
-                    </Button>,
-                ]}>
-                <Table<RecordTableRow>
-                    size="small"
-                    pagination={false}
-                    rowKey="id"
-                    dataSource={recordRows}
-                    rowSelection={{
-                        selectedRowKeys: mergeSelectedIds,
-                        onChange: (selectedKeys) =>
-                            setMergeSelectedIds(selectedKeys as string[]),
-                    }}
-                    columns={[
-                        {
-                            title: "Loaded",
-                            width: 90,
-                            render: (_value, row) => (
-                                <Switch
-                                    checked={editLoadedById[row.id] ?? row.isLoaded}
-                                    onChange={(checked) =>
-                                        setEditLoadedById((current) => ({
-                                            ...current,
-                                            [row.id]: checked,
-                                        }))
-                                    }
-                                />
-                            ),
-                        },
-                        {
-                            title: "Record",
-                            dataIndex: "label",
-                        },
-                        {
-                            title: "Source",
-                            dataIndex: "sourceLabel",
-                            width: 190,
-                        },
-                        {
-                            title: "Kind",
-                            dataIndex: "sourceKind",
-                            width: 130,
-                        },
-                        {
-                            title: "Index",
-                            dataIndex: "recordIndex",
-                            width: 90,
-                        },
-                    ]}
-                />
-                <Theme.Consumer>
-                    {({ theme }) => (
-                        <Typography.Text
-                            style={{
-                                marginTop: 12,
-                                display: "block",
-                                color: theme.theme.colors.primarytxt.value,
-                            }}
-                        >
-                            Selected for merge: {mergeSelectedIds.length}
-                        </Typography.Text>
-                    )}
-                </Theme.Consumer>
-            </Modal>
-
-            <Modal
-                title="Export Records"
-                open={exportModalOpen}
-                onCancel={() => setExportModalOpen(false)}
-                onOk={() => void runExport()}
-                okText="Export"
-                confirmLoading={exportBusy}
-                okButtonProps={{ disabled: exportSelectedIds.length === 0 }}>
-                <Flex vertical gap="middle">
-                    <div>
-                        <Typography.Text strong>Records</Typography.Text>
-                        <div style={{ marginTop: 8, maxHeight: 220, overflowY: "auto" }}>
-                            <Checkbox.Group
-                                style={{
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: 8,
-                                }}
-                                value={exportSelectedIds}
-                                onChange={(values) =>
-                                    setExportSelectedIds(values.map((value) => String(value)))
-                                }>
-                                {loadedRecordRows.map((record) => (
-                                    <Checkbox key={record.id} value={record.id}>
-                                        {record.label}
-                                    </Checkbox>
-                                ))}
-                            </Checkbox.Group>
-                        </div>
-                    </div>
-
-                    <div>
-                        <Typography.Text strong>Format</Typography.Text>
-                        <Select
-                            value={exportFormat}
-                            onChange={(value) => setExportFormat(value as ExportFormat)}
-                            style={{ width: 200, marginLeft: 12 }}
-                            options={[
-                                { value: "bktgz", label: ".bktgz (Bucket Archive)" },
-                                { value: "json", label: ".json" },
-                            ]}
-                        />
-                    </div>
-
-                    <div>
-                        <Typography.Text strong>Merge Before Writing</Typography.Text>
-                        <Switch
-                            style={{ marginLeft: 12 }}
-                            checked={exportMergeBeforeWrite}
-                            onChange={setExportMergeBeforeWrite}
-                        />
-                    </div>
-
-                    <div>
-                        <Typography.Text strong>File Name</Typography.Text>
-                        <Input
-                            style={{ marginTop: 8 }}
-                            value={exportFileName}
-                            onChange={(event) => setExportFileName(event.target.value)}
-                            placeholder="coverage_export"
-                            addonAfter={`.${exportFormat === "bktgz" ? "bktgz" : exportFormat}`}
-                        />
-                    </div>
                 </Flex>
             </Modal>
 
