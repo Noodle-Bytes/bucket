@@ -150,6 +150,7 @@ class SQLWriter(Writer):
 
     def __init__(self, engine):
         self.engine = engine
+        # SQLAccessor creates the optional point metadata table up front.
         self._has_point_meta = inspect(engine).has_table(PointMetaRow.__tablename__)
 
     def write(self, readout: Readout):
@@ -161,11 +162,11 @@ class SQLWriter(Writer):
         # split of PointTuple and the schema-stable subset of AxisValueTuple).
         with Session(self.engine) as session:
 
-            def bulk(table: type[BaseRow], ref_column: str, ref: int, tuples):
+            def bulk(table: type[BaseRow], ref_column: str, ref: int, tuples, skip=()):
                 fields = [
                     column.key
                     for column in table.__table__.columns
-                    if column.key != ref_column
+                    if column.key != ref_column and column.key not in skip
                 ]
                 rows = []
                 for tup in tuples:
@@ -200,7 +201,12 @@ class SQLWriter(Writer):
             session.flush()
             rec_ref = rec_row.run
 
-            bulk(PointHitRow, "run", rec_ref, readout.iter_point_hits())
+            bulk(
+                PointHitRow,
+                "run",
+                rec_ref,
+                readout.iter_point_hits(),
+            )
             bulk(BucketHitRow, "run", rec_ref, readout.iter_bucket_hits())
 
             session.commit()

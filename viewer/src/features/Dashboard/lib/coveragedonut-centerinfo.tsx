@@ -126,6 +126,19 @@ export function CenterInfo({
                                 >
                                     Hits: {hoveredNode.hits?.toLocaleString()}
                                 </div>
+                                {(hoveredNode.waivedBuckets ?? 0) > 0 && (
+                                    <div
+                                        style={{
+                                            fontSize: `${12 * textScaleFactor}px`,
+                                            color: theme.colors.desaturatedtxt.value,
+                                            fontStyle: 'italic',
+                                            marginBottom: `${10 * textScaleFactor}px`,
+                                            lineHeight: '1.3',
+                                        }}
+                                    >
+                                        Waived: {hoveredNode.waivedBuckets?.toLocaleString()} buckets
+                                    </div>
+                                )}
                             </>
                         )}
                         {hoveredNode.coverage === undefined && (

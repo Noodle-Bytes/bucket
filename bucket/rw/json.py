@@ -50,7 +50,7 @@ class JSONWriter(Writer):
             "axis_value": AxisValueTuple._fields,
             "goal": GoalTuple._fields,
             "bucket_goal": BucketGoalTuple._fields,
-            "point_hit": PointHitTuple._fields,
+            "point_hit": PointHitTuple._fields[:5],
             "bucket_hit": BucketHitTuple._fields,
         }
         if "definitions" not in data:
@@ -87,7 +87,7 @@ class JSONWriter(Writer):
                 # it describes how this record is laid out, not where the
                 # data came from.
                 "format_version": JSON_FORMAT_VERSION,
-                "point_hit": [list(it) for it in readout.iter_point_hits()],
+                "point_hit": [list(it[:5]) for it in readout.iter_point_hits()],
                 "bucket_hit": [list(it) for it in readout.iter_bucket_hits()],
             }
 
@@ -136,6 +136,8 @@ class JSONReader(Reader):
             BucketGoalTuple(*bg) for bg in definition["bucket_goal"]
         ]
 
+        # Short format-2 point_hit rows default their in-memory waiver fields
+        # to zero. Legacy embedded bucket_waiver keys are intentionally ignored.
         readout.point_hits = [PointHitTuple(*ph) for ph in record["point_hit"]]
         readout.bucket_hits = [BucketHitTuple(*bh) for bh in record["bucket_hit"]]
 

@@ -34,6 +34,7 @@ class ConsoleWriter(Writer):
             Column("Hits", justify="right", style="cyan", no_wrap=True),
             Column("Hits %", justify="right", style="cyan", no_wrap=True),
             Column("Target Buckets", justify="right", style="cyan", no_wrap=True),
+            Column("Waived", justify="right", style="cyan", no_wrap=True),
             Column("Hit Buckets", justify="right", style="cyan", no_wrap=True),
             Column("Full Buckets", justify="right", style="cyan", no_wrap=True),
             Column("Hit %", justify="right", style="cyan", no_wrap=True),
@@ -48,6 +49,7 @@ class ConsoleWriter(Writer):
             Column("Target %", justify="right", style="cyan", no_wrap=True),
             Column("Goal Name", justify="left", style="cyan", no_wrap=True),
             Column("Goal Description", justify="left", style="cyan", no_wrap=True),
+            Column("Waived", justify="left", style="cyan", no_wrap=True),
         ]
 
         coverage = CoverageAccess(readout)
@@ -72,8 +74,11 @@ class ConsoleWriter(Writer):
                 str(point.hits),
                 point.hit_percent,
                 str(point.buckets_targeted),
+                str(point.buckets_waived),
                 str(point.buckets_hit),
                 str(point.buckets_full),
+                # Percentages are relative to the effective (waived buckets
+                # excluded) targets.
                 point.buckets_hit_percent,
                 point.buckets_full_percent,
             )
@@ -121,6 +126,7 @@ class ConsoleWriter(Writer):
                         bucket.hit_percent,
                         goal.name,
                         goal.description,
+                        bucket.waiver_reason or "-",
                     ]
 
                     point_table.add_row(*bucket_columns)

@@ -18,5 +18,6 @@ nav:
   - Covertop: covertop.md
   - Adding coverage to the testbench: add_to_testbench.md
   - Exporting and merging coverage: export_and_merge.md
+  - Coverage waivers: waivers.md
   - Reading and Writing: reading_and_writing.md
   - Viewing coverage: viewing_coverage.md

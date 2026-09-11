@@ -6,13 +6,23 @@
 import { describe, expect, test } from "vitest";
 import type { PointNode } from "./coveragetree";
 import {
+    coverageRatio,
+    effectiveTarget,
+    effectiveTargetBuckets,
     getPointNodeCompareCounts,
     getPointNodeCoverageMetrics,
     type PointCoverageMetrics,
 } from "./coveragemetrics";
 import type { ComparisonResult } from "@/types/coverageCompare";
 
-function leaf(key: string, target: number, hits: number, buckets: number, hitBuckets: number): PointNode {
+function leaf(
+    key: string,
+    target: number,
+    hits: number,
+    buckets: number,
+    hitBuckets: number,
+    waived?: { buckets: number; target: number },
+): PointNode {
     return {
         key,
         title: key,
@@ -27,6 +37,9 @@ function leaf(key: string, target: number, hits: number, buckets: number, hitBuc
                 hits,
                 hit_buckets: hitBuckets,
                 full_buckets: 0,
+                ...(waived
+                    ? { waived_buckets: waived.buckets, waived_target: waived.target }
+                    : {}),
             } as PointHitTuple,
         },
     } as PointNode;
@@ -41,6 +54,8 @@ describe("getPointNodeCoverageMetrics", () => {
             target_buckets: 4,
             hit_buckets: 3,
             full_buckets: 0,
+            waived_buckets: 0,
+            waived_target: 0,
         });
     });
 
@@ -69,8 +84,49 @@ describe("getPointNodeCoverageMetrics", () => {
             target_buckets: 7,
             hit_buckets: 5,
             full_buckets: 0,
+            waived_buckets: 0,
+            waived_target: 0,
         });
     });
+
+    test("waived counts aggregate and shrink the effective denominators", () => {
+        // Leaf a: 4 buckets x 5 hits = target 20, one bucket waived (5).
+        // Leaf b: no waivers. Legacy point_hit rows omit the fields (0).
+        const covergroup = {
+            key: "cg",
+            title: "CG",
+            children: [
+                leaf("a", 20, 10, 4, 2, { buckets: 1, target: 5 }),
+                leaf("b", 10, 10, 2, 2),
+            ],
+            data: {
+                readout: {} as Readout,
+                point: { target: 0, target_buckets: 0 } as PointTuple,
+                point_hit: { hits: 0, hit_buckets: 0, full_buckets: 0 } as PointHitTuple,
+            },
+        } as PointNode;
+
+        const metrics = getPointNodeCoverageMetrics(covergroup);
+        expect(metrics.waived_buckets).toBe(1);
+        expect(metrics.waived_target).toBe(5);
+        expect(effectiveTarget(metrics)).toBe(25);
+        expect(effectiveTargetBuckets(metrics)).toBe(5);
+        expect(coverageRatio(metrics.hits, effectiveTarget(metrics))).toBeCloseTo(20 / 25);
+        expect(coverageRatio(metrics.hit_buckets, effectiveTargetBuckets(metrics))).toBeCloseTo(
+            4 / 5,
+        );
+        expect(coverageRatio(1, 0)).toBe(0);
+    });
+
+    const EMPTY: PointCoverageMetrics = {
+        target: 0,
+        hits: 0,
+        target_buckets: 0,
+        hit_buckets: 0,
+        full_buckets: 0,
+        waived_buckets: 0,
+        waived_target: 0,
+    };
 
     /** Reference implementation without memoization, for validating the cached path. */
     function referenceMetrics(node: PointNode): PointCoverageMetrics {
@@ -78,7 +134,7 @@ describe("getPointNodeCoverageMetrics", () => {
         if (children.length === 0) {
             const { point, point_hit } = node.data ?? {};
             if (!point || !point_hit) {
-                return { target: 0, hits: 0, target_buckets: 0, hit_buckets: 0, full_buckets: 0 };
+                return { ...EMPTY };
             }
             return {
                 target: point.target,
@@ -86,6 +142,8 @@ describe("getPointNodeCoverageMetrics", () => {
                 target_buckets: point.target_buckets,
                 hit_buckets: point_hit.hit_buckets,
                 full_buckets: point_hit.full_buckets,
+                waived_buckets: point_hit.waived_buckets ?? 0,
+                waived_target: point_hit.waived_target ?? 0,
             };
         }
         return children.map(referenceMetrics).reduce(
@@ -95,8 +153,10 @@ describe("getPointNodeCoverageMetrics", () => {
                 target_buckets: acc.target_buckets + m.target_buckets,
                 hit_buckets: acc.hit_buckets + m.hit_buckets,
                 full_buckets: acc.full_buckets + m.full_buckets,
+                waived_buckets: acc.waived_buckets + m.waived_buckets,
+                waived_target: acc.waived_target + m.waived_target,
             }),
-            { target: 0, hits: 0, target_buckets: 0, hit_buckets: 0, full_buckets: 0 },
+            { ...EMPTY },
         );
     }
 
@@ -128,6 +188,8 @@ describe("getPointNodeCoverageMetrics", () => {
             target_buckets: 11,
             hit_buckets: 8,
             full_buckets: 0,
+            waived_buckets: 0,
+            waived_target: 0,
         });
     });
 
@@ -189,6 +251,7 @@ describe("getPointNodeCompareCounts", () => {
                             valid: 10,
                             illegal: 0,
                             ignore: 0,
+                            waived: 0,
                         },
                     },
                 ],
@@ -203,6 +266,7 @@ describe("getPointNodeCompareCounts", () => {
                             valid: 10,
                             illegal: 0,
                             ignore: 0,
+                            waived: 0,
                         },
                     },
                 ],
@@ -219,6 +283,7 @@ describe("getPointNodeCompareCounts", () => {
             valid: 20,
             illegal: 0,
             ignore: 0,
+            waived: 0,
         });
 
         // Memoized: repeated calls with the same (node, comparison) pair reuse the result.
@@ -242,6 +307,7 @@ describe("getPointNodeCompareCounts", () => {
                                 valid: aOnly,
                                 illegal: 0,
                                 ignore: 0,
+                                waived: 0,
                             },
                         },
                     ],

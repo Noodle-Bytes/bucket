@@ -52,6 +52,7 @@ import Tree, { TreeKey, TreeNode } from "./lib/tree";
 import Sider, { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "./components/Sider";
 import EmptyState from "./components/EmptyState";
 import { antTheme, view } from "./theme";
+import { useWaiverSession } from "@/hooks/useWaiverSession";
 import {
     isValidElement,
     ReactNode,
@@ -76,7 +77,12 @@ import { checkFormatCompat } from "@/utils/versionCompat";
 import CompareToolbar from "./components/CompareToolbar";
 import CoverageReportExportModal from "./components/CoverageReportExportModal";
 import type { PointNode } from "./lib/coveragetree";
-import { getPointNodeCompareCounts, getPointNodeCoverageMetrics } from "./lib/coveragemetrics";
+import {
+    coverageRatio,
+    effectiveTarget,
+    getPointNodeCompareCounts,
+    getPointNodeCoverageMetrics,
+} from "./lib/coveragemetrics";
 import type { UseCoverageCompareResult } from "@/hooks/useCoverageCompare";
 import type { CompareRecordRow } from "@/hooks/useCoverageCompare";
 import type { CompareViewContext } from "@/types/coverageCompare";
@@ -186,13 +192,15 @@ function getTopLevelCoverageInfo(
 ): RootCoverageInfo {
     const readout = node.data.readout as Readout;
     const metrics = getPointNodeCoverageMetrics(node as PointNode);
-    const overallCoverage = metrics.target > 0 ? metrics.hits / metrics.target : 0;
+    // Waived buckets are excluded from the denominator.
+    const target = effectiveTarget(metrics);
+    const overallCoverage = coverageRatio(metrics.hits, target);
 
     return {
         name: node.data.point?.name ?? String(node.title),
         coverpoints: counts.coverpoints,
         covergroups: counts.covergroups,
-        hitsVsTargetText: `${metrics.hits.toLocaleString()} / ${metrics.target.toLocaleString()}`,
+        hitsVsTargetText: `${metrics.hits.toLocaleString()} / ${target.toLocaleString()}`,
         overallCoverageText: `${(overallCoverage * 100).toFixed(1)}%`,
         source: getReadoutSource(readout),
         defSha: getReadoutValue(readout, "get_def_sha"),
@@ -792,6 +800,10 @@ export type DashboardProps = {
     /** Whether loaded coverage is remembered across reloads (Settings). */
     persistSessionEnabled?: boolean;
     onPersistSessionChange?: (enabled: boolean) => void;
+    onLoadWaivers?: () => void;
+    onOpenWaiversPanel?: () => void;
+    waiverRuleCount?: number;
+    waiverProblemCount?: number;
 };
 
 export default function Dashboard({
@@ -810,8 +822,19 @@ export default function Dashboard({
     isDragging = false,
     persistSessionEnabled,
     onPersistSessionChange,
+    onLoadWaivers,
+    onOpenWaiversPanel,
+    waiverRuleCount = 0,
+    waiverProblemCount = 0,
 }: DashboardProps) {
     const isElectronRuntime = typeof window !== "undefined" && window.electronAPI !== undefined;
+    const {
+        creatingWaivers,
+        setCreatingWaivers,
+        file: waiverFile,
+        isDirty: waiversDirty,
+        clear: clearWaivers,
+    } = useWaiverSession();
 
     const [selectedTreeKeys, setSelectedTreeKeys] = useState<TreeKey[]>([]);
     const [expandedTreeKeys, setExpandedTreeKeys] = useState<TreeKey[]>([]);
@@ -1176,6 +1199,7 @@ export default function Dashboard({
                 valid: 0,
                 illegal: 0,
                 ignore: 0,
+                waived: 0,
             }
         );
     }, [compare?.comparison, tree, viewKey]);
@@ -1616,6 +1640,76 @@ export default function Dashboard({
                                                             title="Load coverage archives">
                                                             Load
                                                         </Button>
+                                                    )}
+                                                    {(onLoadWaivers || onOpenWaiversPanel) && (
+                                                        <Dropdown
+                                                            menu={{
+                                                                items: [
+                                                                    ...(onLoadWaivers
+                                                                        ? [
+                                                                              {
+                                                                                  key: "load-waivers",
+                                                                                  icon: <FileTextOutlined />,
+                                                                                  label: "Load waivers…",
+                                                                                  onClick: () => onLoadWaivers(),
+                                                                              },
+                                                                          ]
+                                                                        : []),
+                                                                    ...(onOpenWaiversPanel
+                                                                        ? [
+                                                                              {
+                                                                                  key: "manage-waivers",
+                                                                                  icon: <FileTextOutlined />,
+                                                                                  label:
+                                                                                      waiverRuleCount > 0
+                                                                                          ? `Manage waivers (${waiverRuleCount})${waiverProblemCount > 0 ? " — warnings" : ""}`
+                                                                                          : "Manage waivers…",
+                                                                                  onClick: () =>
+                                                                                      onOpenWaiversPanel(),
+                                                                              },
+                                                                          ]
+                                                                        : []),
+                                                                    { type: "divider" as const },
+                                                                    {
+                                                                        key: "create-waivers",
+                                                                        label: creatingWaivers
+                                                                            ? "Exit create mode"
+                                                                            : "Create waivers",
+                                                                        disabled: Boolean(compare?.active),
+                                                                        onClick: () => {
+                                                                            if (creatingWaivers) {
+                                                                                setCreatingWaivers(false);
+                                                                            } else {
+                                                                                setCreatingWaivers(true);
+                                                                            }
+                                                                        },
+                                                                    },
+                                                                ],
+                                                            }}
+                                                            trigger={["click"]}
+                                                        >
+                                                            <Button
+                                                                size="small"
+                                                                type={
+                                                                    creatingWaivers || waiverFile.waivers.length > 0
+                                                                        ? "primary"
+                                                                        : "default"
+                                                                }
+                                                                icon={<FileTextOutlined />}
+                                                                title={
+                                                                    waiversDirty
+                                                                        ? "Waivers draft has unsaved changes"
+                                                                        : "Load, manage, or create coverage waivers"
+                                                                }
+                                                            >
+                                                                Waivers
+                                                                {waiverRuleCount > 0
+                                                                    ? ` (${waiverRuleCount})`
+                                                                    : ""}
+                                                                {waiversDirty ? " *" : ""}
+                                                                {waiverProblemCount > 0 ? " !" : ""}
+                                                            </Button>
+                                                        </Dropdown>
                                                     )}
                                                     {compare && (
                                                         <Tooltip
@@ -2162,11 +2256,20 @@ export default function Dashboard({
                 okButtonProps={{ danger: true }}
                 onOk={() => {
                     onClearCoverage?.();
+                    clearWaivers();
                     setClearModalOpen(false);
                 }}>
                 <Typography.Text>
                     Are you sure you want to clear all coverage data?
                 </Typography.Text>
+                {waiversDirty && (
+                    <Typography.Paragraph type="danger" style={{ marginTop: 12, marginBottom: 0 }}>
+                        Your waiver draft has unsaved changes. Clearing will discard{" "}
+                        {waiverFile.waivers.length} rule
+                        {waiverFile.waivers.length === 1 ? "" : "s"} that have not been saved to a
+                        file.
+                    </Typography.Paragraph>
+                )}
             </Modal>
 
             <Modal
@@ -2251,6 +2354,7 @@ export default function Dashboard({
                                             }}
                                         >
                                             Archives are kept in this browser's storage only.
+                                            On reopen you will be asked whether to restore.
                                             Turning this off clears the stored session.
                                         </Typography.Text>
                                     </Flex>

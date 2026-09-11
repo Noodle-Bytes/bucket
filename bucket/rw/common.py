@@ -6,7 +6,7 @@ import warnings
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError as _PKGNotFound
 from importlib.metadata import version as _pkg_version
-from typing import Any, Iterable, NamedTuple, Protocol
+from typing import Any, Iterable, Mapping, NamedTuple, Protocol, Sequence
 
 from ..common.chain import Link
 from ..link import CovDef, CovRun
@@ -48,6 +48,9 @@ def _get_bucket_version() -> str:
 #      version keys
 #   2: archive record rows carry the format_version column; JSON records
 #      carry the bucket_version and format_version keys
+#   3: briefly added embedded waiver rows and point_hit waiver columns; this
+#      was dropped before release. Writers use format 2 and waivers are
+#      sidecar-only, in-memory data.
 FORMAT_VERSION = 2
 ARCHIVE_FORMAT_VERSION = FORMAT_VERSION
 JSON_FORMAT_VERSION = FORMAT_VERSION
@@ -268,6 +271,12 @@ class PointHitTuple(NamedTuple):
     hits: int
     hit_buckets: int
     full_buckets: int
+    # Waived buckets are excluded from scoring: their hits do not count in
+    # hits/hit_buckets/full_buckets, and the effective targets of the point
+    # are target_buckets - waived_buckets and target - waived_target.
+    # Rows written before format 3 omit both columns.
+    waived_buckets: int = 0
+    waived_target: int = 0
 
     @classmethod
     def from_link(cls, link: Link[CovRun]):
@@ -283,6 +292,78 @@ class PointHitTuple(NamedTuple):
 class BucketHitTuple(NamedTuple):
     start: int
     hits: int
+
+
+class BucketWaiverTuple(NamedTuple):
+    """
+    A bucket excused from scoring, by global bucket index, with the reason it
+    was waived. Only buckets with a goal target > 0 are ever waived.
+    """
+
+    start: int
+    reason: str
+
+
+def compute_point_hits(
+    points: Iterable[PointTuple],
+    bucket_hits: Sequence[int],
+    bucket_targets: Sequence[int],
+    waivers: Mapping[int, str] | None = None,
+) -> Iterable[PointHitTuple]:
+    """
+    Recompute point hit rows from per-bucket hits and targets, honouring the
+    waiver semantics: a waived bucket contributes nothing to hits, hit_buckets
+    or full_buckets and is instead counted in waived_buckets/waived_target.
+
+    bucket_hits and bucket_targets are indexed by global bucket index and must
+    cover the full bucket range of every point.
+    """
+    waivers = waivers or {}
+    hits_by_index = bucket_hits
+    for point in points:
+        hits = 0
+        hit_buckets = 0
+        full_buckets = 0
+        waived_buckets = 0
+        waived_target = 0
+        for index in range(point.bucket_start, point.bucket_end):
+            target = bucket_targets[index]
+            if target <= 0:
+                continue
+            if index in waivers:
+                waived_buckets += 1
+                waived_target += target
+                continue
+            bucket_hits = min(hits_by_index[index], target)
+            if bucket_hits > 0:
+                hit_buckets += 1
+                if bucket_hits == target:
+                    full_buckets += 1
+                hits += bucket_hits
+
+        yield PointHitTuple(
+            start=point.start,
+            depth=point.depth,
+            hits=hits,
+            hit_buckets=hit_buckets,
+            full_buckets=full_buckets,
+            waived_buckets=waived_buckets,
+            waived_target=waived_target,
+        )
+
+
+def iter_waivers_in_range(
+    waivers: Iterable[BucketWaiverTuple], start: int = 0, end: int | None = None
+) -> Iterable[BucketWaiverTuple]:
+    """
+    Filter a (sparse, start-ordered) waiver list to the buckets in [start, end).
+    """
+    for waiver in waivers:
+        if waiver.start < start:
+            continue
+        if end is not None and waiver.start >= end:
+            continue
+        yield waiver
 
 
 ###############################################################################
@@ -325,6 +406,9 @@ class Readout(Protocol):
     def iter_bucket_hits(
         self, start: int = 0, end: int | None = None
     ) -> Iterable[BucketHitTuple]: ...
+    def iter_bucket_waivers(
+        self, start: int = 0, end: int | None = None
+    ) -> Iterable[BucketWaiverTuple]: ...
 
 
 class Reader(Protocol):
@@ -414,6 +498,11 @@ class CoverageAccess:
     ) -> Iterable[BucketHitTuple]:
         yield from self._readout.iter_bucket_hits(start, end)
 
+    def raw_bucket_waivers(
+        self, start: int = 0, end: int | None = None
+    ) -> Iterable[BucketWaiverTuple]:
+        yield from self._readout.iter_bucket_waivers(start, end)
+
 
 class PointAccess:
     def __init__(
@@ -456,9 +545,19 @@ class PointAccess:
         return self._point.target
 
     @property
+    def target_waived(self) -> int:
+        """Sum of the hit targets of the point's waived buckets."""
+        return self._point_hit.waived_target
+
+    @property
+    def target_effective(self) -> int:
+        """Hit target once waived buckets are excluded."""
+        return self.target - self.target_waived
+
+    @property
     def hit_ratio(self) -> float:
-        if self.target > 0:
-            return self.hits / self.target
+        if self.target_effective > 0:
+            return self.hits / self.target_effective
         return 1
 
     @property
@@ -474,20 +573,29 @@ class PointAccess:
         return self._point.target_buckets
 
     @property
+    def buckets_waived(self) -> int:
+        return self._point_hit.waived_buckets
+
+    @property
+    def buckets_targeted_effective(self) -> int:
+        """Targeted bucket count once waived buckets are excluded."""
+        return self.buckets_targeted - self.buckets_waived
+
+    @property
     def buckets_full(self) -> int:
         return self._point_hit.full_buckets
 
     @property
     def bucket_hit_ratio(self) -> float:
-        if self.buckets_targeted == 0:
+        if self.buckets_targeted_effective <= 0:
             return 1
-        return self.buckets_hit / self.buckets_targeted
+        return self.buckets_hit / self.buckets_targeted_effective
 
     @property
     def bucket_full_ratio(self) -> float:
-        if self.buckets_targeted == 0:
+        if self.buckets_targeted_effective <= 0:
             return 1
-        return self.buckets_full / self.buckets_targeted
+        return self.buckets_full / self.buckets_targeted_effective
 
     @property
     def buckets_hit_percent(self) -> str:
@@ -518,6 +626,12 @@ class PointAccess:
         )
         axes = list(self.axes())
         axes.reverse()
+        waivers = {
+            waiver.start: waiver.reason
+            for waiver in self._coverage.raw_bucket_waivers(
+                self._point.bucket_start, self._point.bucket_end
+            )
+        }
 
         for bucket_goal, bucket_hit in zip(
             self._coverage.raw_bucket_goals(
@@ -571,6 +685,7 @@ class PointAccess:
                 goals[bucket_goal.goal - self._point.goal_start],
                 bucket_axis_values,
                 bucket_hit,
+                waivers.get(bucket_goal.start),
             )
 
 
@@ -635,11 +750,13 @@ class BucketAccess:
         goal: GoalAccess,
         axis_values: dict[str, str],
         bucket_hit: BucketHitTuple,
+        waiver_reason: str | None = None,
     ):
         self._point = point
         self._goal = goal
         self._axis_values = axis_values
         self._bucket_hit = bucket_hit
+        self._waiver_reason = waiver_reason
 
     def point(self) -> PointAccess:
         return self._point
@@ -649,6 +766,11 @@ class BucketAccess:
 
     def axis_value(self, name: str) -> str:
         return self._axis_values[name]
+
+    @property
+    def axis_values(self) -> dict[str, str]:
+        """Axis value names keyed by axis name."""
+        return dict(self._axis_values)
 
     @property
     def start(self) -> int:
@@ -682,6 +804,14 @@ class BucketAccess:
     def is_legal(self):
         return self.target >= 0
 
+    @property
+    def is_waived(self) -> bool:
+        return self._waiver_reason is not None
+
+    @property
+    def waiver_reason(self) -> str | None:
+        return self._waiver_reason
+
 
 ###############################################################################
 # Utility readouts
@@ -702,6 +832,7 @@ class PuppetReadout(Readout):
         self.goals: list[GoalTuple] = []
         self.point_hits: list[PointHitTuple] = []
         self.bucket_hits: list[BucketHitTuple] = []
+        self.bucket_waivers: list[BucketWaiverTuple] = []
         self.def_sha = None
         self.rec_sha = None
         self._source: str = ""
@@ -782,6 +913,11 @@ class PuppetReadout(Readout):
     ) -> Iterable[BucketHitTuple]:
         yield from self.bucket_hits[start:end]
 
+    def iter_bucket_waivers(
+        self, start: int = 0, end: int | None = None
+    ) -> Iterable[BucketWaiverTuple]:
+        yield from iter_waivers_in_range(self.bucket_waivers, start, end)
+
 
 class MergeReadout(Readout):
     """
@@ -807,6 +943,12 @@ class MergeReadout(Readout):
         self.bucket_targets: list[int] = []
         for bucket_goal in master.iter_bucket_goals():
             self.bucket_targets.append(goal_targets[bucket_goal.goal])
+
+        # Waivers are unioned across the merged readouts by bucket index; the
+        # first reason seen for a bucket wins.
+        self.bucket_waivers: dict[int, str] = {}
+        for waiver in master.iter_bucket_waivers():
+            self.bucket_waivers.setdefault(waiver.start, waiver.reason)
 
         if others:
             self.merge(*others)
@@ -858,32 +1000,27 @@ class MergeReadout(Readout):
         for offset, hits in enumerate(self.bucket_hits[start:end]):
             yield BucketHitTuple(start + offset, hits)
 
+    def iter_bucket_waivers(
+        self, start: int = 0, end: int | None = None
+    ) -> Iterable[BucketWaiverTuple]:
+        yield from iter_waivers_in_range(
+            (
+                BucketWaiverTuple(index, reason)
+                for index, reason in sorted(self.bucket_waivers.items())
+            ),
+            start,
+            end,
+        )
+
     def iter_point_hits(
         self, start: int = 0, end: int | None = None, depth: int = 0
     ) -> Iterable[PointHitTuple]:
-        for point in self.iter_points(start, end, depth):
-            hits = 0
-            hit_buckets = 0
-            full_buckets = 0
-            for bucket_hit in self.iter_bucket_hits(
-                point.bucket_start, point.bucket_end
-            ):
-                target = self.bucket_targets[bucket_hit.start]
-                if target > 0:
-                    bucket_hits = min(bucket_hit.hits, target)
-                    if bucket_hit.hits > 0:
-                        hit_buckets += 1
-                        if bucket_hits == target:
-                            full_buckets += 1
-                        hits += bucket_hits
-
-            yield PointHitTuple(
-                start=point.start,
-                depth=point.depth,
-                hits=hits,
-                hit_buckets=hit_buckets,
-                full_buckets=full_buckets,
-            )
+        yield from compute_point_hits(
+            self.iter_points(start, end, depth),
+            self.bucket_hits,
+            self.bucket_targets,
+            self.bucket_waivers,
+        )
 
     def merge(self, *readouts: Readout):
         """
@@ -905,3 +1042,6 @@ class MergeReadout(Readout):
 
             for bucket_hit in readout.iter_bucket_hits():
                 self.bucket_hits[bucket_hit.start] += bucket_hit.hits
+
+            for waiver in readout.iter_bucket_waivers():
+                self.bucket_waivers.setdefault(waiver.start, waiver.reason)

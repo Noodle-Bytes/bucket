@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { Button, Flex, Typography } from "antd";
 import { getThemePreference } from "@/utils/themePreference";
-import { infoThemed } from "@/utils/themedStaticModal";
+import { confirmThemed, infoThemed } from "@/utils/themedStaticModal";
 import { notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/utils/themedStaticNotification";
 import CoverageTree from "../features/Dashboard/lib/coveragetree";
 import {
@@ -1078,6 +1078,37 @@ export function useFileLoader() {
         }
     };
 
+    const askRestoreStoredSession = (stored: StoredSession): Promise<boolean> => {
+        const archiveCount = stored.sources.length;
+        const archiveWord = archiveCount === 1 ? "archive" : "archives";
+        const labels = stored.sources
+            .slice(0, 3)
+            .map((source) => source.label)
+            .join(", ");
+        const more =
+            archiveCount > 3 ? ` and ${archiveCount - 3} more` : "";
+        return new Promise((resolve) => {
+            let settled = false;
+            const finish = (restore: boolean) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                resolve(restore);
+            };
+            confirmThemed({
+                title: "Restore previous session?",
+                content: `You had ${archiveCount} coverage ${archiveWord} loaded (${labels}${more}). Restore them now?`,
+                okText: "Restore",
+                cancelText: "Start fresh",
+                centered: true,
+                maskClosable: false,
+                onOk: () => finish(true),
+                onCancel: () => finish(false),
+            });
+        });
+    };
+
     const restoreStoredSessionOnStartup = async (): Promise<void> => {
         if (!isSessionPersistenceEnabled() || !isSessionStoreAvailable()) {
             setSessionRestoreComplete(true);
@@ -1090,6 +1121,17 @@ export function useFileLoader() {
             stored = null;
         }
         if (!stored || stored.sources.length === 0) {
+            setSessionRestoreComplete(true);
+            return;
+        }
+
+        const shouldRestore = await askRestoreStoredSession(stored);
+        if (!shouldRestore) {
+            try {
+                await clearStoredSession();
+            } catch {
+                // ignore — viewer must still start
+            }
             setSessionRestoreComplete(true);
             return;
         }
@@ -1194,6 +1236,8 @@ export function useFileLoader() {
         }
         sessionRestoreStarted = true;
         void restoreStoredSessionOnStartup();
+        // One-shot startup restore; guarded by sessionRestoreStarted.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const persistSession = async (snapshot: CoverageSession): Promise<void> => {

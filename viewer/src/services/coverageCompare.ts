@@ -14,6 +14,7 @@ import type {
     CompareSetMode,
     ComparisonResult,
     CoverageDefinition,
+    ExcludedBucketCategory,
     PointCompare,
 } from "@/types/coverageCompare";
 
@@ -26,7 +27,15 @@ function emptyCategoryCounts(): CategoryCounts {
         valid: 0,
         illegal: 0,
         ignore: 0,
+        waived: 0,
     };
+}
+
+/** Illegal, ignore and waived buckets are outside the A/B comparison. */
+export function isExcludedCategory(
+    category: BucketCategory,
+): category is ExcludedBucketCategory {
+    return category === "illegal" || category === "ignore" || category === "waived";
 }
 
 function isBucketCovered(
@@ -48,7 +57,7 @@ export function classifyValidBucket(
     hitsB: number,
     target: number,
     definition: CoverageDefinition,
-): Exclude<BucketCategory, "illegal" | "ignore"> {
+): Exclude<BucketCategory, ExcludedBucketCategory> {
     const coveredA = isBucketCovered(hitsA, target, definition);
     const coveredB = isBucketCovered(hitsB, target, definition);
     if (coveredA && coveredB) {
@@ -65,7 +74,7 @@ export function classifyValidBucket(
 
 function incrementCategory(counts: CategoryCounts, category: BucketCategory): void {
     counts[category] += 1;
-    if (category !== "illegal" && category !== "ignore") {
+    if (!isExcludedCategory(category)) {
         counts.valid += 1;
     }
 }
@@ -153,6 +162,7 @@ function rollupCovergroups(points: PointCompare[], leafPointStarts: Set<number>)
                 "valid",
                 "illegal",
                 "ignore",
+                "waived",
             ] as const) {
                 ancestor.counts[key] += leaf.counts[key];
             }
@@ -228,6 +238,15 @@ export function buildComparison(
         hitsBByIndex.set(bucketHit.start, bucketHit.hits);
     }
 
+    // A bucket waived on either side is excluded from the comparison.
+    const waivedIndexes = new Set<number>();
+    for (const waiver of dataA.bucketWaivers) {
+        waivedIndexes.add(waiver.start);
+    }
+    for (const waiver of dataB.bucketWaivers) {
+        waivedIndexes.add(waiver.start);
+    }
+
     const global = emptyCategoryCounts();
     const bucketsByIndex = new Map<number, BucketCategory>();
     const bucketDetails: BucketDetail[] = [];
@@ -284,6 +303,8 @@ export function buildComparison(
                 category = "illegal";
             } else if (target === 0) {
                 category = "ignore";
+            } else if (waivedIndexes.has(bucketIdx)) {
+                category = "waived";
             } else {
                 category = classifyValidBucket(hitsA, hitsB, target, definition);
             }
@@ -292,7 +313,7 @@ export function buildComparison(
             incrementCategory(global, category);
             incrementCategory(pointCompare.counts, category);
 
-            if (category !== "illegal" && category !== "ignore") {
+            if (!isExcludedCategory(category)) {
                 bucketDetails.push({
                     bucketIndex: bucketIdx,
                     pointStart: leaf.start,
@@ -357,7 +378,7 @@ export function getBucketHitStatus(hits: number, target: number): BucketHitStatu
 /**
  * Re-derive a comparison under a different coverage definition, reusing the
  * already-materialized hits/targets so we don't need the source readouts again.
- * Illegal/ignore buckets keep their status; only valid buckets are reclassified.
+ * Illegal/ignore/waived buckets keep their status; only valid buckets are reclassified.
  */
 export function recompareWithDefinition(
     comparison: ComparisonResult,
@@ -379,6 +400,7 @@ export function recompareWithDefinition(
             const counts = emptyCategoryCounts();
             counts.illegal = point.counts.illegal;
             counts.ignore = point.counts.ignore;
+            counts.waived = point.counts.waived;
             return { ...point, counts };
         }
         return { ...point, counts: emptyCategoryCounts() };
@@ -403,6 +425,7 @@ export function recompareWithDefinition(
 
     global.illegal = comparison.global.illegal;
     global.ignore = comparison.global.ignore;
+    global.waived = comparison.global.waived;
 
     rollupCovergroups(points, leafPointStarts);
 

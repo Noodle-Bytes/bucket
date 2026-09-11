@@ -5,7 +5,7 @@
 
 /**
  * IndexedDB persistence for the loaded coverage session, so a reload of the
- * viewer (or PWA) restores the archives that were open.
+ * viewer (or PWA) can offer to restore the archives that were open.
  *
  * Layout (database `bucket-viewer-session`):
  *   - `sources`: one row per coverage source, keyed by source id. File-backed

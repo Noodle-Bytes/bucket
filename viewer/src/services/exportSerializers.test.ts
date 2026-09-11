@@ -21,8 +21,14 @@ function createReadout(overrides?: {
     tier?: number | null;
     tags?: string;
     motivation?: string;
+    /** Waived buckets; point_hit rows are rescored to exclude them. */
+    waivers?: BucketWaiverTuple[];
 }): Readout {
     const bucketHits = overrides?.bucketHits ?? [2, 1];
+    const waivers = overrides?.waivers ?? [];
+    const targets = [3, 2];
+    const waived = (idx: number) => waivers.some((waiver) => waiver.start === idx);
+    const scored = [0, 1].filter((idx) => !waived(idx));
     return new InMemoryReadout({
         defSha: overrides?.defSha ?? "def-a",
         recSha: overrides?.recSha ?? "rec-a",
@@ -76,18 +82,18 @@ function createReadout(overrides?: {
             {
                 start: 0,
                 depth: 0,
-                hits: Math.min(bucketHits[0], 3) + Math.min(bucketHits[1], 2),
-                hit_buckets: bucketHits.filter((value) => value > 0).length,
-                full_buckets: [
-                    bucketHits[0] >= 3 ? 1 : 0,
-                    bucketHits[1] >= 2 ? 1 : 0,
-                ].reduce((a, b) => a + b, 0),
+                hits: scored.reduce((sum, idx) => sum + Math.min(bucketHits[idx], targets[idx]), 0),
+                hit_buckets: scored.filter((idx) => bucketHits[idx] > 0).length,
+                full_buckets: scored.filter((idx) => bucketHits[idx] >= targets[idx]).length,
+                waived_buckets: waivers.length,
+                waived_target: waivers.reduce((sum, waiver) => sum + targets[waiver.start], 0),
             },
         ],
         bucketHits: [
             { start: 0, hits: bucketHits[0] },
             { start: 1, hits: bucketHits[1] },
         ],
+        bucketWaivers: waivers,
     });
 }
 
@@ -133,6 +139,133 @@ describe("mergeReadoutsStrict", () => {
         expect(() => mergeReadoutsStrict([readoutA, readoutB])).toThrow(
             "Tried to merge coverage with two different record hashes!",
         );
+    });
+
+    test("unions waivers (first reason wins) and rescores point hits without them", () => {
+        const readoutA = createReadout({
+            bucketHits: [3, 0],
+            waivers: [{ start: 0, reason: "from A" }],
+        });
+        const readoutB = createReadout({
+            bucketHits: [1, 2],
+            waivers: [
+                { start: 0, reason: "from B" },
+                { start: 1, reason: "B only" },
+            ],
+        });
+
+        const merged = mergeReadoutsStrict([readoutA, readoutB]);
+        expect(Array.from(merged.iter_bucket_waivers(0, null))).toEqual([
+            { start: 0, reason: "from A" },
+            { start: 1, reason: "B only" },
+        ]);
+        // Raw hits still sum; scoring excludes both waived buckets entirely.
+        expect(Array.from(merged.iter_bucket_hits(0, null)).map((value) => value.hits)).toEqual(
+            [4, 2],
+        );
+        expect(Array.from(merged.iter_point_hits())).toEqual([
+            {
+                start: 0,
+                depth: 0,
+                hits: 0,
+                hit_buckets: 0,
+                full_buckets: 0,
+                waived_buckets: 2,
+                waived_target: 5,
+            },
+        ]);
+    });
+
+    test("a waiver on one record only excludes that bucket from the merged score", () => {
+        const readoutA = createReadout({ bucketHits: [3, 1] });
+        const readoutB = createReadout({
+            bucketHits: [3, 1],
+            waivers: [{ start: 1, reason: "flaky" }],
+        });
+        const merged = mergeReadoutsStrict([readoutA, readoutB]);
+        expect(Array.from(merged.iter_point_hits())).toEqual([
+            {
+                start: 0,
+                depth: 0,
+                hits: 3,
+                hit_buckets: 1,
+                full_buckets: 1,
+                waived_buckets: 1,
+                waived_target: 2,
+            },
+        ]);
+    });
+});
+
+describe("export serializers: sidecar-only waivers", () => {
+    const waivers: BucketWaiverTuple[] = [{ start: 1, reason: 'needs "quoting", commas' }];
+
+    test.each(["json", "archive"] as const)(
+        "%s strips waivers and point_hit waiver columns",
+        async (format) => {
+            const readout = createReadout({ bucketHits: [3, 5], waivers });
+            const bytes =
+                format === "json"
+                    ? serializeReadoutsToJsonBytes([readout])
+                    : serializeReadoutsToArchiveBytes([readout]);
+            const restored = await readSingle(bytes);
+
+            expect(restored.get_format_version?.()).toBe(SUPPORTED_FORMAT_VERSION);
+            expect(Array.from(restored.iter_bucket_waivers(0, null))).toEqual([]);
+            expect(Array.from(restored.iter_bucket_hits(0, null)).map((value) => value.hits)).toEqual(
+                [3, 5],
+            );
+            expect(Array.from(restored.iter_point_hits())[0]).toMatchObject({
+                hits: 3,
+                hit_buckets: 1,
+                full_buckets: 1,
+                waived_buckets: 0,
+                waived_target: 0,
+            });
+        },
+    );
+
+    test("archive: no record embeds waivers", async () => {
+        const readoutA = createReadout({ recSha: "rec-a", sourceKey: "a", waivers: [] });
+        const readoutB = createReadout({
+            recSha: "rec-b",
+            sourceKey: "b",
+            waivers: [{ start: 0, reason: "b0" }],
+        });
+        const readoutC = createReadout({
+            recSha: "rec-c",
+            sourceKey: "c",
+            waivers: [
+                { start: 0, reason: "c0" },
+                { start: 1, reason: "c1" },
+            ],
+        });
+        const restored = await loadReadoutsFromBytes(
+            serializeReadoutsToArchiveBytes([readoutA, readoutB, readoutC]),
+        );
+        expect(restored.map((readout) => Array.from(readout.iter_bucket_waivers(0, null)))).toEqual([
+            [],
+            [],
+            [],
+        ]);
+    });
+
+    test("json payload uses the short format 2 tables", () => {
+        const readout = createReadout({ waivers });
+        const payload = JSON.parse(
+            new TextDecoder().decode(serializeReadoutsToJsonBytes([readout])),
+        );
+        expect(payload.tables.bucket_waiver).toBeUndefined();
+        expect(payload.tables.point_hit).toEqual([
+            "start",
+            "depth",
+            "hits",
+            "hit_buckets",
+            "full_buckets",
+        ]);
+        expect(payload.records[0].bucket_waiver).toBeUndefined();
+        expect(payload.records[0].point_hit[0]).toHaveLength(5);
+        expect(payload.records[0].format_version).toBe(2);
     });
 });
 

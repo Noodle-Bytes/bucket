@@ -7,12 +7,42 @@ import type { PointNode } from "./coveragetree";
 import type { CategoryCounts, ComparisonResult } from "@/types/coverageCompare";
 
 export type PointCoverageMetrics = {
+    /** Raw hit target from the definition (includes waived buckets). */
     target: number;
     hits: number;
+    /** Raw count of valid buckets from the definition (includes waived). */
     target_buckets: number;
     hit_buckets: number;
     full_buckets: number;
+    /** Buckets excluded from scoring by a waiver, and their summed target. */
+    waived_buckets: number;
+    waived_target: number;
 };
+
+const EMPTY_METRICS: PointCoverageMetrics = {
+    target: 0,
+    hits: 0,
+    target_buckets: 0,
+    hit_buckets: 0,
+    full_buckets: 0,
+    waived_buckets: 0,
+    waived_target: 0,
+};
+
+/** Hit target with waived buckets removed: the percentage denominator. */
+export function effectiveTarget(metrics: PointCoverageMetrics): number {
+    return Math.max(0, metrics.target - metrics.waived_target);
+}
+
+/** Valid bucket count with waived buckets removed: the percentage denominator. */
+export function effectiveTargetBuckets(metrics: PointCoverageMetrics): number {
+    return Math.max(0, metrics.target_buckets - metrics.waived_buckets);
+}
+
+/** `numerator / denominator`, or 0 when there is nothing to score. */
+export function coverageRatio(numerator: number, denominator: number): number {
+    return denominator > 0 ? numerator / denominator : 0;
+}
 
 const EMPTY_COMPARE_COUNTS: CategoryCounts = {
     a_only: 0,
@@ -22,6 +52,7 @@ const EMPTY_COMPARE_COUNTS: CategoryCounts = {
     valid: 0,
     illegal: 0,
     ignore: 0,
+    waived: 0,
 };
 
 /**
@@ -38,13 +69,7 @@ function computePointNodeCoverageMetrics(node: PointNode): PointCoverageMetrics 
     if (children.length === 0) {
         const { point, point_hit } = node.data ?? {};
         if (!point || !point_hit) {
-            return {
-                target: 0,
-                hits: 0,
-                target_buckets: 0,
-                hit_buckets: 0,
-                full_buckets: 0,
-            };
+            return { ...EMPTY_METRICS };
         }
         return {
             target: point.target,
@@ -52,16 +77,12 @@ function computePointNodeCoverageMetrics(node: PointNode): PointCoverageMetrics 
             target_buckets: point.target_buckets,
             hit_buckets: point_hit.hit_buckets,
             full_buckets: point_hit.full_buckets,
+            waived_buckets: point_hit.waived_buckets ?? 0,
+            waived_target: point_hit.waived_target ?? 0,
         };
     }
 
-    const totals: PointCoverageMetrics = {
-        target: 0,
-        hits: 0,
-        target_buckets: 0,
-        hit_buckets: 0,
-        full_buckets: 0,
-    };
+    const totals: PointCoverageMetrics = { ...EMPTY_METRICS };
 
     for (const child of children as PointNode[]) {
         const childMetrics = getPointNodeCoverageMetrics(child);
@@ -70,6 +91,8 @@ function computePointNodeCoverageMetrics(node: PointNode): PointCoverageMetrics 
         totals.target_buckets += childMetrics.target_buckets;
         totals.hit_buckets += childMetrics.hit_buckets;
         totals.full_buckets += childMetrics.full_buckets;
+        totals.waived_buckets += childMetrics.waived_buckets;
+        totals.waived_target += childMetrics.waived_target;
     }
 
     return totals;
@@ -127,6 +150,7 @@ function computePointNodeCompareCounts(
         totals.valid += childCounts.valid;
         totals.illegal += childCounts.illegal;
         totals.ignore += childCounts.ignore;
+        totals.waived += childCounts.waived;
     }
     // Frozen so an accidental mutation by a consumer throws instead of
     // silently poisoning the cache. (Leaf counts above are owned by the

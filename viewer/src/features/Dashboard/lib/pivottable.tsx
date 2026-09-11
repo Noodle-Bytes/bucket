@@ -16,7 +16,11 @@ import {
     getCompareCategoryLabel,
     type CompareBucketCategory,
 } from "@/utils/colors";
-import { classifyValidBucket, getBucketCategoryForIndex } from "@/services/coverageCompare";
+import {
+    classifyValidBucket,
+    getBucketCategoryForIndex,
+    isExcludedCategory,
+} from "@/services/coverageCompare";
 import type {
     BucketCategory,
     CompareSetMode,
@@ -78,9 +82,11 @@ type BucketRecord = {
     bucketIndex: number;
     hitCount: number;
     goalTarget: number;
+    /** Excluded from scoring by a waiver (never set for illegal/ignore buckets). */
+    waived?: boolean;
 };
 
-/** The four compare categories in display order (illegal/ignore buckets are never shown). */
+/** The four compare categories in display order (illegal/ignore/waived buckets are never shown). */
 export const COMPARE_CATEGORIES: readonly CompareBucketCategory[] = [
     "a_only",
     "both",
@@ -89,16 +95,16 @@ export const COMPARE_CATEGORIES: readonly CompareBucketCategory[] = [
 ];
 
 function isCompareCategory(category: BucketCategory): category is CompareBucketCategory {
-    return category !== "illegal" && category !== "ignore";
+    return !isExcludedCategory(category);
 }
 
 /**
  * A pivot cell's buckets combined into one virtual bucket for comparison: hits and
- * targets are summed over the cell's valid buckets (illegal/ignore are skipped) and
+ * targets are summed over the cell's valid buckets (illegal/ignore/waived are skipped) and
  * the cell gets a single category from that total.
  */
 export type PivotCompareInfo = {
-    /** Buckets in one of the four categories (excludes illegal/ignore). */
+    /** Buckets in one of the four categories (excludes illegal/ignore/waived). */
     validBuckets: number;
     hitsA: number;
     hitsB: number;
@@ -145,6 +151,10 @@ export function buildBucketRecords(node: PointNode): {
     );
     const goals = Array.from(readout.iter_goals(goal_start, goal_end));
     const bucketHits = readout.iter_bucket_hits(bucket_start, bucket_end);
+    const waivedIndexes = new Set<number>();
+    for (const waiver of readout.iter_bucket_waivers(bucket_start, bucket_end)) {
+        waivedIndexes.add(waiver.start);
+    }
     const buckets: BucketRecord[] = [];
 
     for (const bucketGoal of readout.iter_bucket_goals(bucket_start, bucket_end)) {
@@ -165,6 +175,7 @@ export function buildBucketRecords(node: PointNode): {
             bucketIndex: bucketGoal.start,
             hitCount: bucketHit.hits,
             goalTarget: goal.target,
+            waived: goal.target > 0 && waivedIndexes.has(bucketGoal.start),
         });
     }
 
@@ -216,9 +227,12 @@ function makeKeyComparator(
 }
 
 export type PivotCellInfo = {
+    /** Hits and targets summed over the cell's non-waived buckets. */
     sumHits: number;
     sumTargets: number;
     bucketCount: number;
+    /** Buckets in the cell excluded from the sums by a waiver. */
+    waivedCount: number;
     /** Combined A/B comparison; only present when aggregating in compare mode. */
     compare?: PivotCompareInfo;
 };
@@ -258,13 +272,19 @@ export function aggregatePivotCells(
         const key = `${rk}\t${ck}`;
         let cur = cellMap.get(key);
         if (!cur) {
-            cur = { sumHits: 0, sumTargets: 0, bucketCount: 0 };
+            cur = { sumHits: 0, sumTargets: 0, bucketCount: 0, waivedCount: 0 };
             if (comparison) cur.compare = emptyCompareInfo();
             cellMap.set(key, cur);
         }
-        cur.sumHits += b.hitCount;
-        cur.sumTargets += b.goalTarget;
         cur.bucketCount += 1;
+        if (b.waived) {
+            // Waived buckets leave the denominator (and their hits the numerator).
+            cur.waivedCount += 1;
+        } else if (b.goalTarget > 0) {
+            // Illegal (target < 0) and ignore (target === 0) stay out of scoring.
+            cur.sumHits += b.hitCount;
+            cur.sumTargets += b.goalTarget;
+        }
         if (comparison && cur.compare) {
             const category = getBucketCategoryForIndex(comparison, b.bucketIndex);
             if (isCompareCategory(category)) {
@@ -322,6 +342,7 @@ function suggestAxesAll(
     for (const axisName of axisNames) {
         const byValue = new Map<string, { hits: number; target: number }>();
         for (const b of buckets) {
+            if (b.waived) continue;
             const v = b.axes[axisName] ?? "";
             const cur = byValue.get(v) ?? { hits: 0, target: 0 };
             cur.hits += b.hitCount;
@@ -470,14 +491,15 @@ function formatCellTooltip(cell: PivotCellInfo | undefined): string {
         cell.sumTargets !== 0
             ? `${((cell.sumHits / cell.sumTargets) * 100).toFixed(1)}%`
             : "—";
-    return `${cell.bucketCount} ${bucketNoun(cell.bucketCount)}, ${cell.sumHits}/${cell.sumTargets} hits (${pct})`;
+    const waived = cell.waivedCount > 0 ? ` (${cell.waivedCount} waived)` : "";
+    return `${cell.bucketCount} ${bucketNoun(cell.bucketCount)}${waived}, ${cell.sumHits}/${cell.sumTargets} hits (${pct})`;
 }
 
 function formatCompareCellTooltip(cell: PivotCellInfo | undefined): React.ReactNode {
     const info = cell?.compare;
     if (!cell || !info) return "No data";
     if (!info.category) {
-        return `${cell.bucketCount} ${bucketNoun(cell.bucketCount)}, all ignored or illegal`;
+        return `${cell.bucketCount} ${bucketNoun(cell.bucketCount)}, all ignored, illegal or waived`;
     }
     const skipped = cell.bucketCount - info.validBuckets;
     return (
@@ -485,7 +507,7 @@ function formatCompareCellTooltip(cell: PivotCellInfo | undefined): React.ReactN
             <div>
                 {getCompareCategoryLabel(info.category)}: {info.validBuckets}{" "}
                 {bucketNoun(info.validBuckets)} combined
-                {skipped > 0 ? ` (+${skipped} ignored/illegal)` : ""}
+                {skipped > 0 ? ` (+${skipped} ignored/illegal/waived)` : ""}
             </div>
             <div>
                 Hits A {info.hitsA}, hits B {info.hitsB}, target {info.target}

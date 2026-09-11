@@ -6,12 +6,13 @@ import random
 import subprocess
 from pathlib import Path
 
-from bucket import CoverageContext
+from bucket import CoverageContext, load_waivers
 from bucket.rw import (
     ArchiveAccessor,
     ConsoleWriter,
     MergeReadout,
     PointReader,
+    WaivedReadout,
 )
 
 from .common import CatInfo, DogInfo, MadeUpStuff, PetInfo
@@ -165,6 +166,25 @@ def merge(log, archive_path_1, archive_path_2, merged_archive_path):
     ConsoleWriter().write(merged_readout)
     log.info("-------------------------------------------------------")
 
+    return merged_readout
+
+
+def waive(log, merged_readout):
+    """
+    Apply the example waiver file to the merged coverage. Waivers excuse
+    buckets from scoring after the fact (see docs/waivers.md); the same file
+    can be applied from the command line with `bucket write ... -w waivers.json`.
+    """
+    log = log.getChild("waiver")
+
+    waiver_file = load_waivers(Path(__file__).parent / "waivers.json")
+    waived_readout = WaivedReadout(merged_readout, waiver_file)
+    log.info(f"Waived {len(waived_readout.matched)} buckets using example/waivers.json")
+
+    log.info("This is the merged coverage with the example waivers applied.")
+    ConsoleWriter().write(waived_readout)
+    log.info("-------------------------------------------------------")
+
 
 def run(output_dir: Path = Path(".")):
     logging.basicConfig(level=logging.DEBUG)
@@ -185,7 +205,10 @@ def run(output_dir: Path = Path(".")):
 
     # Merge the two runs
     merged_archive_path = output_dir / "example_merged_file_store.bktgz"
-    merge(log, archive_path_1, archive_path_2, merged_archive_path)
+    merged_readout = merge(log, archive_path_1, archive_path_2, merged_archive_path)
+
+    # Apply the example waivers to the merged coverage
+    waive(log, merged_readout)
 
 
 if __name__ == "__main__":

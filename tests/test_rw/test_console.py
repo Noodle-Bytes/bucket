@@ -125,6 +125,7 @@ def check_text(
                             bucket.hit_percent,
                             goal.name,
                             goal.description,
+                            bucket.waiver_reason or "-",
                         ),
                     )
                 )
@@ -145,6 +146,7 @@ def check_text(
                     point.hits,
                     point.hit_percent,
                     point.buckets_targeted,
+                    point.buckets_waived,
                     point.buckets_hit,
                     point.buckets_full,
                     point.buckets_hit_percent,
@@ -166,7 +168,7 @@ def check_readout(
     cov = CoverageAccess(readout)
     with StringIO() as op:
         # wide to prevent truncation of values
-        console = Console(file=op, width=1000, legacy_windows=False)
+        console = Console(file=op, width=1000, legacy_windows=False, _environ={})
         writer = ConsoleWriter(
             axes=axes, goals=goals, points=points, summary=summary, console=console
         )
@@ -254,7 +256,7 @@ class TestConsole:
         readout.source = source
         readout.source_key = source_key
         output = StringIO()
-        console = Console(file=output, width=1000, legacy_windows=False)
+        console = Console(file=output, width=1000, legacy_windows=False, _environ={})
         writer = ConsoleWriter(console=console)
         writer.write(readout)
         text = output.getvalue()

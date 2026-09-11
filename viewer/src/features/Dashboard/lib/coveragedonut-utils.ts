@@ -8,7 +8,11 @@
 
 // Utility functions for CoverageDonut (data transformation, math, SVG path, etc.)
 import { PointNode } from "./coveragetree";
-import { getPointNodeCoverageMetrics } from "./coveragemetrics";
+import {
+    coverageRatio,
+    effectiveTarget,
+    getPointNodeCoverageMetrics,
+} from "./coveragemetrics";
 import { Theme as ThemeType } from "@/theme";
 
 export type HierarchicalData = {
@@ -16,8 +20,11 @@ export type HierarchicalData = {
     value: number;
     children?: HierarchicalData[];
     coverage?: number;
+    /** Effective hit target (waived buckets removed). */
     target?: number;
     hits?: number;
+    /** Buckets excluded from scoring by a waiver. */
+    waivedBuckets?: number;
     nodeKey?: string;
     isCovergroup?: boolean;
 };
@@ -196,12 +203,16 @@ export function buildNode(node: PointNode): HierarchicalData {
     const nodeTitle = String(node.title || '');
     const isCovergroup = Array.isArray(node.children) && node.children.length > 0;
     const metrics = getPointNodeCoverageMetrics(node);
+    // Waived buckets leave the denominator, so they neither shrink the
+    // percentage nor claim arc length.
+    const target = effectiveTarget(metrics);
     const nodeData: HierarchicalData = {
         name: nodeTitle,
         value: 1,
-        coverage: metrics.target > 0 ? metrics.hits / metrics.target : 0,
-        target: metrics.target,
+        coverage: coverageRatio(metrics.hits, target),
+        target,
         hits: metrics.hits,
+        waivedBuckets: metrics.waived_buckets,
         nodeKey: String(node.key),
         isCovergroup: isCovergroup,
     };
@@ -210,10 +221,10 @@ export function buildNode(node: PointNode): HierarchicalData {
             .filter((child): child is PointNode => !!child && typeof child === 'object' && 'data' in child)
             .map(child => buildNode(child));
         const childrenValue = children.reduce((sum, child) => sum + child.value, 0);
-        nodeData.value = Math.max(metrics.target, childrenValue, 1);
+        nodeData.value = Math.max(target, childrenValue, 1);
         nodeData.children = children;
     } else {
-        nodeData.value = Math.max(metrics.target, 1);
+        nodeData.value = Math.max(target, 1);
     }
     return nodeData;
 }

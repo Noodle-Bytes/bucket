@@ -281,6 +281,13 @@ html[data-bucket-theme="odd"] * {
   padding: 4px 10px 12px !important;
 }
 
+/* After force-collapse (e.g. create-waivers mode), reopen must not keep a clipped height. */
+.point-metadata-collapse .ant-collapse-content-active,
+.point-metadata-collapse .ant-collapse-content-active > .ant-collapse-content-box {
+  height: auto !important;
+  overflow: visible !important;
+}
+
 /* Keep metadata rows compact and left-aligned */
 .point-metadata-descriptions .ant-descriptions-row > th,
 .point-metadata-descriptions .ant-descriptions-row > td {

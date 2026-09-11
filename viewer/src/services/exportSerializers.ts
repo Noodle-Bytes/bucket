@@ -45,6 +45,16 @@ const JSON_TABLES: Record<string, string[]> = {
     bucket_hit: ["start", "hits"],
 };
 
+function pointHitRow(pointHit: PointHitTuple): CsvValue[] {
+    return [
+        pointHit.start,
+        pointHit.depth,
+        pointHit.hits,
+        pointHit.hit_buckets,
+        pointHit.full_buckets,
+    ];
+}
+
 class CsvTableBuilder {
     private chunks: string[] = [];
     private byteLength = 0;
@@ -206,13 +216,7 @@ export function serializeReadoutsToJsonBytes(readouts: Readout[]): Uint8Array {
             // Always stamp the serializer's own format, not the source
             // readout's: it describes how this record is laid out.
             format_version: SUPPORTED_FORMAT_VERSION,
-            point_hit: data.pointHits.map((pointHit) => [
-                pointHit.start,
-                pointHit.depth,
-                pointHit.hits,
-                pointHit.hit_buckets,
-                pointHit.full_buckets,
-            ]),
+            point_hit: data.pointHits.map(pointHitRow),
             bucket_hit: data.bucketHits.map((bucketHit) => [
                 bucketHit.start,
                 bucketHit.hits,
@@ -260,15 +264,7 @@ export function serializeReadoutsToArchiveBytes(readouts: Readout[]): Uint8Array
             ]),
         );
 
-        const pointHitSpan = pointHitTable.writeRows(
-            data.pointHits.map((pointHit) => [
-                pointHit.start,
-                pointHit.depth,
-                pointHit.hits,
-                pointHit.hit_buckets,
-                pointHit.full_buckets,
-            ]),
-        );
+        const pointHitSpan = pointHitTable.writeRows(data.pointHits.map(pointHitRow));
 
         const axisSpan = axisTable.writeRows(
             data.axes.map((axis) => [

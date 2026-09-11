@@ -41,6 +41,7 @@ function withZeroHits(readout: Readout): Readout {
     return new InMemoryReadout({
         ...data,
         bucketHits: data.bucketHits.map((bucketHit) => ({ ...bucketHit, hits: 0 })),
+        // Waivers are kept so the zero-hit baseline waives the same buckets.
         pointHits: data.pointHits.map((pointHit) => ({
             ...pointHit,
             hits: 0,
@@ -71,6 +72,7 @@ function remapGapCounts(counts: CategoryCounts): CategoryCounts {
         valid: counts.valid,
         illegal: counts.illegal,
         ignore: counts.ignore,
+        waived: counts.waived,
     };
 }
 
@@ -79,7 +81,8 @@ function remapGapCounts(counts: CategoryCounts): CategoryCounts {
  * - uncovered (gap) buckets are `a_only`
  * - covered buckets are `both`
  *
- * Illegal / ignore buckets keep their categories.
+ * Illegal / ignore / waived buckets keep their categories, so a waived bucket
+ * is never reported as a gap.
  */
 export function buildCoverageGapComparison(
     readout: Readout,

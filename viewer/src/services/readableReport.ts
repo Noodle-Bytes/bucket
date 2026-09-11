@@ -95,6 +95,14 @@ export type ReportResults = {
     fullBuckets: number;
 };
 
+/** One waived bucket of a coverpoint, decoded to its axis values. */
+export type ReportWaiver = {
+    bucketIndex: number;
+    /** Axis name -> value, in axis order. */
+    axisValues: Record<string, string>;
+    reason: string;
+};
+
 export type ReportPoint = {
     name: string;
     /** Full dotted path from the root, e.g. "top.dogs.chew_toys". */
@@ -106,8 +114,18 @@ export type ReportPoint = {
     tier: number | null;
     tags: string[];
     bucketCount: number;
+    /** Valid buckets as defined (includes waived buckets). */
     targetBuckets: number;
+    /** Hit target as defined (includes waived buckets' targets). */
     target: number;
+    /**
+     * Buckets excluded from scoring by a waiver and their summed target;
+     * subtract from targetBuckets / target for the effective denominators.
+     */
+    waivedBuckets: number;
+    waivedTarget: number;
+    /** Waived buckets of a coverpoint; always empty for covergroups. */
+    waivers: ReportWaiver[];
     axes: ReportAxis[];
     goals: ReportGoal[];
     results: ReportResults | null;
@@ -119,11 +137,28 @@ export type RollupRow = {
     key: string;
     coverpoints: number;
     buckets: number;
+    /** Valid buckets as defined; subtract waivedBuckets for the effective count. */
     validBuckets: number;
+    /** Hit target as defined; subtract waivedTarget for the effective target. */
     target: number;
+    waivedBuckets: number;
+    waivedTarget: number;
     /** Total hits across the row's coverpoints; null only if no hit data. */
     hits: number | null;
 };
+
+/** Hit target and valid bucket count with waived buckets removed. */
+export function effectiveReportTargets(point: {
+    target: number;
+    targetBuckets: number;
+    waivedBuckets: number;
+    waivedTarget: number;
+}): { target: number; targetBuckets: number } {
+    return {
+        target: Math.max(0, point.target - point.waivedTarget),
+        targetBuckets: Math.max(0, point.targetBuckets - point.waivedBuckets),
+    };
+}
 
 export type ReportReadout = {
     title: string;
@@ -138,6 +173,8 @@ export type ReportReadout = {
      * printing 0% everywhere.
      */
     hasResults: boolean;
+    /** Whether any coverpoint in scope has waived buckets. */
+    hasWaivers: boolean;
     roots: ReportPoint[];
     tierSummary: RollupRow[];
     tagSummary: RollupRow[];
@@ -290,6 +327,53 @@ function buildAxes(
     return axes;
 }
 
+/**
+ * Waived buckets of a coverpoint with their axis values decoded. Bucket
+ * indices enumerate the axes row-major (last axis fastest), matching the
+ * bucket table layout.
+ */
+function buildWaivers(readout: Readout, point: PointTuple): ReportWaiver[] {
+    const waivers = Array.from(
+        readout.iter_bucket_waivers(point.bucket_start, point.bucket_end),
+    );
+    if (waivers.length === 0) {
+        return [];
+    }
+    const axes = Array.from(readout.iter_axes(point.axis_start, point.axis_end));
+    const axisValues = Array.from(
+        readout.iter_axis_values(point.axis_value_start, point.axis_value_end),
+    );
+    const goals = Array.from(readout.iter_goals(point.goal_start, point.goal_end));
+    const goalByBucket = new Map<number, number>();
+    for (const bucketGoal of readout.iter_bucket_goals(point.bucket_start, point.bucket_end)) {
+        goalByBucket.set(bucketGoal.start, goals[bucketGoal.goal - point.goal_start]?.target ?? 0);
+    }
+
+    const result: ReportWaiver[] = [];
+    for (const waiver of waivers.sort((a, b) => a.start - b.start)) {
+        // Only buckets with a positive goal can be waived.
+        if ((goalByBucket.get(waiver.start) ?? 0) <= 0) {
+            continue;
+        }
+        const values: Record<string, string> = {};
+        let offset = waiver.start - point.bucket_start;
+        for (let axisIdx = axes.length - 1; axisIdx >= 0; axisIdx -= 1) {
+            const axis = axes[axisIdx];
+            const size = Math.max(axis.value_end - axis.value_start, 1);
+            const valueIdx = axis.value_start - point.axis_value_start + (offset % size);
+            values[axis.name] = axisValues[valueIdx]?.value ?? "";
+            offset = Math.floor(offset / size);
+        }
+        // Rebuild in axis order for stable column layout.
+        const ordered: Record<string, string> = {};
+        for (const axis of axes) {
+            ordered[axis.name] = values[axis.name];
+        }
+        result.push({ bucketIndex: waiver.start, axisValues: ordered, reason: waiver.reason });
+    }
+    return result;
+}
+
 function buildGoals(readout: Readout, point: PointTuple): ReportGoal[] {
     return Array.from(readout.iter_goals(point.goal_start, point.goal_end), (goal) => ({
         name: goal.name,
@@ -330,6 +414,9 @@ function buildReadoutModel(
             bucketCount: point.bucket_end - point.bucket_start,
             targetBuckets: point.target_buckets,
             target: point.target,
+            waivedBuckets: hit?.waived_buckets ?? 0,
+            waivedTarget: hit?.waived_target ?? 0,
+            waivers: !isGroup ? buildWaivers(readout, point) : [],
             axes: !isGroup ? buildAxes(readout, point, options) : [],
             goals: !isGroup ? buildGoals(readout, point) : [],
             results: hit
@@ -376,6 +463,7 @@ function buildReadoutModel(
         recSha,
         bucketVersion: readout.get_bucket_version(),
         hasResults,
+        hasWaivers: leaves.some((leaf) => leaf.waivedBuckets > 0),
         roots: filteredRoots,
         tierSummary: buildTierSummary(leaves),
         tagSummary: buildTagSummary(leaves),
@@ -456,6 +544,8 @@ function recomputeGroupAggregates(point: ReportPoint): void {
     point.bucketCount = 0;
     point.targetBuckets = 0;
     point.target = 0;
+    point.waivedBuckets = 0;
+    point.waivedTarget = 0;
     const results: ReportResults = { hits: 0, hitBuckets: 0, fullBuckets: 0 };
     let haveResults = false;
     for (const child of point.children) {
@@ -463,6 +553,8 @@ function recomputeGroupAggregates(point: ReportPoint): void {
         point.bucketCount += child.bucketCount;
         point.targetBuckets += child.targetBuckets;
         point.target += child.target;
+        point.waivedBuckets += child.waivedBuckets;
+        point.waivedTarget += child.waivedTarget;
         if (child.results) {
             haveResults = true;
             results.hits += child.results.hits;
@@ -486,12 +578,16 @@ function buildRollup(
                 buckets: 0,
                 validBuckets: 0,
                 target: 0,
+                waivedBuckets: 0,
+                waivedTarget: 0,
                 hits: null,
             };
             row.coverpoints += 1;
             row.buckets += leaf.bucketCount;
             row.validBuckets += leaf.targetBuckets;
             row.target += leaf.target;
+            row.waivedBuckets += leaf.waivedBuckets;
+            row.waivedTarget += leaf.waivedTarget;
             if (leaf.results) {
                 row.hits = (row.hits ?? 0) + leaf.results.hits;
             }
@@ -655,10 +751,38 @@ function renderProse(point: ReportPoint): string {
 
 function summaryStatsHtml(point: ReportPoint): string {
     const stats: string[] = [`${point.bucketCount} buckets`];
+    if (point.waivedBuckets > 0) {
+        stats.push(`<span class="waived">${point.waivedBuckets} waived</span>`);
+    }
     if (point.results) {
-        stats.push(pctBadge(point.results.hits, point.target));
+        stats.push(pctBadge(point.results.hits, effectiveReportTargets(point).target));
     }
     return `<span class="sum-stats">${stats.join(" · ")}</span>`;
+}
+
+function renderWaivers(point: ReportPoint): string {
+    if (point.waivers.length === 0) {
+        return "";
+    }
+    const axisNames = point.axes.map((axis) => axis.name);
+    const header =
+        `<tr><th class="num">Bucket</th>` +
+        axisNames.map((name) => `<th>${escapeHtml(name)}</th>`).join("") +
+        `<th>Reason</th></tr>`;
+    const rows = point.waivers.map(
+        (waiver) =>
+            `<tr><td class="num">${waiver.bucketIndex}</td>` +
+            axisNames
+                .map((name) => `<td><code>${escapeHtml(waiver.axisValues[name] ?? "")}</code></td>`)
+                .join("") +
+            `<td>${escapeHtml(waiver.reason)}</td></tr>`,
+    );
+    return (
+        `<details class="waivers" open><summary class="waivers-title">` +
+        `Waived buckets (${point.waivers.length})</summary>` +
+        `<table class="waivers"><thead>${header}</thead>` +
+        `<tbody>${rows.join("")}</tbody></table></details>`
+    );
 }
 
 // Folder/file marks (Primer Octicons, MIT) mirroring the viewer's tree
@@ -759,29 +883,43 @@ function renderPointCard(point: ReportPoint, id: string): string {
         );
     }
 
+    // Waived buckets are excluded from the denominators; the line spells
+    // out how many were removed so the effective numbers are traceable.
+    const effective = effectiveReportTargets(point);
+    const waivedBucketsNote =
+        point.waivedBuckets > 0
+            ? ` <span class="waived">(${point.waivedBuckets} waived)</span>`
+            : "";
+    const waivedTargetNote =
+        point.waivedTarget > 0
+            ? ` <span class="waived">(${point.waivedTarget} waived)</span>`
+            : "";
     body.push(
         `<p class="buckets-line">Buckets: ${point.bucketCount} total, ` +
-            `${point.targetBuckets} valid · Target hits: ${point.target}</p>`,
+            `${effective.targetBuckets} valid${waivedBucketsNote} · ` +
+            `Target hits: ${effective.target}${waivedTargetNote}</p>`,
     );
 
     if (point.results) {
         const hitWidth = Math.min(
             100,
-            point.target > 0 ? (point.results.hits / point.target) * 100 : 100,
+            effective.target > 0 ? (point.results.hits / effective.target) * 100 : 100,
         ).toFixed(2);
         body.push(
             `<div class="results">` +
-                `<span class="bar"><span class="fill ${statusClass(point.results.hits, point.target)}"` +
+                `<span class="bar"><span class="fill ${statusClass(point.results.hits, effective.target)}"` +
                 ` style="width:${hitWidth}%"></span></span>` +
-                `<span>${point.results.hits}/${point.target} hits ` +
-                `${pctBadge(point.results.hits, point.target)} · ` +
-                `${point.results.hitBuckets}/${point.targetBuckets} buckets hit ` +
-                `${pctBadge(point.results.hitBuckets, point.targetBuckets)} · ` +
+                `<span>${point.results.hits}/${effective.target} hits ` +
+                `${pctBadge(point.results.hits, effective.target)} · ` +
+                `${point.results.hitBuckets}/${effective.targetBuckets} buckets hit ` +
+                `${pctBadge(point.results.hitBuckets, effective.targetBuckets)} · ` +
                 `${point.results.fullBuckets} full ` +
-                `${pctBadge(point.results.fullBuckets, point.targetBuckets)}</span>` +
+                `${pctBadge(point.results.fullBuckets, effective.targetBuckets)}</span>` +
                 `</div>`,
         );
     }
+
+    body.push(renderWaivers(point));
 
     return (
         `<details class="card point-card" open id="${id}">` +
@@ -809,29 +947,42 @@ function renderRollupTable(
     title: string,
     rows: RollupRow[],
     withHits: boolean,
+    withWaivers: boolean,
 ): string {
+    // Valid buckets / target hits are the effective values (waived buckets
+    // removed); a Waived column is added only when the record has waivers.
+    const waivedHeader = withWaivers ? `<th class="num">Waived</th>` : "";
     const hitHeader = withHits
         ? `<th class="num">Hits</th><th class="num">Hit %</th>`
         : "";
     const bodyRows = rows.map((row) => {
+        const effective = effectiveReportTargets({
+            target: row.target,
+            targetBuckets: row.validBuckets,
+            waivedBuckets: row.waivedBuckets,
+            waivedTarget: row.waivedTarget,
+        });
+        const waivedCell = withWaivers
+            ? `<td class="num">${row.waivedBuckets}</td>`
+            : "";
         const hitCells = !withHits
             ? ""
             : row.hits !== null
               ? `<td class="num">${row.hits}</td>` +
-                `<td class="num">${pctBadge(row.hits, row.target)}</td>`
+                `<td class="num">${pctBadge(row.hits, effective.target)}</td>`
               : `<td class="num"></td><td class="num"></td>`;
         return (
             `<tr><td>${escapeHtml(row.key)}</td>` +
             `<td class="num">${row.coverpoints}</td>` +
             `<td class="num">${row.buckets}</td>` +
-            `<td class="num">${row.validBuckets}</td>` +
-            `<td class="num">${row.target}</td>${hitCells}</tr>`
+            `<td class="num">${effective.targetBuckets}</td>${waivedCell}` +
+            `<td class="num">${effective.target}</td>${hitCells}</tr>`
         );
     });
     return (
         `<table class="rollup"><thead><tr><th>${escapeHtml(title)}</th>` +
         `<th class="num">Coverpoints</th><th class="num">Buckets</th>` +
-        `<th class="num">Valid buckets</th><th class="num">Target hits</th>` +
+        `<th class="num">Valid buckets</th>${waivedHeader}<th class="num">Target hits</th>` +
         `${hitHeader}</tr></thead><tbody>${bodyRows.join("")}</tbody></table>`
     );
 }
@@ -950,6 +1101,13 @@ nav.tree ul.tint-3{border-left-color:#ddc389}
 .chip{display:inline-block;background:#f6f8fa;border:1px solid #d0d7de;
   border-radius:999px;padding:0 .55rem;font-size:.8rem;color:#1f2328}
 .buckets-line{font-size:.9rem;color:#424a53}
+.waived{color:#6b7f96;font-style:italic}
+details.waivers{margin:.5rem 0 .25rem;border:none;background:none}
+details.waivers>summary{display:inline-flex;font-size:.88rem;color:#6b7f96;
+  background:#f0f3f7;border:1px solid #d0d7de;border-radius:6px;padding:.15rem .6rem}
+details[open].waivers>summary{border-radius:6px}
+table.waivers{font-size:.85rem}
+table.waivers td:last-child{color:#424a53}
 .results{display:flex;align-items:center;gap:.75rem;font-size:.9rem;margin:.4rem 0}
 .bar{flex:0 0 10rem;height:8px;background:#eaeef2;border-radius:4px;overflow:hidden}
 .bar .fill{display:block;height:100%}
@@ -1172,11 +1330,21 @@ export function serializeReportHtml(model: ReportModel): string {
         parts.push(`<div class="record-main">`);
         parts.push(`<h3>Summary</h3>`);
         parts.push(
-            renderRollupTable("Tier", readout.tierSummary, readout.hasResults),
+            renderRollupTable(
+                "Tier",
+                readout.tierSummary,
+                readout.hasResults,
+                readout.hasWaivers,
+            ),
         );
         if (readout.tagSummary.length > 0) {
             parts.push(
-                renderRollupTable("Tag", readout.tagSummary, readout.hasResults),
+                renderRollupTable(
+                    "Tag",
+                    readout.tagSummary,
+                    readout.hasResults,
+                    readout.hasWaivers,
+                ),
             );
         }
 

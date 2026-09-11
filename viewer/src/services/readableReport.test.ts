@@ -19,8 +19,11 @@ function createNestedReadout(overrides?: {
     leafDescription?: string;
     tags?: string;
     zeroHits?: boolean;
+    /** Waive these buckets (indices into the 6-bucket leaf); rescoring is manual below. */
+    waivers?: BucketWaiverTuple[];
 }): Readout {
     const zero = overrides?.zeroHits ?? false;
+    const waivers = overrides?.waivers ?? [];
     // top (group) > dogs (group, no prose) > chew_toys (coverpoint with
     // 2 axes: breed[labrador,pug] x toy[ball,rope,bone] = 6 buckets,
     // 5 targeted at 10 hits each, 1 illegal).
@@ -127,7 +130,10 @@ function createNestedReadout(overrides?: {
             hits: zero ? 0 : 25,
             hit_buckets: zero ? 0 : 3,
             full_buckets: zero ? 0 : 2,
+            waived_buckets: waivers.length,
+            waived_target: waivers.length * 10,
         })),
+        bucketWaivers: waivers,
         bucketHits: [
             { start: 0, hits: zero ? 0 : 10 },
             { start: 1, hits: zero ? 0 : 10 },
@@ -371,6 +377,75 @@ describe("summary rollups", () => {
         const html = buildReadableReportHtml([createNestedReadout({ tags: "" })]);
         expect(html).toContain("<th>Tier</th>");
         expect(html).not.toContain("<th>Tag</th>");
+    });
+});
+
+describe("waivers", () => {
+    // Bucket 4 = pug/rope (offset 4: breed idx 1, toy idx 1), unhit and waived.
+    const waived = () =>
+        createNestedReadout({
+            waivers: [{ start: 4, reason: "rope <unsafe> for pugs" }],
+        });
+
+    test("model carries waived counts and decoded waiver rows", () => {
+        const model = buildReportModel([waived()]);
+        const readout = model.readouts[0];
+        expect(readout.hasWaivers).toBe(true);
+        const top = readout.roots[0];
+        const leaf = top.children[0].children[0];
+        expect(leaf.waivedBuckets).toBe(1);
+        expect(leaf.waivedTarget).toBe(10);
+        expect(leaf.waivers).toEqual([
+            {
+                bucketIndex: 4,
+                axisValues: { breed: "pug", toy: "rope" },
+                reason: "rope <unsafe> for pugs",
+            },
+        ]);
+        // Groups aggregate the counts but never list rows themselves.
+        expect(top.waivedBuckets).toBe(1);
+        expect(top.waivedTarget).toBe(10);
+        expect(top.waivers).toEqual([]);
+        // Raw definition numbers are untouched; effective ones subtract waivers.
+        expect(leaf.targetBuckets).toBe(5);
+        expect(leaf.target).toBe(50);
+        expect(readout.tierSummary[0]).toMatchObject({
+            validBuckets: 5,
+            target: 50,
+            waivedBuckets: 1,
+            waivedTarget: 10,
+        });
+    });
+
+    test("html shows effective denominators, a waived column and the waiver list", () => {
+        const html = buildReadableReportHtml([waived()]);
+        expect(html).toContain(
+            'Buckets: 6 total, 4 valid <span class="waived">(1 waived)</span> · ' +
+                'Target hits: 40 <span class="waived">(10 waived)</span>',
+        );
+        // 25/40 hits, 3/4 buckets hit, 2 full of 4.
+        expect(html).toContain("25/40 hits");
+        expect(html).toContain('<span class="pct high">62.50%</span>');
+        expect(html).toContain("3/4 buckets hit");
+        expect(html).toContain('<span class="waived">1 waived</span>');
+        expect(html).toContain(
+            '<th class="num">Valid buckets</th><th class="num">Waived</th>' +
+                '<th class="num">Target hits</th>',
+        );
+        expect(html).toContain('<td class="num">4</td><td class="num">1</td><td class="num">40</td>');
+        expect(html).toContain("Waived buckets (1)");
+        expect(html).toContain(
+            '<tr><td class="num">4</td><td><code>pug</code></td><td><code>rope</code></td>' +
+                "<td>rope &lt;unsafe&gt; for pugs</td></tr>",
+        );
+    });
+
+    test("reports without waivers render exactly as before", () => {
+        const html = buildReadableReportHtml([createNestedReadout()]);
+        expect(html).not.toContain("Waived");
+        expect(html).not.toContain('class="waived"');
+        expect(html).not.toContain('<details class="waivers"');
+        expect(html).toContain("Buckets: 6 total, 5 valid · Target hits: 50");
     });
 });
 

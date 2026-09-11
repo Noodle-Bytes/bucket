@@ -55,6 +55,18 @@ type PointHitTuple = {
     hits: number;
     hit_buckets: number;
     full_buckets: number;
+    /**
+     * Buckets in the point excluded from scoring by an applied waiver, and the
+     * sum of their hit targets. Zero when no waiver overlay is active.
+     */
+    waived_buckets?: number;
+    waived_target?: number;
+};
+
+/** A waived bucket: `start` is the global bucket index. */
+type BucketWaiverTuple = {
+    start: number;
+    reason: string;
 };
 
 type BucketHitTuple = {
@@ -94,6 +106,15 @@ type Readout = {
         start: number,
         end: number | null,
     ) => Generator<BucketHitTuple>;
+    /**
+     * Waived buckets whose global index lies in [start, end). Unlike
+     * bucket_hit the table is sparse (one row per waived bucket), so the
+     * range filters by bucket index rather than by row position.
+     */
+    iter_bucket_waivers: (
+        start: number,
+        end: number | null,
+    ) => Generator<BucketWaiverTuple>;
 };
 
 // Ambient (non-module) file: Reader is consumed by readers.ts via the global scope.

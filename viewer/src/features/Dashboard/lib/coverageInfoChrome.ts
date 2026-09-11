@@ -56,7 +56,9 @@ export function coverageInfoChromeOuterBox(colors: CoverageInfoChromeColors): CS
         border: `1px solid ${coverageInfoStructuralBorder(colors)}`,
         borderRadius: COVERAGE_INFO_SURFACE_RADIUS,
         backgroundColor: coverageInfoCardSurface(colors),
-        overflow: "hidden",
+        // Avoid overflow:hidden — Ant Collapse can leave a stale pixel height after
+        // programmatic collapse/re-open and clip Details body (tags, axes, etc.).
+        overflow: "visible",
         "--point-metadata-header-bg": coverageInfoCardHeaderSurface(colors),
         "--point-metadata-header-text": colors.saturatedtxt.value,
         "--point-metadata-header-subtext": colors.primarytxt.value,

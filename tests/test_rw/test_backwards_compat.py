@@ -55,6 +55,9 @@ def canonical_record(readout: Readout) -> dict:
         "bucket_goal": [bg._asdict() for bg in readout.iter_bucket_goals()],
         "point_hit": [ph._asdict() for ph in readout.iter_point_hits()],
         "bucket_hit": [bh._asdict() for bh in readout.iter_bucket_hits()],
+        "bucket_waivers": [
+            [bw.start, bw.reason] for bw in readout.iter_bucket_waivers()
+        ],
     }
 
 
@@ -65,6 +68,13 @@ def expected_records(version: int) -> list[dict]:
     for record in expected["records"]:
         record = dict(record)
         record.pop("bucket_version")
+        # Snapshots taken before format 3 predate waivers: a legacy record
+        # reads back with zero waived buckets and no waiver rows.
+        record["point_hit"] = [
+            {"waived_buckets": 0, "waived_target": 0, **point_hit}
+            for point_hit in record["point_hit"]
+        ]
+        record.setdefault("bucket_waivers", [])
         records.append(record)
     return records
 

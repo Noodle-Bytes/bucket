@@ -9,6 +9,7 @@ from .json import JSONAccessor
 from .point import PointReader
 from .report import ReportWriter
 from .sql import SQLAccessor
+from .waived import WaivedReadout
 
 assert all(
     [
@@ -20,5 +21,6 @@ assert all(
         SQLAccessor,
         PointReader,
         MergeReadout,
+        WaivedReadout,
     ]
 )

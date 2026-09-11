@@ -19,9 +19,11 @@ function createReadout(overrides?: {
     defSha?: string;
     recSha?: string;
     bucketHits?: number[];
+    waivers?: BucketWaiverTuple[];
 }): Readout {
     const bucketHits = overrides?.bucketHits ?? [3, 0];
     return new InMemoryReadout({
+        bucketWaivers: overrides?.waivers ?? [],
         defSha: overrides?.defSha ?? "def-a",
         recSha: overrides?.recSha ?? "rec-a",
         source: "suite",
@@ -157,6 +159,66 @@ describe("buildComparison", () => {
                 "any_hit",
             ),
         ).toThrow("different covertree definitions");
+    });
+});
+
+describe("buildComparison with waivers", () => {
+    test("a bucket waived on either side is excluded from the comparison", () => {
+        // Bucket 1 is waived in B only; bucket 0 is compared normally.
+        const readoutA = createReadout({ bucketHits: [3, 3] });
+        const readoutB = createReadout({
+            recSha: "rec-b",
+            bucketHits: [0, 3],
+            waivers: [{ start: 1, reason: "known limitation" }],
+        });
+        const comparison = buildComparison(
+            readoutA,
+            readoutB,
+            meta("A", readoutA),
+            meta("B", readoutB),
+            "any_hit",
+        );
+
+        expect(comparison.bucketsByIndex.get(0)).toBe("a_only");
+        expect(comparison.bucketsByIndex.get(1)).toBe("waived");
+        expect(comparison.global).toMatchObject({ a_only: 1, waived: 1, valid: 1 });
+        expect(comparison.bucketDetails.map((detail) => detail.bucketIndex)).toEqual([0]);
+        expect(comparison.points[0].counts.waived).toBe(1);
+
+        // Waived is outside every set mode, like illegal / ignore.
+        expect(matchesCompareSetMode("waived", "all")).toBe(false);
+        expect(matchesCompareSetMode("waived", "neither")).toBe(false);
+
+        // Reclassifying keeps the waived bucket waived.
+        const recompared = recompareWithDefinition(comparison, "met_goal");
+        expect(recompared.bucketsByIndex.get(1)).toBe("waived");
+        expect(recompared.global.waived).toBe(1);
+    });
+
+    test("the merged display readout unions waivers, first reason wins", () => {
+        const readoutA = createReadout({
+            bucketHits: [3, 0],
+            waivers: [{ start: 0, reason: "A says" }],
+        });
+        const readoutB = createReadout({
+            recSha: "rec-b",
+            bucketHits: [0, 3],
+            waivers: [
+                { start: 0, reason: "B says" },
+                { start: 1, reason: "B only" },
+            ],
+        });
+        const merged = buildCompareDisplayReadout(readoutA, readoutB, "both");
+        expect(Array.from(merged.iter_bucket_waivers(0, null))).toEqual([
+            { start: 0, reason: "A says" },
+            { start: 1, reason: "B only" },
+        ]);
+        expect(Array.from(merged.iter_point_hits())[0]).toMatchObject({
+            hits: 0,
+            hit_buckets: 0,
+            waived_buckets: 2,
+            waived_target: 6,
+        });
     });
 });
 

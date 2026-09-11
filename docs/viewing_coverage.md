@@ -204,12 +204,10 @@ Once coverage is loaded, the header provides:
 | Action | Description |
 | -- | -- |
 | **Load** | Append more `.bktgz` archives |
-| **Edit** | Choose which records are loaded, or merge selected records |
-| **Refresh** | Reload file-backed records from disk (Electron) or re-select files (browser) |
-| **Generate report** | Save an HTML or JSON coverage report, with optional unhit pattern analysis |
-| **Export** | Save loaded record(s) as `.bktgz` or JSON |
+| **Waivers** | Load / manage the waiver draft, or enter **Create waivers** mode on a coverpoint (see [Coverage waivers](waivers.md)) |
 | **Compare** | Enter compare mode when compatible records are available |
-| **Clear** | Remove all loaded coverage from the session |
+| **More (⋮)** | Edit/export records, generate report, clear coverage |
+| **Clear** | Remove all loaded coverage from the session (also under More) |
 
 A single `.bktgz` archive can contain multiple records. The **Edit** dialog shows
 each record's source and lets you toggle which records contribute to the tree.
@@ -231,11 +229,12 @@ browser back button also steps through views.
 
 Loaded coverage is remembered across reloads: file-backed archives are kept in
 the browser's IndexedDB storage (Electron keeps the file path and re-reads it),
-merged records are stored as archives, and the set of loaded records is
-restored on startup. Archives over 200 MB are not stored and must be loaded
-again. Nothing leaves the browser. This can be turned off under **Settings**
-(which also clears the stored session), and **Clear coverage** removes the
-stored copy as well.
+and merged records are stored as archives. On startup you are asked whether to
+restore the previous session; choosing **Start fresh** discards the stored
+copy. Archives over 200 MB are not stored and must be loaded again. Nothing
+leaves the browser. This can be turned off under **Settings** (which also
+clears the stored session), and **Clear coverage** removes the stored copy as
+well.
 
 **Generate report** opens a dialog similar to compare reports:
 
