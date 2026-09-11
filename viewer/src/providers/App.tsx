@@ -6,7 +6,9 @@
 import * as React from "react";
 import { PropsWithChildren } from "react";
 import { ErrorBoundary } from "react-error-boundary";
-import { MemoryRouter as Router } from "react-router-dom";
+// Hash-based so the view state in the query string survives on file://, app:// and
+// GitHub Pages without any server-side routing.
+import { HashRouter as Router } from "react-router-dom";
 import Theme from "./Theme";
 
 function ErrorFallback({ error, resetErrorBoundary }: { error?: Error; resetErrorBoundary?: () => void }) {
