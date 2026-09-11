@@ -71,6 +71,8 @@ export const AppRoutes = () => {
         exportRecords,
         pendingCompareActivation,
         clearPendingCompareActivation,
+        persistSessionEnabled,
+        setPersistSessionEnabled,
     } = useFileLoader();
 
     const compareRecordRows = useMemo(
@@ -211,6 +213,8 @@ export const AppRoutes = () => {
                         onRefreshRecords={refreshLoadedRecords}
                         onExportRecords={exportRecords}
                         isDragging={isDragging}
+                        persistSessionEnabled={persistSessionEnabled}
+                        onPersistSessionChange={setPersistSessionEnabled}
                     />
                     <CoverageLoadingOverlay open={isLoading} loadingProgress={loadingProgress} />
                 </>
