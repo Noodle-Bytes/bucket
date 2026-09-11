@@ -867,9 +867,11 @@ export default function Dashboard({
     const expandedTreeKeysRef = useRef(expandedTreeKeys);
     const selectedTreeKeysRef = useRef(selectedTreeKeys);
     const treeKeyContentKeyRef = useRef(treeKeyContentKey);
-    expandedTreeKeysRef.current = expandedTreeKeys;
-    selectedTreeKeysRef.current = selectedTreeKeys;
-    treeKeyContentKeyRef.current = treeKeyContentKey;
+    useEffect(() => {
+        expandedTreeKeysRef.current = expandedTreeKeys;
+        selectedTreeKeysRef.current = selectedTreeKeys;
+        treeKeyContentKeyRef.current = treeKeyContentKey;
+    }, [expandedTreeKeys, selectedTreeKeys, treeKeyContentKey]);
 
     const isEmpty = tree.getRoots().length === 0;
 
