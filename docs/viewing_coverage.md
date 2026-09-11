@@ -214,6 +214,29 @@ Once coverage is loaded, the header provides:
 A single `.bktgz` archive can contain multiple records. The **Edit** dialog shows
 each record's source and lets you toggle which records contribute to the tree.
 
+#### Shareable links
+
+The current view is mirrored into the page URL (after the `#`), so copying the
+address — or clicking the link icon next to the breadcrumb — gives a link that
+reopens the same view: the selected coverpoint or group (as a dotted path such
+as `n=top.dogs.chew_toys`), the summary/coverpoint view (`v=donut`, `v=pivot`),
+the tree search text (`q=…`), and compare mode with its set filter and A/B
+records (`c=1&cs=a_only&ca=run_a.bktgz&cb=run_b.bktgz`). Parameters with default
+values are omitted. Opening a link before any coverage is loaded applies the
+view once matching archives are loaded; parameters that do not match the loaded
+coverage are ignored. Selecting nodes adds browser history entries, so the
+browser back button also steps through views.
+
+#### Session persistence
+
+Loaded coverage is remembered across reloads: file-backed archives are kept in
+the browser's IndexedDB storage (Electron keeps the file path and re-reads it),
+merged records are stored as archives, and the set of loaded records is
+restored on startup. Archives over 200 MB are not stored and must be loaded
+again. Nothing leaves the browser. This can be turned off under **Settings**
+(which also clears the stored session), and **Clear coverage** removes the
+stored copy as well.
+
 **Generate report** opens a dialog similar to compare reports:
 
 | Option | Description |
