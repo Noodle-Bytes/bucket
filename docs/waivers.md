@@ -166,13 +166,20 @@ separately**:
    (Details collapses). Use **Select by axis** (modal with live bucket count)
    to tick values: same axis adds (OR), other axes narrow (AND). **Selected
    only** filters the table to the current selection so you can confirm the
-   rule; with nothing selected it becomes **Show waivers**. **Create
+   rule; with nothing selected it becomes **Show waivers**. **Select unhit** /
+   **Select waived** fill the selection from visible rows. **Create
    waiver…** appends inferred rules to the session draft; the selection clears
-   afterward. Rules with the **same reason** condense axis values (e.g.
-   `x: ["0","1"]`); different reasons stay separate. Reason and Author fields
-   offer autocomplete from the current draft; Author defaults to the last used
-   value after the first create. Edit any rule from the Waivers panel via the
-   pencil icon.
+   afterward. Rules with the **same reason** can condense axis values (e.g.
+   `x: ["0","1"]`) after a **Condense / Keep separate** prompt; different
+   reasons stay separate. Reason and Author fields offer autocomplete from the
+   current draft; Author defaults to the last used value after the first
+   create. Edit any rule from the Waivers panel via the pencil icon.
+7. **Remove from waivers…** (create mode) rewrites the single-coverpoint rules
+   that own the selected waived buckets: remaining coverage is re-inferred
+   with exact cover (same reason/author), empty owners are deleted, and a
+   condense prompt appears when replacements can merge with other same-reason
+   rules. Multi-coverpoint / broad glob owners are left alone — edit or remove
+   those from Manage waivers.
 
 Waived buckets use a distinct violet tint. If a waived bucket still has hits,
 Hit % shows **Waived (hit)** in a stronger rose-violet (Hits/Target stay in

@@ -23,6 +23,9 @@ import {
     toggleAxisFilterValue,
     mergeWaiverSpecs,
     wouldCondenseWaiverSpecs,
+    removeBucketsFromWaiverRules,
+    applyRemoveBucketsResult,
+    type WaiverRuleOwnership,
 } from "./inferWaiverRules";
 import { InMemoryReadout } from "./readoutUtils";
 
@@ -482,6 +485,229 @@ describe("mergeWaiverSpecs", () => {
         ];
         expect(wouldCondenseWaiverSpecs([], incoming)).toBe(false);
         expect(mergeWaiverSpecs([], incoming)).toEqual(incoming);
+    });
+});
+
+describe("removeBucketsFromWaiverRules", () => {
+    const all = [
+        { start: 0, axisValues: { kind: "A", size: "1" }, target: 1, hits: 0 },
+        { start: 1, axisValues: { kind: "A", size: "2" }, target: 1, hits: 0 },
+        { start: 2, axisValues: { kind: "B", size: "1" }, target: 1, hits: 0 },
+        { start: 3, axisValues: { kind: "B", size: "2" }, target: 1, hits: 0 },
+    ];
+
+    test("dropping one corner from a rectangular rule re-infers exact remainders", () => {
+        const existing = [
+            {
+                point: "top.point",
+                axes: {},
+                reason: "all",
+                author: "a",
+                disabled: false,
+            },
+        ];
+        const diagnostics: WaiverRuleOwnership[] = [
+            {
+                index: 0,
+                rule: existing[0],
+                matchedBucketStarts: [0, 1, 2, 3],
+                coverpointPaths: ["top.point"],
+            },
+        ];
+        const result = removeBucketsFromWaiverRules(
+            existing,
+            diagnostics,
+            "top.point",
+            [0],
+            all,
+        );
+        expect(result.removedCount).toBe(1);
+        expect(result.deletedIndexes).toEqual([]);
+        expect(result.rewrittenIndexes).toEqual([0]);
+        expect(result.next.every((rule) => rule.reason === "all")).toBe(true);
+
+        const remaining = all.filter((bucket) => bucket.start !== 0);
+        const expected = inferWaiverRules(remaining, "top.point", all);
+        expect(result.replacements).toHaveLength(expected.length);
+        expect(expected.every((rule) => rule.extraCount === 0)).toBe(true);
+        expect(
+            [...new Set(expected.flatMap((rule) => rule.coversStarts))].sort(),
+        ).toEqual([1, 2, 3]);
+        // Replacement axes must not re-cover the removed corner.
+        for (const rule of result.replacements) {
+            const filters: Record<string, string[]> = {};
+            for (const [axis, patterns] of Object.entries(rule.axes)) {
+                filters[axis] = typeof patterns === "string" ? [patterns] : patterns;
+            }
+            const matched = Object.keys(filters).length === 0
+                ? all.map((bucket) => bucket.start)
+                : bucketsMatchingAxisFilters(all, filters);
+            expect(matched.includes(0)).toBe(false);
+        }
+    });
+
+    test("removing every bucket owned by a rule deletes it", () => {
+        const existing = [
+            {
+                point: "top.point",
+                axes: { kind: "A" },
+                reason: "A only",
+                author: "",
+                disabled: false,
+            },
+            {
+                point: "top.point",
+                axes: { kind: "B" },
+                reason: "B only",
+                author: "",
+                disabled: false,
+            },
+        ];
+        const diagnostics: WaiverRuleOwnership[] = [
+            {
+                index: 0,
+                rule: existing[0],
+                matchedBucketStarts: [0, 1],
+                coverpointPaths: ["top.point"],
+            },
+            {
+                index: 1,
+                rule: existing[1],
+                matchedBucketStarts: [2, 3],
+                coverpointPaths: ["top.point"],
+            },
+        ];
+        const result = removeBucketsFromWaiverRules(
+            existing,
+            diagnostics,
+            "top.point",
+            [0, 1],
+            all,
+        );
+        expect(result.removedCount).toBe(2);
+        expect(result.deletedIndexes).toEqual([0]);
+        expect(result.next).toEqual([existing[1]]);
+        expect(result.unchanged).toEqual([existing[1]]);
+        expect(result.replacements).toEqual([]);
+    });
+
+    test("skips multi-coverpoint owners while rewriting single-point rules", () => {
+        const existing = [
+            {
+                point: "top.*",
+                axes: { kind: "A" },
+                reason: "glob",
+                author: "",
+                disabled: false,
+            },
+            {
+                point: "top.point",
+                axes: { kind: "B" },
+                reason: "local",
+                author: "",
+                disabled: false,
+            },
+        ];
+        const diagnostics: WaiverRuleOwnership[] = [
+            {
+                index: 0,
+                rule: existing[0],
+                matchedBucketStarts: [0, 1],
+                coverpointPaths: ["top.point", "top.other"],
+            },
+            {
+                index: 1,
+                rule: existing[1],
+                matchedBucketStarts: [2, 3],
+                coverpointPaths: ["top.point"],
+            },
+        ];
+        const result = removeBucketsFromWaiverRules(
+            existing,
+            diagnostics,
+            "top.point",
+            [0, 2],
+            all,
+        );
+        expect(result.skippedMultiPointCount).toBe(1);
+        expect(result.skippedStarts).toEqual([0]);
+        expect(result.removedCount).toBe(1);
+        expect(result.rewrittenIndexes).toEqual([1]);
+        expect(result.next[0]).toEqual(existing[0]);
+        expect(result.next.slice(1).every((rule) => rule.reason === "local")).toBe(true);
+        const localCovered = inferWaiverRules(
+            [all[3]],
+            "top.point",
+            all,
+        );
+        expect(localCovered.every((rule) => rule.extraCount === 0)).toBe(true);
+        expect(localCovered.flatMap((rule) => rule.coversStarts).sort()).toEqual([3]);
+    });
+
+    test("post-rewrite replacements can condense with unchanged siblings", () => {
+        const existing = [
+            {
+                point: "top.point",
+                axes: { x: "0" },
+                reason: "corner",
+                author: "a",
+                disabled: false,
+            },
+            {
+                point: "top.point",
+                axes: { x: ["1", "2"] },
+                reason: "corner",
+                author: "a",
+                disabled: false,
+            },
+        ];
+        const line = [
+            { start: 0, axisValues: { x: "0" }, target: 1, hits: 0 },
+            { start: 1, axisValues: { x: "1" }, target: 1, hits: 0 },
+            { start: 2, axisValues: { x: "2" }, target: 1, hits: 0 },
+        ];
+        const diagnostics: WaiverRuleOwnership[] = [
+            {
+                index: 0,
+                rule: existing[0],
+                matchedBucketStarts: [0],
+                coverpointPaths: ["top.point"],
+            },
+            {
+                index: 1,
+                rule: existing[1],
+                matchedBucketStarts: [1, 2],
+                coverpointPaths: ["top.point"],
+            },
+        ];
+        // Remove x=2 from the second rule → remaining {x:1}, which can merge with {x:0}.
+        const result = removeBucketsFromWaiverRules(
+            existing,
+            diagnostics,
+            "top.point",
+            [2],
+            line,
+        );
+        expect(result.replacements).toEqual([
+            {
+                point: "top.point",
+                axes: { x: "1" },
+                reason: "corner",
+                author: "a",
+                disabled: false,
+            },
+        ]);
+        expect(wouldCondenseWaiverSpecs(result.unchanged, result.replacements)).toBe(true);
+        expect(applyRemoveBucketsResult(result, true)).toEqual([
+            {
+                point: "top.point",
+                axes: { x: ["0", "1"] },
+                reason: "corner",
+                author: "a",
+                disabled: false,
+            },
+        ]);
+        expect(applyRemoveBucketsResult(result, false)).toEqual(result.next);
     });
 });
 
