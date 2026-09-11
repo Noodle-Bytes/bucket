@@ -491,7 +491,9 @@ export function useFileLoader() {
     );
     const [sessionRestoreComplete, setSessionRestoreComplete] = useState(false);
     const persistEnabledRef = useRef(persistSessionEnabled);
-    persistEnabledRef.current = persistSessionEnabled;
+    useEffect(() => {
+        persistEnabledRef.current = persistSessionEnabled;
+    }, [persistSessionEnabled]);
     /** Source ids whose rows are already in IndexedDB (no need to re-read bytes). */
     const persistedSourceIdsRef = useRef<Set<string>>(new Set());
     /** Source ids that cannot be persisted (oversize / unreadable); not retried. */
