@@ -57,6 +57,8 @@ type WaiverSessionValue = {
     restoreRule: (index: number, rule: WaiverSpec) => void;
     updateRule: (index: number, rule: WaiverSpec) => void;
     appendRules: (rules: WaiverSpec[], options?: { condense?: boolean }) => void;
+    /** Replace the entire draft waiver list (e.g. after removing buckets from rules). */
+    replaceRules: (rules: WaiverSpec[]) => void;
     /** Replace a covered rule and the earlier rules that claimed its buckets with one merged rule. */
     mergeCoveredRule: (index: number, reason?: string) => void;
     disableAllProblems: () => void;
@@ -208,6 +210,12 @@ export function WaiverSessionProvider({ children }: PropsWithChildren) {
         }
     }, [file.waivers]);
 
+    const replaceRules = useCallback((rules: WaiverSpec[]) => {
+        setFile({ waivers: rules });
+        setPanelOpen(true);
+        notifySuccess({ message: "Waiver rules updated" });
+    }, []);
+
     const mergeCoveredRule = useCallback((index: number, reason?: string) => {
         if (!report) {
             return;
@@ -326,6 +334,7 @@ export function WaiverSessionProvider({ children }: PropsWithChildren) {
         restoreRule,
         updateRule,
         appendRules,
+        replaceRules,
         mergeCoveredRule,
         disableAllProblems,
         removeDisabled,

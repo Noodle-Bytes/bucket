@@ -81,6 +81,7 @@ import {
 } from "@/services/inferWaiverRules";
 import { iterPointPaths } from "@/services/matchWaivers";
 import CreateWaiverModal from "../components/CreateWaiverModal";
+import RemoveWaiverModal from "../components/RemoveWaiverModal";
 import SelectByAxisModal from "../components/SelectByAxisModal";
 import { useWaiverSession } from "@/hooks/useWaiverSession";
 import {
@@ -1456,6 +1457,7 @@ export function PointGrid({ node, compare }: PointGridProps) {
     const [axisValueFilters, setAxisValueFilters] = useState<Record<string, string[]>>({});
     const [showSelectedOnly, setShowSelectedOnly] = useState(false);
     const [createWaiverOpen, setCreateWaiverOpen] = useState(false);
+    const [removeWaiverOpen, setRemoveWaiverOpen] = useState(false);
     const [selectByAxisOpen, setSelectByAxisOpen] = useState(false);
     const [selectUnhitBusy, setSelectUnhitBusy] = useState(false);
     const [selectUnhitShowModal, setSelectUnhitShowModal] = useState(false);
@@ -1766,7 +1768,7 @@ export function PointGrid({ node, compare }: PointGridProps) {
         });
     }, [model]);
 
-    // Precompute while in create mode so "Select unhit" is mostly a state swap.
+    // Precompute while in create mode so "Select unhit" / "Select waived" is mostly a state swap.
     const visibleUnhitBucketKeys = useMemo(() => {
         if (!creatingWaivers || compare) {
             return [] as number[];
@@ -1780,6 +1782,39 @@ export function PointGrid({ node, compare }: PointGridProps) {
         }
         return keys;
     }, [creatingWaivers, compare, isLargeMode, largeDataSource, fullDataSource]);
+
+    const visibleWaivedBucketKeys = useMemo(() => {
+        if (!creatingWaivers || compare) {
+            return [] as number[];
+        }
+        const source = isLargeMode ? largeDataSource : fullDataSource;
+        const keys: number[] = [];
+        for (const record of source) {
+            if (record.waived) {
+                keys.push(record.key);
+            }
+        }
+        return keys;
+    }, [creatingWaivers, compare, isLargeMode, largeDataSource, fullDataSource]);
+
+    const selectedWaivedCount = useMemo(() => {
+        if (selectedBucketKeys.length === 0 || !model.hasWaivers) {
+            return 0;
+        }
+        const waivedKeys = new Set<number>();
+        for (let row = 0; row < model.rowCount; row += 1) {
+            if (model.waiverReasons[row] !== undefined) {
+                waivedKeys.add(model.bucketKeys[row]);
+            }
+        }
+        let count = 0;
+        for (const key of selectedBucketKeys) {
+            if (waivedKeys.has(key)) {
+                count += 1;
+            }
+        }
+        return count;
+    }, [selectedBucketKeys, model]);
 
     const selectUnhitVisible = useCallback(() => {
         if (selectUnhitBusy) {
@@ -1810,6 +1845,10 @@ export function PointGrid({ node, compare }: PointGridProps) {
         }, 0);
     }, [selectUnhitBusy, visibleUnhitBucketKeys]);
 
+    const selectWaivedVisible = useCallback(() => {
+        setAxisValueFilters({});
+        setSelectedBucketKeys(visibleWaivedBucketKeys);
+    }, [visibleWaivedBucketKeys]);
     const bucketRowSelection =
         compare || !creatingWaivers
             ? undefined
@@ -2449,6 +2488,13 @@ export function PointGrid({ node, compare }: PointGridProps) {
                 </Button>
                 <Button
                     size="small"
+                    disabled={!model.hasWaivers || visibleWaivedBucketKeys.length === 0}
+                    onClick={selectWaivedVisible}
+                >
+                    Select waived
+                </Button>
+                <Button
+                    size="small"
                     type={axisFilterActive ? "primary" : "default"}
                     title="Build a selection from axis values"
                     onClick={() => setSelectByAxisOpen(true)}
@@ -2466,6 +2512,14 @@ export function PointGrid({ node, compare }: PointGridProps) {
                     onClick={() => setCreateWaiverOpen(true)}
                 >
                     Create waiver…
+                </Button>
+                <Button
+                    size="small"
+                    danger
+                    disabled={selectedWaivedCount === 0}
+                    onClick={() => setRemoveWaiverOpen(true)}
+                >
+                    Remove from waivers…
                 </Button>
                 <Checkbox
                     checked={showSelectedOnly}
@@ -2553,6 +2607,14 @@ export function PointGrid({ node, compare }: PointGridProps) {
                         selectedKeys={selectedBucketKeys}
                         allWaivable={allWaivableBuckets}
                     />
+                    <RemoveWaiverModal
+                        open={removeWaiverOpen}
+                        onClose={() => setRemoveWaiverOpen(false)}
+                        onRemoved={clearBucketSelection}
+                        pointPath={pointPath}
+                        selectedKeys={selectedBucketKeys}
+                        allWaivable={allWaivableBuckets}
+                    />
                     <SelectByAxisModal
                         open={selectByAxisOpen}
                         onClose={() => setSelectByAxisOpen(false)}
@@ -2603,6 +2665,14 @@ export function PointGrid({ node, compare }: PointGridProps) {
                     open={createWaiverOpen}
                     onClose={() => setCreateWaiverOpen(false)}
                     onCreated={clearBucketSelection}
+                    pointPath={pointPath}
+                    selectedKeys={selectedBucketKeys}
+                    allWaivable={allWaivableBuckets}
+                />
+                <RemoveWaiverModal
+                    open={removeWaiverOpen}
+                    onClose={() => setRemoveWaiverOpen(false)}
+                    onRemoved={clearBucketSelection}
                     pointPath={pointPath}
                     selectedKeys={selectedBucketKeys}
                     allWaivable={allWaivableBuckets}

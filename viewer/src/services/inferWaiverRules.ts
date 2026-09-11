@@ -446,6 +446,162 @@ export function wouldCondenseWaiverSpecs(
     return merged.length < existing.length + incoming.length;
 }
 
+/** Ownership fields needed to surgically unwaive buckets (from apply diagnostics). */
+export type WaiverRuleOwnership = {
+    index: number;
+    rule: WaiverSpec;
+    matchedBucketStarts: number[];
+    coverpointPaths: string[];
+};
+
+export type RemoveBucketsFromWaiversResult = {
+    /** Full list with in-place replacements (no cross-rule condense). */
+    next: WaiverSpec[];
+    /** Rules that were not rewritten or deleted. */
+    unchanged: WaiverSpec[];
+    /** Specs that replaced rewritten rules (empty when a rule was deleted). */
+    replacements: WaiverSpec[];
+    /** Buckets successfully removed from single-coverpoint owners. */
+    removedCount: number;
+    /** Rule indexes that were replaced with one or more inferred specs. */
+    rewrittenIndexes: number[];
+    /** Rule indexes dropped because nothing remained after removal. */
+    deletedIndexes: number[];
+    /** How many selected starts were skipped (multi-coverpoint owners). */
+    skippedMultiPointCount: number;
+    /** Bucket starts that could not be removed. */
+    skippedStarts: number[];
+};
+
+/**
+ * Remove selected waived buckets from the draft by rewriting the rules that
+ * own them. Only single-coverpoint rules are rewritten; multi-coverpoint /
+ * broad glob owners are skipped so other points stay waived.
+ *
+ * Remaining coverage for each rewritten rule is re-inferred with exact cover
+ * (same reason / author / disabled). Callers may then ask whether to condense
+ * `replacements` into `unchanged` via {@link wouldCondenseWaiverSpecs}.
+ */
+export function removeBucketsFromWaiverRules(
+    existing: WaiverSpec[],
+    diagnostics: WaiverRuleOwnership[],
+    pointPath: string,
+    removeStarts: Iterable<number>,
+    allWaivable: SelectedBucket[],
+): RemoveBucketsFromWaiversResult {
+    const removeSet = new Set(removeStarts);
+    const byStart = new Map(allWaivable.map((bucket) => [bucket.start, bucket]));
+    const diagByIndex = new Map(diagnostics.map((row) => [row.index, row]));
+
+    const removeByRule = new Map<number, Set<number>>();
+    const skippedStarts: number[] = [];
+    let skippedMultiPointCount = 0;
+
+    for (const row of diagnostics) {
+        for (const start of row.matchedBucketStarts) {
+            if (!removeSet.has(start)) {
+                continue;
+            }
+            const singlePoint =
+                row.coverpointPaths.length === 1
+                && row.coverpointPaths[0] === pointPath;
+            if (!singlePoint) {
+                if (!skippedStarts.includes(start)) {
+                    skippedStarts.push(start);
+                    skippedMultiPointCount += 1;
+                }
+                continue;
+            }
+            let owned = removeByRule.get(row.index);
+            if (!owned) {
+                owned = new Set();
+                removeByRule.set(row.index, owned);
+            }
+            owned.add(start);
+        }
+    }
+
+    type RewriteAction =
+        | { type: "delete" }
+        | { type: "replace"; specs: WaiverSpec[] };
+
+    const actions = new Map<number, RewriteAction>();
+    const rewrittenIndexes: number[] = [];
+    const deletedIndexes: number[] = [];
+    let removedCount = 0;
+
+    for (const [ruleIndex, starts] of removeByRule) {
+        const row = diagByIndex.get(ruleIndex);
+        const rule = existing[ruleIndex] ?? row?.rule;
+        if (!row || !rule) {
+            continue;
+        }
+        removedCount += starts.size;
+        const remainingStarts = row.matchedBucketStarts.filter(
+            (start) => !starts.has(start),
+        );
+        if (remainingStarts.length === 0) {
+            actions.set(ruleIndex, { type: "delete" });
+            deletedIndexes.push(ruleIndex);
+            continue;
+        }
+        const remainingBuckets = remainingStarts
+            .map((start) => byStart.get(start))
+            .filter((bucket): bucket is SelectedBucket => bucket !== undefined);
+        const inferred = inferWaiverRules(remainingBuckets, pointPath, allWaivable);
+        const specs = inferredRulesToSpecs(
+            inferred,
+            rule.reason,
+            rule.author,
+        ).map((spec) => ({
+            ...spec,
+            disabled: rule.disabled,
+        }));
+        actions.set(ruleIndex, { type: "replace", specs });
+        rewrittenIndexes.push(ruleIndex);
+    }
+
+    const next: WaiverSpec[] = [];
+    const unchanged: WaiverSpec[] = [];
+    const replacements: WaiverSpec[] = [];
+
+    for (let index = 0; index < existing.length; index += 1) {
+        const action = actions.get(index);
+        if (!action) {
+            next.push(existing[index]);
+            unchanged.push(existing[index]);
+            continue;
+        }
+        if (action.type === "delete") {
+            continue;
+        }
+        next.push(...action.specs);
+        replacements.push(...action.specs);
+    }
+
+    return {
+        next,
+        unchanged,
+        replacements,
+        removedCount,
+        rewrittenIndexes,
+        deletedIndexes,
+        skippedMultiPointCount,
+        skippedStarts,
+    };
+}
+
+/** Apply a remove result, optionally condensing replacements into unchanged rules. */
+export function applyRemoveBucketsResult(
+    result: RemoveBucketsFromWaiversResult,
+    condense: boolean,
+): WaiverSpec[] {
+    if (condense && result.replacements.length > 0) {
+        return mergeWaiverSpecs(result.unchanged, result.replacements);
+    }
+    return result.next;
+}
+
 /**
  * Axis-value rule builder: values on the same axis are OR'd (additive);
  * different axes are AND'd (constraining). Empty filters match nothing.
