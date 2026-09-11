@@ -183,7 +183,7 @@ jobs:
           echo "::notice title=Nothing to publish::Built ${VERSION} from ${GITHUB_REF}, which is not a plain x.y.z release. The most recent tag is ${tag} (${state}). To publish it, re-run with 'Use workflow from: ${tag}'."
 
       - name: Upload distributions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-dist
           path: dist/
@@ -202,7 +202,7 @@ jobs:
       id-token: write
     steps:
       - name: Download distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: python-dist
           path: dist/
@@ -232,7 +232,7 @@ jobs:
       id-token: write
     steps:
       - name: Download distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: python-dist
           path: dist/
@@ -258,7 +258,7 @@ jobs:
         continue-on-error: true
         # actions/create-github-app-token v3.1.1 (2026-04-11)
         # refs/tags/v3.1.1 -> 1b10c78c7865c340bc4f6099eb2f838309f1e8c3
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
         with:
           app-id: ${{ secrets.NOODLE_APP_ID }}
           private-key: ${{ secrets.NOODLE_APP_PRIVATE_KEY }}
@@ -300,7 +300,7 @@ jobs:
       contents: write
     steps:
       - name: Download distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: python-dist
           path: dist/
