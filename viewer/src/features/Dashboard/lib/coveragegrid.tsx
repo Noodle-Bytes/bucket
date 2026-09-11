@@ -797,9 +797,12 @@ function isRowWaived(model: PointTableModel, row: number): boolean {
     return model.waiverReasons[row] !== undefined;
 }
 
-/** Hit ratio for the bucket table; waived buckets carry no ratio (NaN → "-"). */
+/** Hit ratio for the bucket table; waived / ignore / illegal → NaN ("-"). */
 function bucketHitRatio(hits: number, target: number, waived: boolean): number {
-    return waived ? Number.NaN : hits / target;
+    if (waived || target <= 0) {
+        return Number.NaN;
+    }
+    return hits / target;
 }
 
 function getAxisValue(model: PointTableModel, row: number, axisIdx: number): string {

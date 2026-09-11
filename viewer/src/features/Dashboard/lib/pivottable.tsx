@@ -280,7 +280,8 @@ export function aggregatePivotCells(
         if (b.waived) {
             // Waived buckets leave the denominator (and their hits the numerator).
             cur.waivedCount += 1;
-        } else {
+        } else if (b.goalTarget > 0) {
+            // Illegal (target < 0) and ignore (target === 0) stay out of scoring.
             cur.sumHits += b.hitCount;
             cur.sumTargets += b.goalTarget;
         }

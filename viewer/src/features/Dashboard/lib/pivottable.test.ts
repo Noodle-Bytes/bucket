@@ -291,9 +291,9 @@ describe("compare mode", () => {
             waivedCount: 0,
             compare: { validBuckets: 2, hitsA: 10, hitsB: 20, target: 20, category: "both" },
         });
-        // The ignored bucket counts towards bucketCount but not towards the comparison.
+        // The ignored bucket counts towards bucketCount but not scoring or comparison.
         expect(cellMap.get("B\t")).toEqual({
-            sumHits: 9,
+            sumHits: 4,
             sumTargets: 10,
             bucketCount: 2,
             waivedCount: 0,
@@ -370,6 +370,21 @@ describe("waived buckets in pivot cells", () => {
             sumTargets: 0,
             bucketCount: 1,
             waivedCount: 1,
+        });
+    });
+
+    test("illegal and ignore buckets stay out of hit/target sums", () => {
+        const buckets = [
+            { axes: { kind: "A" }, bucketIndex: 0, hitCount: 5, goalTarget: 10 },
+            { axes: { kind: "A" }, bucketIndex: 1, hitCount: 99, goalTarget: 0 },
+            { axes: { kind: "A" }, bucketIndex: 2, hitCount: 3, goalTarget: -1 },
+        ];
+        const { cellMap } = aggregatePivotCells(buckets, ["kind"], []);
+        expect(cellMap.get("A\t")).toEqual({
+            sumHits: 5,
+            sumTargets: 10,
+            bucketCount: 3,
+            waivedCount: 0,
         });
     });
 });
