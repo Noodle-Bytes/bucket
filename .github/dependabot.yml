@@ -6,8 +6,8 @@
 # security fixes still arrive individually.
 #
 # All Dependabot PRs use a [None] title prefix: dependency bumps do not cut a
-# Bucket tool release (see .github/RELEASE_AUTOMATION.md). Trailing whitespace
-# on the prefix prevents Dependabot from inserting a colon.
+# release of either bucket or the viewer (see .github/RELEASE_AUTOMATION.md).
+# Trailing whitespace on the prefix prevents Dependabot from inserting a colon.
 version: 2
 updates:
   - package-ecosystem: npm

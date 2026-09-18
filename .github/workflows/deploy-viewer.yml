@@ -1,14 +1,27 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
+#
+# The GitHub Pages site is two released artifacts side by side: the viewer
+# (its own viewer-v* release line) at the site root, and the docs under
+# /docs/. The docs describe the Python library, so they are published with
+# bucket: each bucket (v*) release rebuilds them from its tag. Docs changes
+# never cut a release on their own — a docs-only PR is [None] and goes live
+# with the next bucket release.
+#
+# A release on either line redeploys the whole site, and each half is always
+# built from its own line's newest tag — never from main — so a bucket
+# release cannot put an unreleased viewer on the site, and a viewer release
+# cannot publish docs for unreleased bucket features.
 
-name: Deploy Viewer to GitHub Pages
+name: Deploy Viewer and Docs to GitHub Pages
 
 on:
-  # Deploy when a release tag is created (by the Tag Release On Merge
-  # workflow, using a noodle-bucket-releases App token so this trigger
-  # fires), not on every commit to main.
+  # Both lines' release tags (created by Tag Release On Merge with a
+  # noodle-bucket-releases App token so these triggers fire). Not on every
+  # commit to main.
   push:
-    tags: ["v[0-9]*"]
+    tags: ["v[0-9]*", "viewer-v[0-9]*"]
+  # Manual redeploy of the newest release of each line.
   workflow_dispatch:
 
 permissions:
@@ -24,32 +37,58 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      # Only for the tag list; the sources are checked out per line below.
+      - name: Checkout tags
         uses: actions/checkout@v7
         with:
-          # Full history so the viewer's git-describe version fallback works
-          # on workflow_dispatch runs (tag pushes set BUCKET_VERSION directly).
           fetch-depth: 0
+
+      - name: Pick the newest release of each line
+        id: refs
+        run: |
+          set -euo pipefail
+          # "v[0-9]*" does not match viewer-v* tags, so each line only sees
+          # its own; versionsort puts 2.11.10 above 2.11.9.
+          viewer_tag="$(git tag --list 'viewer-v[0-9]*' --sort=-v:refname | head -1)"
+          bucket_tag="$(git tag --list 'v[0-9]*' --sort=-v:refname | head -1)"
+          if [ -z "$viewer_tag" ] || [ -z "$bucket_tag" ]; then
+            echo "::error title=Missing release tag::Need one viewer-v* tag (found '${viewer_tag}') and one v* tag (found '${bucket_tag}') to build the site."
+            exit 1
+          fi
+          echo "viewer_tag=${viewer_tag}" >> "$GITHUB_OUTPUT"
+          echo "bucket_tag=${bucket_tag}" >> "$GITHUB_OUTPUT"
+          echo "Viewer from ${viewer_tag}; docs from ${bucket_tag}"
+
+      - name: Checkout the newest viewer release
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.refs.outputs.viewer_tag }}
+          path: viewer-src
+
+      - name: Checkout the newest bucket release (for the docs)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.refs.outputs.bucket_tag }}
+          path: docs-src
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: viewer/package-lock.json
+          cache-dependency-path: viewer-src/viewer/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: viewer
+        working-directory: viewer-src/viewer
 
       - name: Build viewer
         run: npm run build
-        working-directory: viewer
+        working-directory: viewer-src/viewer
         env:
           GITHUB_PAGES: "true"
-          # Exact version from the pushed tag; empty on workflow_dispatch,
-          # where the resolver falls back to git describe.
-          BUCKET_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          # Exact version of the checked-out viewer release.
+          VIEWER_VERSION: ${{ steps.refs.outputs.viewer_tag }}
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -59,13 +98,13 @@ jobs:
       - name: Install MkDocs
         run: pip install mkdocs
 
-      - name: Build docs into viewer site
-        run: mkdocs build -d viewer/dist/docs
+      - name: Build docs into the viewer site
+        run: mkdocs build -f docs-src/mkdocs.yml -d "${GITHUB_WORKSPACE}/viewer-src/viewer/dist/docs"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: viewer/dist
+          path: viewer-src/viewer/dist
 
   deploy:
     runs-on: ubuntu-latest

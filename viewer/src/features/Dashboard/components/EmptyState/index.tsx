@@ -150,7 +150,7 @@ export default function EmptyState({
                                 color: primaryTextColor,
                             }}
                         >
-                            v{__APP_VERSION__}
+                            Viewer v{__APP_VERSION__}
                         </Typography.Text>
                     </div>
                 );

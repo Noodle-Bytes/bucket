@@ -9,7 +9,7 @@ import react from "@vitejs/plugin-react-swc";
 import tsconfigPaths from "vite-tsconfig-paths";
 // Plugin to allow download as a Progressive Web Application (PWA)
 import { VitePWA } from 'vite-plugin-pwa'
-import { resolveBucketVersion } from "./scripts/resolve-version.mjs";
+import { resolveViewerVersion } from "./scripts/resolve-version.mjs";
 
 const githubRepoBase = (() => {
     if (process.env.GITHUB_PAGES !== "true") {
@@ -102,7 +102,7 @@ export default defineConfig((env) => {
     return {
         base: githubRepoBase,
         define: {
-            __APP_VERSION__: JSON.stringify(resolveBucketVersion()),
+            __APP_VERSION__: JSON.stringify(resolveViewerVersion()),
         },
         plugins: [react(),
         tsconfigPaths(),

@@ -2,18 +2,26 @@
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 #
 # Tag-derived release flow (overview: .github/RELEASE_AUTOMATION.md).
-# Versions live in git tags, not files. When a [Patch]/[Minor]/[Major] PR
-# merges to main, compute the next version from the latest v* tag and create
-# the tag + GitHub release in one step. [None] PRs skip cleanly. The
-# workflow_dispatch trigger is the manual backup for cutting a release
-# immediately (or with an exact version).
+# Versions live in git tags, not files, and there are two release lines
+# that move independently:
+#
+#   bucket  the Python package (PyPI)          tags v*
+#   viewer  the web viewer and Electron app    tags viewer-v*
+#
+# When a [Patch]/[Minor]/[Major] PR merges to main, the files it changed
+# decide which line(s) it releases (.github/scripts/release-components.sh)
+# and the prefix decides how far each moves. Every affected line gets its
+# next version computed from its own latest tag, then a tag + GitHub
+# release in one step; the other line is untouched. [None] PRs skip
+# cleanly. The workflow_dispatch trigger is the manual backup for cutting
+# one line's release immediately (or with an exact version).
 #
 # Releases are created with a token minted from the noodle-bucket-releases
 # GitHub App (NOODLE_APP_ID / NOODLE_APP_PRIVATE_KEY) rather than
 # github.token, because tags pushed with the workflow token do not trigger
-# downstream workflows — deploy-viewer and publish-pypi run on the tag
-# push. An App private key does not expire, so there is no token to renew
-# or health-check.
+# downstream workflows — publish-pypi runs on a v* tag push and
+# deploy-viewer on either line's tag push. An App private key does not
+# expire, so there is no token to renew or health-check.
 
 name: Tag Release On Merge
 
@@ -23,6 +31,11 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      component:
+        description: "Release line to cut"
+        type: choice
+        options: [bucket, viewer]
+        default: bucket
       bump:
         description: "Version part to bump"
         type: choice
@@ -35,6 +48,8 @@ on:
 
 permissions:
   contents: read
+  # To list the merged PR's files.
+  pull-requests: read
 
 # Serialize releases so two near-simultaneous merges cannot both read the
 # same "latest tag" and compute the same next version.
@@ -94,11 +109,58 @@ jobs:
         if: steps.bump.outputs.bump == 'none'
         run: echo "PR title starts with [None]. Skipping tag and release."
 
+      # pull_request_target runs main's workflow file, and this checks out
+      # main too, so the helper scripts below are main's copies rather than
+      # anything the PR branch carried.
+      - name: Checkout main with full history and tags
+        if: steps.bump.outputs.bump != 'none'
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Decide which release lines the change touches
+        if: steps.bump.outputs.bump != 'none'
+        id: components
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_COMPONENT: ${{ inputs.component }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            {
+              echo "bucket=$([ "$INPUT_COMPONENT" = "bucket" ] && echo true || echo false)"
+              echo "viewer=$([ "$INPUT_COMPONENT" = "viewer" ] && echo true || echo false)"
+              echo "components=${INPUT_COMPONENT}"
+            } | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The PR's file list comes from the API rather than a git diff: it
+          # does not depend on the merge method or on how main moved since.
+          echo "Files changed by PR #${PR_NUMBER}:"
+          gh api "repos/${GH_REPO}/pulls/${PR_NUMBER}/files" --paginate --jq '.[].filename' \
+            | .github/scripts/release-components.sh \
+            | tee -a "$GITHUB_OUTPUT"
+
+      # pr-title-check.yml already fails a release-prefixed PR that ships in
+      # neither line before it can merge, so this is only a safety net.
+      - name: Nothing releasable changed
+        if: steps.bump.outputs.bump != 'none' && steps.components.outputs.components == ''
+        run: echo "::warning title=No release cut::The PR has a release prefix but changed no files that ship in bucket or the viewer. Use [None] for changes like this."
+
+      # Everything below runs only when at least one line is being released.
+      # "components" is empty for [None] PRs and for the case just above.
+
       # Mint a short-lived installation token for the noodle-bucket-releases
       # App. Minting fails loudly if NOODLE_APP_ID / NOODLE_APP_PRIVATE_KEY are
       # missing or the key is revoked, so no separate validation step is needed.
       - name: Mint noodle-bucket-releases app token
-        if: steps.bump.outputs.bump != 'none'
+        if: steps.components.outputs.components != ''
         id: app_token
         # actions/create-github-app-token v3.1.1 (2026-04-11)
         # refs/tags/v3.1.1 -> 1b10c78c7865c340bc4f6099eb2f838309f1e8c3
@@ -107,51 +169,30 @@ jobs:
           app-id: ${{ secrets.NOODLE_APP_ID }}
           private-key: ${{ secrets.NOODLE_APP_PRIVATE_KEY }}
 
-      - name: Checkout main with full history and tags
-        if: steps.bump.outputs.bump != 'none'
-        uses: actions/checkout@v7
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - name: Compute next version
-        if: steps.bump.outputs.bump != 'none'
+      - name: Compute next versions
+        if: steps.components.outputs.components != ''
         id: version
         env:
           BUMP: ${{ steps.bump.outputs.bump }}
           EXACT_VERSION: ${{ steps.bump.outputs.exact_version }}
+          BUCKET: ${{ steps.components.outputs.bucket }}
+          VIEWER: ${{ steps.components.outputs.viewer }}
         run: |
           set -euo pipefail
 
-          latest_tag="$(git tag --list 'v[0-9]*' --sort=-v:refname | head -1)"
-          if [ -z "$latest_tag" ]; then
-            latest_tag="v0.0.0"
+          # Each line bumps from its own latest tag. Outputs are
+          # bucket_latest / bucket_next and viewer_latest / viewer_next.
+          if [ "$BUCKET" = "true" ]; then
+            .github/scripts/next-version.sh v "$BUMP" "$EXACT_VERSION" \
+              | sed 's/^/bucket_/' | tee -a "$GITHUB_OUTPUT"
           fi
-          echo "Latest tag: ${latest_tag}"
-
-          if [ "$BUMP" = "exact" ]; then
-            next="$EXACT_VERSION"
-          else
-            base="${latest_tag#v}"
-            major="$(echo "$base" | cut -d. -f1)"
-            minor="$(echo "$base" | cut -d. -f2)"
-            patch="$(echo "$base" | cut -d. -f3)"
-            case "$BUMP" in
-              major) next="$((major + 1)).0.0" ;;
-              minor) next="${major}.$((minor + 1)).0" ;;
-              patch) next="${major}.${minor}.$((patch + 1))" ;;
-              *)
-                echo "::error title=Unsupported bump type::'$BUMP'"
-                exit 1
-                ;;
-            esac
+          if [ "$VIEWER" = "true" ]; then
+            .github/scripts/next-version.sh viewer-v "$BUMP" "$EXACT_VERSION" \
+              | sed 's/^/viewer_/' | tee -a "$GITHUB_OUTPUT"
           fi
-
-          echo "tag=v${next}" >> "$GITHUB_OUTPUT"
-          echo "Next version: v${next}"
 
       - name: Resolve release target SHA
-        if: steps.bump.outputs.bump != 'none'
+        if: steps.components.outputs.components != ''
         id: target
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -166,43 +207,77 @@ jobs:
           echo "sha=${sha}" >> "$GITHUB_OUTPUT"
           echo "Release target SHA: ${sha}"
 
-      - name: Create GitHub release with generated notes
-        if: steps.bump.outputs.bump != 'none'
+      - name: Create GitHub releases with generated notes
+        if: steps.components.outputs.components != ''
         id: release
         env:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
           TARGET_SHA: ${{ steps.target.outputs.sha }}
+          BUCKET: ${{ steps.components.outputs.bucket }}
+          VIEWER: ${{ steps.components.outputs.viewer }}
+          BUCKET_LATEST: ${{ steps.version.outputs.bucket_latest }}
+          BUCKET_NEXT: ${{ steps.version.outputs.bucket_next }}
+          VIEWER_LATEST: ${{ steps.version.outputs.viewer_latest }}
+          VIEWER_NEXT: ${{ steps.version.outputs.viewer_next }}
         run: |
           set -euo pipefail
 
-          if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
-            echo "::error title=Tag already exists::${RELEASE_TAG} already exists. Use workflow_dispatch with an explicit version if you need to move past it."
-            exit 1
-          fi
+          # cut_release <component> <new tag> <previous tag or empty> [gh flags...]
+          cut_release() {
+            local component="$1" tag="$2" previous="$3"
+            shift 3
 
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Release ${RELEASE_TAG} already exists. Skipping create."
-            exit 0
-          fi
+            if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+              echo "::error title=Tag already exists::${tag} already exists. Use workflow_dispatch with an explicit version if you need to move past it."
+              exit 1
+            fi
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "Release ${tag} already exists. Skipping create."
+              return 0
+            fi
 
-          url="$(gh release create "$RELEASE_TAG" \
-            --target "$TARGET_SHA" \
-            --title "$RELEASE_TAG" \
-            --generate-notes)"
-          echo "url=${url}" >> "$GITHUB_OUTPUT"
-          echo "Created release ${RELEASE_TAG}: ${url}"
+            # Notes run from this line's previous tag, so bucket and viewer
+            # histories do not bleed into each other's release notes.
+            local -a notes_from=()
+            if [ -n "$previous" ]; then
+              notes_from=(--notes-start-tag "$previous")
+            fi
+
+            local url
+            url="$(gh release create "$tag" \
+              --target "$TARGET_SHA" \
+              --title "$tag" \
+              --generate-notes "${notes_from[@]}" "$@")"
+            echo "${component}_url=${url}" >> "$GITHUB_OUTPUT"
+            echo "Created ${component} release ${tag}: ${url}"
+          }
+
+          if [ "$BUCKET" = "true" ]; then
+            cut_release bucket "$BUCKET_NEXT" "$BUCKET_LATEST"
+          fi
+          if [ "$VIEWER" = "true" ]; then
+            # Viewer releases never take the repository's "Latest" badge, so
+            # it always points at the newest noodle-bucket (PyPI) release.
+            cut_release viewer "$VIEWER_NEXT" "$VIEWER_LATEST" --latest=false
+          fi
 
       - name: Comment on source PR
-        if: github.event_name == 'pull_request_target' && steps.bump.outputs.bump != 'none' && steps.release.outputs.url != ''
+        if: github.event_name == 'pull_request_target' && (steps.release.outputs.bucket_url != '' || steps.release.outputs.viewer_url != '')
         continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
-          RELEASE_URL: ${{ steps.release.outputs.url }}
+          BUCKET_NEXT: ${{ steps.version.outputs.bucket_next }}
+          BUCKET_URL: ${{ steps.release.outputs.bucket_url }}
+          VIEWER_NEXT: ${{ steps.version.outputs.viewer_next }}
+          VIEWER_URL: ${{ steps.release.outputs.viewer_url }}
         run: |
           set -euo pipefail
-          gh pr comment "$PR_NUMBER" --body "🪣 Shipped in [${RELEASE_TAG}](${RELEASE_URL})"
+          if [ -n "$BUCKET_URL" ]; then
+            gh pr comment "$PR_NUMBER" --body "🪣 Shipped in [${BUCKET_NEXT}](${BUCKET_URL})"
+          fi
+          if [ -n "$VIEWER_URL" ]; then
+            gh pr comment "$PR_NUMBER" --body "🪣 Viewer shipped in [${VIEWER_NEXT}](${VIEWER_URL})"
+          fi

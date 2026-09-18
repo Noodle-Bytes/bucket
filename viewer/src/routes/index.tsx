@@ -35,11 +35,11 @@ function useUpdateNotification() {
                 return;
             }
             notifyInfo({
-                message: "Update available",
+                message: "Viewer update available",
                 description: (
                     <>
-                        Bucket v{update.latestVersion} has been released (this
-                        viewer is v{__APP_VERSION__}).{" "}
+                        Bucket viewer v{update.latestVersion} has been released
+                        (this viewer is v{__APP_VERSION__}).{" "}
                         <a
                             href={update.releaseUrl}
                             target="_blank"

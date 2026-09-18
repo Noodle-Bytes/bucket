@@ -60,6 +60,13 @@ bucket = "bucket.__main__:cli"
 [tool.hatch.version]
 source = "vcs"
 
+# Only v* tags version the Python package. The viewer is released on its own
+# viewer-v* tags, and setuptools-scm's default describe would match those too
+# (any tag containing a digit) and strip the "viewer-" prefix, so a
+# viewer-v2.11.5 tag would turn this package into 2.11.5. Match v* tags only.
+[tool.hatch.version.raw-options]
+git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "v[0-9]*"]
+
 # Python-only distributions. The viewer and Electron app are not installed
 # via pip; HTML generation requires a source checkout and Node.js.
 [tool.hatch.build.targets.wheel]

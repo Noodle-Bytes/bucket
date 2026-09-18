@@ -2376,7 +2376,7 @@ export default function Dashboard({
                                     textAlign: "center",
                                 }}
                             >
-                                Version v{__APP_VERSION__}
+                                Viewer v{__APP_VERSION__}
                             </Typography.Text>
                         )}
                     </Theme.Consumer>
