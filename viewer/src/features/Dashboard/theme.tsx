@@ -260,6 +260,9 @@ export function antTheme(activeTheme: AppTheme): ThemeConfig {
                 controlItemBgHover: colors.lowlightbg.value,
                 controlItemBgActive: colors.highlightbg.value,
             },
+            Tour: {
+                zIndexPopup: 1100,
+            },
         },
     };
 }

@@ -6,9 +6,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from bucket.rw import ArchiveAccessor
+from bucket.waiver import load_waivers, match_waivers
 from examples.riscv_stress.generate_stress_data import (
     generate,
     generate_viewer_demo,
+    viewer_demo_waivers_path,
 )
 from examples.riscv_stress.stress_common import (
     RISCVDataset,
@@ -165,3 +167,8 @@ def test_generate_viewer_demo_has_varied_coverage_states():
         assert cell_hit(baseline, jalr, 3)
         assert cell_hit(improved, jalr, 0)
         assert cell_hit(improved, jalr, 1)
+
+        waiver_path = viewer_demo_waivers_path(output)
+        assert waiver_path.is_file()
+        matched = match_waivers(baseline, load_waivers(waiver_path))
+        assert len(matched) > 0

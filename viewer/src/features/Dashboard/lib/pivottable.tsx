@@ -27,7 +27,7 @@ import type {
     CompareViewContext,
     ComparisonResult,
 } from "@/types/coverageCompare";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /** MDI wizard hat icon (Pictogrammers), accepts size and color via style. */
 function WizardHatIcon({ style }: { style?: React.CSSProperties }) {
@@ -662,6 +662,8 @@ export type PointPivotViewProps = {
     node: PointNode;
     /** When set, cells show compare categories instead of hit ratios. */
     compare?: CompareViewContext;
+    /** Apply the first suggested row/column layout on mount (onboarding tour). */
+    seedSuggestedLayout?: boolean;
 };
 
 function CompareLegend({
@@ -708,7 +710,11 @@ function CompareLegend({
     );
 }
 
-export function PointPivotView({ node, compare }: PointPivotViewProps) {
+export function PointPivotView({
+    node,
+    compare,
+    seedSuggestedLayout = false,
+}: PointPivotViewProps) {
     const [rowAxes, setRowAxes] = useState<string[]>([]);
     const [colAxes, setColAxes] = useState<string[]>([]);
     const [suggestionIndex, setSuggestionIndex] = useState(0);
@@ -855,6 +861,15 @@ export function PointPivotView({ node, compare }: PointPivotViewProps) {
         () => suggestAxesAll(buckets, axisNames),
         [buckets, axisNames],
     );
+    useEffect(() => {
+        if (!seedSuggestedLayout || suggestions.length === 0) {
+            return;
+        }
+        const { rowAxes: suggestedRow, colAxes: suggestedCol } = suggestions[0];
+        setRowAxes(suggestedRow);
+        setColAxes(suggestedCol);
+        setSuggestionIndex(suggestions.length > 1 ? 1 : 0);
+    }, [seedSuggestedLayout, suggestions]);
     const applySuggestion = () => {
         if (suggestions.length === 0) return;
         const idx = suggestionIndex % suggestions.length;

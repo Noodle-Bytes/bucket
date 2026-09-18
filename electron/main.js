@@ -887,13 +887,11 @@ ipcMain.handle('read-file', async (event, filePath) => {
   }
 });
 
-// Bundled empty-state example (viewer/public → dist/examples via Vite).
-ipcMain.handle('read-bundled-example-coverage', async () => {
-  const relativeExample = path.join('examples', 'riscv_stress_viewer_demo.bktgz');
+async function readBundledViewerAsset(relativePath, label) {
   const candidates = [
-    path.join(distPath, relativeExample),
+    path.join(distPath, relativePath),
     // Dev / incomplete builds: fall back to the source public asset.
-    path.join(__dirname, '..', 'viewer', 'public', relativeExample),
+    path.join(__dirname, '..', 'viewer', 'public', relativePath),
   ];
   for (const candidate of candidates) {
     try {
@@ -903,11 +901,26 @@ ipcMain.handle('read-bundled-example-coverage', async () => {
         continue;
       }
       const detail = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to read bundled example coverage: ${detail}`);
+      throw new Error(`Failed to read bundled ${label}: ${detail}`);
     }
   }
   throw new Error(
-    `Bundled example coverage not found. Looked in:\n${candidates.join('\n')}`,
+    `Bundled ${label} not found. Looked in:\n${candidates.join('\n')}`,
+  );
+}
+
+// Bundled empty-state example (viewer/public → dist/examples via Vite).
+ipcMain.handle('read-bundled-example-coverage', async () => {
+  return readBundledViewerAsset(
+    path.join('examples', 'riscv_stress_viewer_demo.bktgz'),
+    'example coverage',
+  );
+});
+
+ipcMain.handle('read-bundled-example-waivers', async () => {
+  return readBundledViewerAsset(
+    path.join('examples', 'riscv_stress_viewer_demo.waivers.json'),
+    'example waivers',
   );
 });
 

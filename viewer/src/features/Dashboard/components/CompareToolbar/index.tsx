@@ -16,6 +16,7 @@ import {
 import type { UseCoverageCompareResult } from "@/hooks/useCoverageCompare";
 import type { CompareRecordRow } from "@/hooks/useCoverageCompare";
 import type { CategoryCounts } from "@/types/coverageCompare";
+import { TOUR_ANCHOR } from "../OnboardingTour/tourAnchors";
 import CompareReportExportModal from "../CompareReportExportModal";
 
 export type CompareToolbarProps = {
@@ -129,6 +130,7 @@ export default function CompareToolbar({
                             onExportingChange={setExporting}
                         />
                         <div
+                            data-tour={TOUR_ANCHOR.compareToolbar}
                             style={{
                                 padding: "12px 16px",
                                 borderBottom: `1px solid ${colors.secondarybg.value}`,

@@ -9,6 +9,7 @@ interface ElectronAPI {
   openFileDialog: () => Promise<string[] | null>;
   readFile: (filePath: string) => Promise<Uint8Array>;
   readBundledExampleCoverage: () => Promise<Uint8Array>;
+  readBundledExampleWaivers: () => Promise<Uint8Array>;
   getDroppedFile: (filePath: string) => Promise<Uint8Array | null>;
   saveExportFile: (payload: {
     bytes: Uint8Array;

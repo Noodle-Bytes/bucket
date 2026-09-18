@@ -75,6 +75,7 @@ const getPluginPWA = ((env) => {
         'apple-touch-icon-180x180.png',
         'maskable-icon-512x512.png',
         'examples/riscv_stress_viewer_demo.bktgz',
+        'examples/riscv_stress_viewer_demo.waivers.json',
     ];
 
     const devConfig = {};

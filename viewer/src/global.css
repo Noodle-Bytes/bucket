@@ -84,6 +84,11 @@ html[data-bucket-theme="odd"] .ant-table-sticky-scroll-bar-active {
   background-color: #333333 !important;
 }
 
+/* Tour spotlight sits above the waivers drawer; hide the drawer's own dimmer. */
+html[data-bucket-tour="1"] .ant-drawer-mask {
+  display: none !important;
+}
+
 /* Native scrollbars (sider, modals, non-virtual overflow). */
 *::-webkit-scrollbar {
   width: 12px;
@@ -305,4 +310,12 @@ html[data-bucket-theme="odd"] * {
 .bucket-version-compat-alert.ant-alert-info .ant-alert-message,
 .bucket-version-compat-alert.ant-alert-info .ant-alert-description {
   color: inherit !important;
+}
+
+.ant-tour .ant-tour-inner {
+  border-radius: 10px;
+}
+
+.ant-tour .ant-tour-buttons {
+  align-items: center;
 }
