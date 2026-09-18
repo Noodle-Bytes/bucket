@@ -21,8 +21,18 @@ updates:
         patterns: ["*"]
         update-types: [minor, patch]
     # Majors blocked until peer deps catch up (see closed PRs #222–#224).
+    # React 19 also needs react-query and react-helmet-async replaced first,
+    # both of which cap their peer range at React 18 (see closed PR #236).
     ignore:
       - dependency-name: "@eslint/js"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
         update-types: ["version-update:semver-major"]
       - dependency-name: "antd"
         update-types: ["version-update:semver-major"]
