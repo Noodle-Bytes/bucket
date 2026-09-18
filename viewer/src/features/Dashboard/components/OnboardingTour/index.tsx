@@ -93,7 +93,10 @@ export default function OnboardingTour({
     const [current, setCurrent] = useState(0);
     const onSceneRef = useRef(onScene);
     const settleTimerRef = useRef<number | null>(null);
-    onSceneRef.current = onScene;
+
+    useEffect(() => {
+        onSceneRef.current = onScene;
+    }, [onScene]);
 
     useEffect(() => {
         return () => {
