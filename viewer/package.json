@@ -29,7 +29,7 @@
     "react-error-boundary": "^6.1.5",
     "react-helmet-async": "^2.0.4",
     "react-query": "^3.39.3",
-    "react-router-dom": "^6.21.3",
+    "react-router-dom": "^7.18.4",
     "vite": "^7.2.2",
     "vite-plugin-singlefile": "^2.3.3"
   },
