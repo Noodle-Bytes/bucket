@@ -2,11 +2,14 @@
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 #
 # Publish the Python package. A v* tag push uploads to production PyPI;
-# TestPyPI is opt-in via workflow_dispatch (target=testpypi). Only plain
-# x.y.z versions are uploaded: an untagged commit builds as x.y.z.devN+gSHA,
-# and the indexes reject local version segments, so those runs build and
-# verify but skip publishing. Re-running a tag is a no-op: the target index
-# is queried first and the upload is skipped if it already has that version.
+# TestPyPI is opt-in via workflow_dispatch (target=testpypi). Viewer
+# releases are viewer-v* tags and never reach this workflow (they run
+# deploy-viewer.yml instead), so a viewer change never publishes to PyPI.
+# Only plain x.y.z versions are uploaded: an untagged commit builds as
+# x.y.z.devN+gSHA, and the indexes reject local version segments, so those
+# runs build and verify but skip publishing. Re-running a tag is a no-op:
+# the target index is queried first and the upload is skipped if it already
+# has that version.
 # To rehearse against TestPyPI without cutting a tag, dispatch with
 # target=testpypi and test_version=0.0.1.
 # Operator setup: .github/RELEASE_AUTOMATION.md.
@@ -15,6 +18,7 @@ name: Publish to PyPI
 
 on:
   push:
+    # v followed by a digit: matches v2.11.0, not viewer-v2.11.0.
     tags: ["v[0-9]*"]
   workflow_dispatch:
     inputs:
@@ -56,10 +60,10 @@ jobs:
       # pypi is the default target, so dispatching from a branch by mistake is
       # the easy slip. Fail before building, and name the tag they likely meant.
       - name: Reject production runs that are not on a tag
-        if: github.event_name == 'workflow_dispatch' && inputs.target == 'pypi' && !startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'workflow_dispatch' && inputs.target == 'pypi' && (!startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/viewer-v'))
         run: |
           set -euo pipefail
-          tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)"
           echo "::error title=Production requires a tag::${GITHUB_REF} is not a v* tag, so there is no releasable version to publish.${tag:+ The most recent tag is ${tag}.} Re-run with 'Use workflow from: ${tag:-<tag>}'."
           exit 1
 
@@ -170,7 +174,7 @@ jobs:
           # Not publishable from this ref. Name the tag that could be published
           # instead, and whether it is already there, so the operator does not
           # have to go and look it up.
-          tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)"
           if [ -z "${tag}" ]; then
             echo "::notice title=Nothing to publish::Built ${VERSION} from ${GITHUB_REF}, which is not a plain x.y.z release, and the repository has no tags to fall back on."
             exit 0
@@ -293,7 +297,7 @@ jobs:
           gh pr comment "${pr}" --body "📦 Published to PyPI: [\`noodle-bucket ${VERSION}\`](${url})"
 
   attach-release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && !startsWith(github.ref, 'refs/tags/viewer-v')
     needs: build
     runs-on: ubuntu-latest
     permissions:

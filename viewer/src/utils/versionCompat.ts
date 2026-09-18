@@ -9,11 +9,16 @@
  * Non-numeric or missing parts are treated as 0.
  */
 export function compareVersions(a: string, b: string): -1 | 0 | 1 {
-    const parse = (v: string) =>
-        v
+    const parse = (v: string) => {
+        const parts = v
             .split(".")
             .slice(0, 3)
             .map((p) => parseInt(p, 10) || 0);
+        while (parts.length < 3) {
+            parts.push(0);
+        }
+        return parts;
+    };
 
     const [aMaj, aMin, aPat] = parse(a);
     const [bMaj, bMin, bPat] = parse(b);

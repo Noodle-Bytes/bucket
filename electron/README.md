@@ -51,7 +51,7 @@ but macOS bundles can only be built on macOS.
 
 ### Prerequisites
 
-- Node.js 22.12 or newer and npm, plus `git` so the version can be read from tags
+- Node.js 22.12 or newer and npm, plus `git` so the version can be read from the viewer's `viewer-v*` tags
 - macOS: nothing else
 - Windows: nothing else (run the command from PowerShell or cmd)
 - Linux: `libfuse2` if you want to *run* the AppImage on distributions that no longer ship it
@@ -66,7 +66,9 @@ node electron/build.mjs
 
 On macOS and Linux, `./electron/build.sh` does the same thing.
 
-The script resolves the version from git tags, builds the viewer, installs any
+The script resolves the version from the latest `viewer-v*` git tag (the desktop
+app shares the viewer's version line, which moves independently of the
+`noodle-bucket` Python package), builds the viewer, installs any
 missing npm dependencies, and packages the app for the current OS and
 architecture (an Apple Silicon Mac builds the arm64 app only). Pass a platform
 flag to override, and architecture flags to choose variants:

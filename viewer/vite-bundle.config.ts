@@ -11,7 +11,7 @@ import tsconfigPaths from "vite-tsconfig-paths";
 import { viteSingleFile } from "vite-plugin-singlefile"
 import {resolve} from 'path'
 import { createRequire } from "module";
-import { resolveBucketVersion } from "./scripts/resolve-version.mjs";
+import { resolveViewerVersion } from "./scripts/resolve-version.mjs";
 
 export default defineConfig(async () => {
     let cvgPathJSON = process.env["BUCKET_CVG_JSON"];
@@ -28,7 +28,7 @@ export default defineConfig(async () => {
         plugins: [react(), tsconfigPaths(), viteSingleFile()],
         define: {
             __BUCKET_CVG_JSON: coverage,
-            __APP_VERSION__: JSON.stringify(resolveBucketVersion()),
+            __APP_VERSION__: JSON.stringify(resolveViewerVersion()),
         },
         // Web workers are bundled separately and do not inherit `plugins`,
         // so "@/..." imports inside the worker graph (archiveWorker ->

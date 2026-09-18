@@ -7,26 +7,30 @@ import { execSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 /**
- * Resolve the Bucket version for build-time injection.
+ * Resolve the viewer version for build-time injection.
  *
- * Git tags are the single source of truth for versions (package.json holds a
- * `0.0.0` placeholder). Resolution order:
- *   1. BUCKET_VERSION env var (set by CI and electron/build.mjs)
- *   2. `git describe` against the latest v* tag, normalized to semver:
+ * The viewer (and the Electron app that wraps it) is versioned independently
+ * of the bucket Python package: viewer releases are `viewer-v*` git tags,
+ * bucket releases are `v*` tags, and neither moves the other. Git tags are
+ * the single source of truth (package.json holds a `0.0.0` placeholder).
+ * Resolution order:
+ *   1. VIEWER_VERSION env var (set by CI and electron/build.mjs); a leading
+ *      "viewer-v" or "v" is stripped
+ *   2. `git describe` against the latest viewer-v* tag, normalized to semver:
  *      exact tag        -> "2.4.3"
  *      2 commits past   -> "2.4.4-dev.2+gcf775b8"
  *      uncommitted work -> trailing ".dirty"
  *   3. "0.0.0" (no git metadata available; update checks are skipped)
  */
-export function resolveBucketVersion() {
-    const fromEnv = process.env.BUCKET_VERSION?.trim();
+export function resolveViewerVersion() {
+    const fromEnv = process.env.VIEWER_VERSION?.trim();
     if (fromEnv) {
-        return fromEnv.replace(/^v/, "");
+        return stripTagPrefix(fromEnv);
     }
 
     try {
         const described = execSync(
-            'git describe --tags --long --dirty --match "v[0-9]*"',
+            'git describe --tags --long --dirty --match "viewer-v[0-9]*"',
             { stdio: ["ignore", "pipe", "ignore"] },
         )
             .toString()
@@ -36,20 +40,25 @@ export function resolveBucketVersion() {
             return version;
         }
     } catch {
-        // No git repo, no tags, or git not installed — fall through.
+        // No git repo, no viewer-v* tags, or git not installed — fall through.
     }
 
     console.warn(
-        "[bucket] Could not resolve a version from BUCKET_VERSION or git tags; " +
-            "building as 0.0.0",
+        "[bucket] Could not resolve a viewer version from VIEWER_VERSION or " +
+            "viewer-v* git tags; building as 0.0.0",
     );
     return "0.0.0";
+}
+
+/** "viewer-v2.4.3" or "v2.4.3" -> "2.4.3"; anything else is returned as is. */
+export function stripTagPrefix(tag) {
+    return tag.replace(/^viewer-v/, "").replace(/^v/, "");
 }
 
 /** Normalize `git describe --long --dirty` output to a semver string. */
 function normalizeDescribe(described) {
     const match = described.match(
-        /^v(\d+)\.(\d+)\.(\d+)-(\d+)-g([0-9a-f]+)(-dirty)?$/,
+        /^viewer-v(\d+)\.(\d+)\.(\d+)-(\d+)-g([0-9a-f]+)(-dirty)?$/,
     );
     if (!match) {
         return null;
@@ -66,5 +75,5 @@ function normalizeDescribe(described) {
 
 // Allow `node scripts/resolve-version.mjs` (used by electron/build.mjs and CI).
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-    console.log(resolveBucketVersion());
+    console.log(resolveViewerVersion());
 }

@@ -12,10 +12,11 @@ const windowStateKeeper = require('electron-window-state');
 
 // Packaged builds get the real version baked into package.json via
 // electron-builder's extraMetadata (see build.mjs); the source tree holds a
-// 0.0.0 placeholder, so dev runs fall back to BUCKET_VERSION when set.
+// 0.0.0 placeholder, so dev runs fall back to VIEWER_VERSION when set. The
+// desktop app shares the viewer's version line (viewer-v* tags).
 const appVersion = packageJson.version !== '0.0.0'
   ? packageJson.version
-  : (process.env.BUCKET_VERSION || packageJson.version);
+  : (process.env.VIEWER_VERSION || packageJson.version);
 
 // macOS overlay scrollbars are nearly invisible on dark coverage tables.
 // Disable them before ready so Chromium uses classic, CSS-styleable bars.

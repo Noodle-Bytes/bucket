@@ -10,15 +10,31 @@ export type UpdateInfo = {
     releaseUrl: string;
 };
 
-const LATEST_RELEASE_API =
-    "https://api.github.com/repos/Noodle-Bytes/bucket/releases/latest";
-const RELEASES_PAGE = "https://github.com/Noodle-Bytes/bucket/releases/latest";
+// The viewer is released on its own viewer-v<major>.<minor>.<patch> tags,
+// independently of the bucket Python package (v* tags). Both lines share the
+// repository's releases list and viewer releases are never marked "Latest",
+// so this lists recent releases and picks the highest viewer tag rather than
+// asking /releases/latest.
+const RELEASES_API =
+    "https://api.github.com/repos/Noodle-Bytes/bucket/releases?per_page=100";
+const RELEASES_PAGE = "https://github.com/Noodle-Bytes/bucket/releases";
+const VIEWER_RELEASE_TAG = /^viewer-v(\d+(?:\.\d+){0,2})$/;
+
+type ReleaseSummary = {
+    tag_name?: unknown;
+    html_url?: unknown;
+    draft?: unknown;
+    prerelease?: unknown;
+};
+
+type ViewerRelease = { version: string; url: string };
 
 /**
- * Ask GitHub for the latest release and compare it against the running
- * version. Resolves with update info when a newer release exists, and null
- * otherwise — including on any network or API failure, so offline or
- * firewalled environments stay quiet and callers never handle errors.
+ * Ask GitHub for recent releases and compare the newest viewer release
+ * against the running version. Resolves with update info when a newer viewer
+ * release exists, and null otherwise — including on any network or API
+ * failure, so offline or firewalled environments stay quiet and callers never
+ * handle errors.
  */
 export async function checkForNewerRelease(
     currentVersion: string,
@@ -30,33 +46,51 @@ export async function checkForNewerRelease(
         return null;
     }
     try {
-        const response = await fetch(LATEST_RELEASE_API, {
+        const response = await fetch(RELEASES_API, {
             headers: { Accept: "application/vnd.github+json" },
             signal: AbortSignal.timeout(timeoutMs),
         });
         if (!response.ok) {
             return null;
         }
-        const release = (await response.json()) as {
-            tag_name?: unknown;
-            html_url?: unknown;
-        };
-        const tag =
-            typeof release?.tag_name === "string" ? release.tag_name.trim() : "";
-        const latestVersion = tag.replace(/^v/, "");
-        // Only plain x[.y[.z]] tags are comparable; skip anything else.
-        if (!/^\d+(\.\d+){0,2}$/.test(latestVersion)) {
+        const body: unknown = await response.json();
+        const latest = newestViewerRelease(Array.isArray(body) ? body : []);
+        if (!latest || compareVersions(latest.version, currentVersion) <= 0) {
             return null;
         }
-        if (compareVersions(latestVersion, currentVersion) <= 0) {
-            return null;
-        }
-        const releaseUrl =
-            typeof release?.html_url === "string" && release.html_url
-                ? release.html_url
-                : RELEASES_PAGE;
-        return { latestVersion, releaseUrl };
+        return { latestVersion: latest.version, releaseUrl: latest.url };
     } catch {
         return null;
     }
+}
+
+/**
+ * The highest published (non-draft, non-prerelease) viewer-v* release in a
+ * GitHub releases listing, or null when there is none. Bucket (v*) releases
+ * and anything that is not a plain x[.y[.z]] viewer tag are ignored.
+ */
+export function newestViewerRelease(releases: unknown[]): ViewerRelease | null {
+    let best: ViewerRelease | null = null;
+    for (const entry of releases) {
+        const release = (entry ?? {}) as ReleaseSummary;
+        if (release.draft === true || release.prerelease === true) {
+            continue;
+        }
+        const tag =
+            typeof release.tag_name === "string" ? release.tag_name.trim() : "";
+        const match = VIEWER_RELEASE_TAG.exec(tag);
+        if (!match) {
+            continue;
+        }
+        const version = match[1];
+        if (best && compareVersions(version, best.version) <= 0) {
+            continue;
+        }
+        const url =
+            typeof release.html_url === "string" && release.html_url
+                ? release.html_url
+                : `${RELEASES_PAGE}/tag/${tag}`;
+        best = { version, url };
+    }
+    return best;
 }

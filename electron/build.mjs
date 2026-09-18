@@ -22,8 +22,10 @@
  * Linux packages (electron-builder fetches Wine and the AppImage tooling), but
  * macOS bundles can only be built on macOS.
  *
- * Steps: resolve the version from git tags, build the viewer, then run
- * electron-builder with the version injected into the packaged metadata.
+ * Steps: resolve the version from the viewer's viewer-v* git tags (the
+ * desktop app shares the viewer's version line, which is independent of the
+ * Python package), build the viewer, then run electron-builder with the
+ * version injected into the packaged metadata.
  */
 
 import { spawnSync } from "node:child_process";
@@ -100,14 +102,12 @@ function ensureDependencies(dir, label) {
 }
 
 async function resolveVersion() {
-    if (process.env.BUCKET_VERSION?.trim()) {
-        return process.env.BUCKET_VERSION.trim().replace(/^v/, "");
-    }
-    // Import by URL so Windows drive-letter paths resolve correctly.
-    const { resolveBucketVersion } = await import(
+    // The viewer's resolver honours VIEWER_VERSION before falling back to
+    // git. Import by URL so Windows drive-letter paths resolve correctly.
+    const { resolveViewerVersion } = await import(
         pathToFileURL(path.join(viewerDir, "scripts", "resolve-version.mjs")).href
     );
-    return resolveBucketVersion();
+    return resolveViewerVersion();
 }
 
 const { platforms, archs, passthrough } = parseArgs(process.argv.slice(2));
@@ -132,11 +132,11 @@ if (archs.length === 0 && platforms.length === 1 && platforms[0] === HOST_FLAG &
 console.log("Building Bucket desktop app");
 console.log(`Targets: ${platforms.join(" ")}${archs.length ? ` ${archs.join(" ")}` : ""}`);
 
-// Versions come from git tags, not package.json (which holds a 0.0.0
-// placeholder). Resolve once and share it with the viewer bundle
+// Versions come from viewer-v* git tags, not package.json (which holds a
+// 0.0.0 placeholder). Resolve once and share it with the viewer bundle
 // (__APP_VERSION__) and the packaged app metadata.
 const version = await resolveVersion();
-process.env.BUCKET_VERSION = version;
+process.env.VIEWER_VERSION = version;
 console.log(`Version: ${version}`);
 
 console.log("\nStep 1: Building viewer...");

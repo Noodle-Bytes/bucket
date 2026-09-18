@@ -2,7 +2,9 @@
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 #
 # Enforces release-prefix titles ([Patch]/[Minor]/[Major]/[None]), which
-# drive the tag-derived release flow. See .github/RELEASE_AUTOMATION.md.
+# drive the tag-derived release flow, and checks that a release-prefixed PR
+# actually changes something that ships in bucket or the viewer. See
+# .github/RELEASE_AUTOMATION.md.
 
 name: PR Title Check
 
@@ -13,20 +15,28 @@ on:
 
 permissions:
   contents: read
+  # To list the PR's files.
+  pull-requests: read
 
 jobs:
   enforce-title-prefix:
     runs-on: ubuntu-latest
     steps:
       - name: Validate PR title prefix
+        id: prefix
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           set -euo pipefail
 
           case "$PR_TITLE" in
-            \[Patch\]*|\[Minor\]*|\[Major\]*|\[None\]*)
-              echo "PR title prefix is valid."
+            \[Patch\]*|\[Minor\]*|\[Major\]*)
+              echo "PR title prefix is valid and cuts a release on merge."
+              echo "release=true" >> "$GITHUB_OUTPUT"
+              ;;
+            \[None\]*)
+              echo "PR title prefix is valid; no release on merge."
+              echo "release=false" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "::error title=Invalid PR title prefix::PR title must start with one of: [Patch], [Minor], [Major], [None]"
@@ -36,7 +46,8 @@ jobs:
               echo "1. Edit the PR title in GitHub."
               echo "2. Add one of the required prefixes followed by a short description."
               echo ""
-              echo "Prefix meanings (versions are derived from git tags on merge):"
+              echo "Prefix meanings (versions are derived from git tags on merge; the files a"
+              echo "PR changes decide whether it releases bucket, the viewer, or both):"
               echo "[Patch] Backward-compatible bug fix or small correction (tags next patch release)."
               echo "[Minor] Backward-compatible feature/improvement (tags next minor release)."
               echo "[Major] Breaking change (tags next major release)."
@@ -50,3 +61,29 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Checkout
+        if: steps.prefix.outputs.release == 'true'
+        uses: actions/checkout@v7
+
+      # A release prefix on a PR that ships in neither line would merge into
+      # a silent no-op, so catch it here where the author can fix the title.
+      - name: Check the change ships in bucket or the viewer
+        if: steps.prefix.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          echo "Files changed by this PR:"
+          classified="$(gh api "repos/${GH_REPO}/pulls/${PR_NUMBER}/files" --paginate --jq '.[].filename' \
+            | .github/scripts/release-components.sh)"
+          components="$(echo "$classified" | sed -n 's/^components=//p')"
+
+          if [ -z "$components" ]; then
+            echo "::error title=Nothing to release::This PR has a release prefix but changes no files that ship in bucket (bucket/, pyproject.toml) or the viewer (viewer/, electron/, branding/). Documentation never cuts a release: docs/ and README.md changes go live with the next bucket release. Retitle it with [None], or include the change it is meant to release."
+            exit 1
+          fi
+          echo "On merge this PR will release: ${components}"
