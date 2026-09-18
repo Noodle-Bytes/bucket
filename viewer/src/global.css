@@ -319,3 +319,12 @@ html[data-bucket-theme="odd"] * {
 .ant-tour .ant-tour-buttons {
   align-items: center;
 }
+
+/* Inactive tour dots use colorFill, which disappears on dark panels. */
+html[data-bucket-theme*="dark"] .ant-tour .ant-tour-indicator {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+html[data-bucket-theme*="dark"] .ant-tour .ant-tour-indicator-active {
+  background: #1677ff;
+}

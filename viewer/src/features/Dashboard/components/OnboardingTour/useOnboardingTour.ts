@@ -5,11 +5,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { confirmThemed } from "@/utils/themedStaticModal";
+
 import {
     hasCompletedOnboardingTour,
     markOnboardingTourCompleted,
     shouldAutoStartOnboardingTour,
 } from "./tourStorage";
+
+/** Survives Strict Mode remount so we only ask once per page load. */
+let tourOfferInFlight = false;
 
 export function useOnboardingTour({
     isEmpty,
@@ -27,8 +32,11 @@ export function useOnboardingTour({
     const [open, setOpen] = useState(false);
     const restoreReadyRef = useRef(false);
     const startTimerRef = useRef<number | null>(null);
+    const offerModalRef = useRef<{ destroy: () => void } | null>(null);
 
     const startTour = useCallback(() => {
+        offerModalRef.current?.destroy();
+        offerModalRef.current = null;
         onPrepare?.();
         if (startTimerRef.current != null) {
             window.clearTimeout(startTimerRef.current);
@@ -38,6 +46,40 @@ export function useOnboardingTour({
             setOpen(true);
         }, 280);
     }, [onPrepare]);
+
+    const showTourOffer = useCallback(
+        ({ persistDecline }: { persistDecline: boolean }) => {
+            if (open || isEmpty || isLoading) {
+                return;
+            }
+            if (offerModalRef.current) {
+                return;
+            }
+            offerModalRef.current = confirmThemed({
+                title: "Take a quick tour?",
+                content: "A short walkthrough of the viewer. You can skip it at any time.",
+                okText: "Start tour",
+                cancelText: "Not now",
+                centered: true,
+                maskClosable: false,
+                onOk: () => {
+                    offerModalRef.current = null;
+                    startTour();
+                },
+                onCancel: () => {
+                    offerModalRef.current = null;
+                    if (persistDecline) {
+                        markOnboardingTourCompleted();
+                    }
+                },
+            });
+        },
+        [isEmpty, isLoading, open, startTour],
+    );
+
+    const offerTour = useCallback(() => {
+        showTourOffer({ persistDecline: false });
+    }, [showTourOffer]);
 
     const closeTour = useCallback(() => {
         setOpen(false);
@@ -50,6 +92,8 @@ export function useOnboardingTour({
             if (startTimerRef.current != null) {
                 window.clearTimeout(startTimerRef.current);
             }
+            offerModalRef.current?.destroy();
+            offerModalRef.current = null;
         };
     }, []);
 
@@ -72,8 +116,12 @@ export function useOnboardingTour({
         ) {
             return;
         }
-        startTour();
-    }, [sessionRestoreComplete, isEmpty, isLoading, open, startTour]);
+        if (tourOfferInFlight) {
+            return;
+        }
+        tourOfferInFlight = true;
+        showTourOffer({ persistDecline: true });
+    }, [sessionRestoreComplete, isEmpty, isLoading, open, showTourOffer]);
 
-    return { open, startTour, closeTour };
+    return { open, startTour, offerTour, closeTour };
 }
