@@ -54,8 +54,16 @@ export async function loadReadoutsFromBytes(bytes: Uint8Array): Promise<Readout[
 export const EXAMPLE_COVERAGE_ARCHIVE =
     "examples/riscv_stress_viewer_demo.bktgz";
 
+/** Bundled waiver sidecar loaded with the RISC-V demo archive. */
+export const EXAMPLE_WAIVERS_FILE =
+    "examples/riscv_stress_viewer_demo.waivers.json";
+
 function exampleCoverageFileName(): string {
     return EXAMPLE_COVERAGE_ARCHIVE.split("/").pop() ?? "example.bktgz";
+}
+
+function exampleWaiverFileName(): string {
+    return EXAMPLE_WAIVERS_FILE.split("/").pop() ?? "example.waivers.json";
 }
 
 /**
@@ -100,6 +108,27 @@ export async function fetchExampleCoverageFile(): Promise<File> {
     }
     const buffer = await response.arrayBuffer();
     return new File([buffer], fileName, { type: "application/gzip" });
+}
+
+/**
+ * Fetch the bundled example waiver sidecar as text for the normal waiver load path.
+ */
+export async function fetchExampleWaiverText(): Promise<{ text: string; fileName: string }> {
+    const fileName = exampleWaiverFileName();
+
+    if (isElectron() && window.electronAPI?.readBundledExampleWaivers) {
+        const bytes = await window.electronAPI.readBundledExampleWaivers();
+        return { text: new TextDecoder().decode(bytes), fileName };
+    }
+
+    const url = resolveBundledAssetUrl(EXAMPLE_WAIVERS_FILE);
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(
+            `Could not load example waivers (HTTP ${response.status}).`,
+        );
+    }
+    return { text: await response.text(), fileName };
 }
 
 /**

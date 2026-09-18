@@ -8,6 +8,7 @@ import {
     Alert,
     Button,
     Checkbox,
+    ConfigProvider,
     Drawer,
     Flex,
     Input,
@@ -36,6 +37,9 @@ import {
 import { notifySuccess, notifyInfo } from "@/utils/themedStaticNotification";
 import { saveExportBytes } from "@/services/exportSaver";
 import { formatWaiverAxesSummary } from "@/services/waiverSpec";
+import { buildBucketAntModalTheme } from "@/utils/bucketAntModalTheme";
+import Theme from "@/providers/Theme";
+import { TOUR_ANCHOR } from "../OnboardingTour/tourAnchors";
 import EditWaiverModal from "../EditWaiverModal";
 import WaiverAxesList from "../WaiverAxesList";
 
@@ -114,6 +118,11 @@ function ruleSearchHaystack(
 }
 
 export default function WaiversPanel() {
+    const { theme } = Theme.useContext();
+    const colors = theme.theme.colors;
+    const panel = colors.tertiarybg.value;
+    const border = colors.secondarybg.value;
+    const txt = colors.primarytxt.value;
     const waivers = useWaiverSession();
     const [filter, setFilter] = useState<FilterMode>("all");
     const [search, setSearch] = useState("");
@@ -302,6 +311,7 @@ export default function WaiversPanel() {
     };
 
     return (
+        <ConfigProvider theme={buildBucketAntModalTheme(theme)}>
         <Drawer
             title={
                 (waivers.fileName ? `Waivers · ${waivers.fileName}` : "Waivers")
@@ -311,6 +321,21 @@ export default function WaiversPanel() {
             onClose={() => waivers.setPanelOpen(false)}
             width={440}
             destroyOnClose={false}
+            rootClassName={`${theme.theme.className} bucket-waivers-drawer`}
+            styles={{
+                mask: { backgroundColor: "rgba(0, 0, 0, 0.55)" },
+                content: { backgroundColor: panel },
+                header: {
+                    backgroundColor: panel,
+                    color: txt,
+                    borderBottom: `1px solid ${border}`,
+                },
+                body: { backgroundColor: panel },
+                footer: {
+                    backgroundColor: panel,
+                    borderTop: `1px solid ${border}`,
+                },
+            }}
             extra={
                 <Space>
                     <Tooltip title="Download waivers.json">
@@ -332,7 +357,7 @@ export default function WaiversPanel() {
                 </Space>
             }
         >
-            <Flex vertical gap={12}>
+            <Flex vertical gap={12} data-tour={TOUR_ANCHOR.waiversPanel}>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     {waivers.applySummary
                         ?? (waivers.file.waivers.length === 0
@@ -433,7 +458,8 @@ export default function WaiversPanel() {
                                     }
                                 }}
                                 style={{
-                                    border: "1px solid var(--ant-color-border, #d9d9d9)",
+                                    border: `1px solid ${border}`,
+                                    backgroundColor: colors.primarybg.value,
                                     borderRadius: 8,
                                     padding: 10,
                                     opacity: row.rule.disabled ? 0.7 : 1,
@@ -643,5 +669,6 @@ export default function WaiversPanel() {
                 />
             </Modal>
         </Drawer>
+        </ConfigProvider>
     );
 }

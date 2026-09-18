@@ -15,6 +15,7 @@ import { checkForNewerRelease } from "@/services/updateCheck";
 import { useEffect, useMemo, useRef, type ChangeEvent } from "react";
 import type { CompareViewContext } from "@/types/coverageCompare";
 import { useWaiverSession } from "@/hooks/useWaiverSession";
+import { fetchExampleWaiverText } from "@/services/fileLoader";
 import { applyWaiverFileToReadout, isWaiverProblemStatus } from "@/services/matchWaivers";
 import type { WaiverFileSpec } from "@/services/waiverSpec";
 import WaiversPanel from "@/features/Dashboard/components/WaiversPanel";
@@ -84,6 +85,7 @@ export const AppRoutes = () => {
         clearPendingCompareActivation,
         persistSessionEnabled,
         setPersistSessionEnabled,
+        sessionRestoreComplete,
     } = useFileLoader();
 
     const waivers = useWaiverSession();
@@ -235,6 +237,34 @@ export const AppRoutes = () => {
         waiverInputRef.current?.click();
     };
 
+    const handleLoadExample = async () => {
+        const waiverPromise = fetchExampleWaiverText().then(
+            (value) => ({ ok: true as const, value }),
+            (error) => ({ ok: false as const, error }),
+        );
+        const loaded = await loadExampleData();
+        const waiverResult = await waiverPromise;
+        if (!loaded) {
+            return;
+        }
+        if (!waiverResult.ok) {
+            const description =
+                waiverResult.error instanceof Error
+                    ? waiverResult.error.message
+                    : String(waiverResult.error);
+            notifyWarning({
+                message: "Example waivers unavailable",
+                description,
+                duration: 5,
+            });
+            return;
+        }
+        waivers.loadFromText(waiverResult.value.text, waiverResult.value.fileName, {
+            openPanel: false,
+            notify: false,
+        });
+    };
+
     const handleWaiverInput = async (event: ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         event.target.value = "";
@@ -272,7 +302,7 @@ export const AppRoutes = () => {
                         compare={compare}
                         compareContext={compareContext}
                         onOpenFile={openFileDialog}
-                        onLoadExample={loadExampleData}
+                        onLoadExample={handleLoadExample}
                         onClearCoverage={clearCoverage}
                         onSetLoadedRecords={setLoadedRecords}
                         onMergeRecords={mergeRecords}
@@ -281,6 +311,8 @@ export const AppRoutes = () => {
                         isDragging={isDragging}
                         persistSessionEnabled={persistSessionEnabled}
                         onPersistSessionChange={setPersistSessionEnabled}
+                        isLoading={isLoading}
+                        sessionRestoreComplete={sessionRestoreComplete}
                         onLoadWaivers={openWaiverFileDialog}
                         onOpenWaiversPanel={() => waivers.setPanelOpen(true)}
                         waiverRuleCount={waivers.file.waivers.length}

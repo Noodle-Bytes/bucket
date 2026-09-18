@@ -1,0 +1,16 @@
+{
+  "waivers": [
+    {
+      "point": "StressTest.control_flow.jump_operations",
+      "axes": {"jump_type": "JALR", "rd": ["x0", "x1", "x2"]},
+      "reason": "Indirect jumps into x0–x2 are not generated in this demo stimulus",
+      "author": "example"
+    },
+    {
+      "point": "StressTest.control_flow.jump_operations",
+      "axes": {"jump_type": "Other"},
+      "reason": "Non-JAL/JALR encodings are not modelled in the demo",
+      "author": "example"
+    }
+  ]
+}

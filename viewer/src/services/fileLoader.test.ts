@@ -7,7 +7,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { loadReadoutsFromBytes, EXAMPLE_COVERAGE_ARCHIVE, resolveBundledAssetUrl } from "./fileLoader";
+import { loadReadoutsFromBytes, EXAMPLE_COVERAGE_ARCHIVE, EXAMPLE_WAIVERS_FILE, resolveBundledAssetUrl } from "./fileLoader";
+import { parseWaiverFileText } from "./waiverSpec";
+import { matchWaiversWithReport } from "./matchWaivers";
 import {
     BASE_POINT_COLUMNS,
     createBaseDefinition,
@@ -24,6 +26,12 @@ const EXAMPLE_ARCHIVE = join(
     __dirname,
     "../../public",
     EXAMPLE_COVERAGE_ARCHIVE,
+);
+
+const EXAMPLE_WAIVERS = join(
+    __dirname,
+    "../../public",
+    EXAMPLE_WAIVERS_FILE,
 );
 
 describe("loadReadoutsFromBytes", () => {
@@ -77,6 +85,22 @@ describe("bundled example coverage", () => {
         expect(readouts[1].get_source()).toBe("riscv_compare");
         expect(readouts[0].get_source_key()).toBe("baseline");
         expect(readouts[1].get_source_key()).toBe("improved");
+    });
+
+    test("public RISC-V demo waivers apply to jump_operations", async () => {
+        const file = parseWaiverFileText(readFileSync(EXAMPLE_WAIVERS, "utf8"));
+        expect(file.waivers).toHaveLength(2);
+
+        const bytes = new Uint8Array(readFileSync(EXAMPLE_ARCHIVE));
+        const readouts = await loadReadoutsFromBytes(bytes);
+        const report = matchWaiversWithReport(readouts[0], file);
+        expect(report.matched.length).toBeGreaterThan(0);
+        expect(report.diagnostics.map((row) => row.status)).toEqual(["applied", "applied"]);
+        expect(
+            report.diagnostics.some((row) =>
+                row.coverpointPaths.some((path) => path.endsWith("jump_operations")),
+            ),
+        ).toBe(true);
     });
 
     test("resolveBundledAssetUrl uses app:// for the Electron protocol", () => {

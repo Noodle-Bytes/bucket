@@ -58,6 +58,8 @@ microseconds per sample.
 
 Writes `output/riscv_stress/riscv_stress_viewer_demo.bktgz` with two compatible
 records (`baseline` / `improved`) so the viewer can browse and open Compare.
+It also writes a sibling `.waivers.json` that excuses the painted
+`jump_operations` holes (JALR into x0–x2, and Other encodings).
 Modules and leaf coverpoints use different coverage bands across the pair.
 `jump_operations` is painted so a jump_type × rd pivot shows clear holes on
 one screen (JALR empty for low return registers in baseline; filled in
@@ -66,9 +68,10 @@ improved).
 Use `--output` to choose another archive path, or `--seed` to produce another
 deterministic variation.
 
-The hosted viewer’s **Try with example data** button ships a copy at
-`viewer/public/examples/riscv_stress_viewer_demo.bktgz`. After changing the
-demo generator, refresh that file with:
+The hosted viewer’s **Try with example data** button ships copies at
+`viewer/public/examples/riscv_stress_viewer_demo.bktgz` and
+`viewer/public/examples/riscv_stress_viewer_demo.waivers.json`. After changing the
+demo generator, refresh those files with:
 
 ```bash
 python -m examples.riscv_stress demo \

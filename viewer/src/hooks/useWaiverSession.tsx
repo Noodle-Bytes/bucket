@@ -48,7 +48,10 @@ type WaiverSessionValue = {
     isDirty: boolean;
     report: WaiverApplyReport | null;
     setActiveReadouts: (readouts: Readout[]) => void;
-    loadFromText: (text: string, fileName?: string) => void;
+    loadFromText: (text: string, fileName?: string, options?: {
+    openPanel?: boolean;
+    notify?: boolean;
+  }) => void;
     clear: () => void;
     /** Call after a successful download/save so close no longer warns. */
     markSaved: () => void;
@@ -100,17 +103,27 @@ export function WaiverSessionProvider({ children }: PropsWithChildren) {
         setActiveReadoutsState(readouts);
     }, []);
 
-    const loadFromText = useCallback((text: string, name?: string) => {
+    const loadFromText = useCallback((
+        text: string,
+        name?: string,
+        options?: { openPanel?: boolean; notify?: boolean },
+    ) => {
+        const openPanel = options?.openPanel ?? true;
+        const notify = options?.notify ?? true;
         try {
             const parsed = parseWaiverFileText(text);
             setFile(parsed);
             setSavedFingerprint(waiverFingerprint(parsed));
             setFileName(name ?? "waivers.json");
-            setPanelOpen(true);
-            notifySuccess({
-                message: "Waivers loaded",
-                description: `${parsed.waivers.length} rule${parsed.waivers.length === 1 ? "" : "s"} from ${name ?? "file"}`,
-            });
+            if (openPanel) {
+                setPanelOpen(true);
+            }
+            if (notify) {
+                notifySuccess({
+                    message: "Waivers loaded",
+                    description: `${parsed.waivers.length} rule${parsed.waivers.length === 1 ? "" : "s"} from ${name ?? "file"}`,
+                });
+            }
         } catch (error) {
             notifyError({
                 message: "Could not load waivers",

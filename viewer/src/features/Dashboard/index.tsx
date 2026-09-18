@@ -47,6 +47,7 @@ import {
     InfoCircleFilled,
     DiffOutlined,
     LinkOutlined,
+    QuestionCircleOutlined,
 } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode } from "./lib/tree";
 import Sider, { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "./components/Sider";
@@ -76,6 +77,15 @@ import { getDefaultExportFileName } from "@/services/exportSaver";
 import { checkFormatCompat } from "@/utils/versionCompat";
 import CompareToolbar from "./components/CompareToolbar";
 import CoverageReportExportModal from "./components/CoverageReportExportModal";
+import OnboardingTour from "./components/OnboardingTour";
+import { TOUR_ANCHOR } from "./components/OnboardingTour/tourAnchors";
+import {
+    expandedKeysForTourNode,
+    findTourCoverpoint,
+    findTourSummaryNode,
+    tourSceneAt,
+} from "./components/OnboardingTour/tourScenes";
+import { useOnboardingTour } from "./components/OnboardingTour/useOnboardingTour";
 import type { PointNode } from "./lib/coveragetree";
 import {
     coverageRatio,
@@ -800,6 +810,8 @@ export type DashboardProps = {
     /** Whether loaded coverage is remembered across reloads (Settings). */
     persistSessionEnabled?: boolean;
     onPersistSessionChange?: (enabled: boolean) => void;
+    isLoading?: boolean;
+    sessionRestoreComplete?: boolean;
     onLoadWaivers?: () => void;
     onOpenWaiversPanel?: () => void;
     waiverRuleCount?: number;
@@ -822,6 +834,8 @@ export default function Dashboard({
     isDragging = false,
     persistSessionEnabled,
     onPersistSessionChange,
+    isLoading = false,
+    sessionRestoreComplete = false,
     onLoadWaivers,
     onOpenWaiversPanel,
     waiverRuleCount = 0,
@@ -834,6 +848,8 @@ export default function Dashboard({
         file: waiverFile,
         isDirty: waiversDirty,
         clear: clearWaivers,
+        panelOpen: waiversPanelOpen,
+        setPanelOpen: setWaiversPanelOpen,
     } = useWaiverSession();
 
     const [selectedTreeKeys, setSelectedTreeKeys] = useState<TreeKey[]>([]);
@@ -874,6 +890,98 @@ export default function Dashboard({
     }, [expandedTreeKeys, selectedTreeKeys, treeKeyContentKey]);
 
     const isEmpty = tree.getRoots().length === 0;
+
+    const tourRestoreRef = useRef<{
+        selectedTreeKeys: TreeKey[];
+        expandedTreeKeys: TreeKey[];
+        treeKeyContentKey: { [key: TreeKey]: string | number };
+        summaryViewMode: "table" | "donut";
+        sidebarVisible: boolean;
+        compareActive: boolean;
+        waiversPanelOpen: boolean;
+    } | null>(null);
+
+    const applyTourScene = useCallback(
+        (step: number) => {
+            const scene = tourSceneAt(step);
+            if (!scene) {
+                return;
+            }
+            setSidebarVisible(true);
+            setSettingsModalOpen(false);
+            setCreatingWaivers(false);
+            setWaiversPanelOpen(scene === "waivers");
+            if (compare) {
+                const wantCompare = scene === "compare" && compare.canCompare;
+                if (compare.active !== wantCompare) {
+                    compare.setActive(wantCompare);
+                }
+            }
+
+            const coverpoint = findTourCoverpoint(tree);
+            const summaryNode = findTourSummaryNode(tree);
+            const focus =
+                scene === "buckets" || scene === "pivot" || scene === "waivers" || scene === "compare"
+                    ? coverpoint ?? summaryNode
+                    : summaryNode;
+            if (!focus) {
+                return;
+            }
+
+            setExpandedTreeKeys(expandedKeysForTourNode(tree, focus.key));
+            setSelectedTreeKeys([focus.key]);
+            setAutoExpandTreeParent(false);
+            setSummaryViewMode("table");
+            const isCoverpoint = (focus.children?.length ?? 0) === 0;
+            const viewName =
+                isCoverpoint && scene === "pivot"
+                    ? "Pivot"
+                    : isCoverpoint
+                      && (scene === "buckets" || scene === "waivers" || scene === "compare")
+                      ? "Point"
+                      : "Summary";
+            setTreeKeyContentKey((current) => ({ ...current, [focus.key]: viewName }));
+        },
+        [compare, setCreatingWaivers, setWaiversPanelOpen, tree],
+    );
+
+    const prepareOnboardingTour = useCallback(() => {
+        tourRestoreRef.current = {
+            selectedTreeKeys: [...selectedTreeKeysRef.current],
+            expandedTreeKeys: [...expandedTreeKeysRef.current],
+            treeKeyContentKey: { ...treeKeyContentKeyRef.current },
+            summaryViewMode,
+            sidebarVisible,
+            compareActive: compare?.active ?? false,
+            waiversPanelOpen,
+        };
+        applyTourScene(0);
+    }, [applyTourScene, compare?.active, sidebarVisible, summaryViewMode, waiversPanelOpen]);
+
+    const restoreOnboardingTour = useCallback(() => {
+        const snapshot = tourRestoreRef.current;
+        tourRestoreRef.current = null;
+        if (!snapshot) {
+            return;
+        }
+        setSelectedTreeKeys(snapshot.selectedTreeKeys);
+        setExpandedTreeKeys(snapshot.expandedTreeKeys);
+        setTreeKeyContentKey(snapshot.treeKeyContentKey);
+        setSummaryViewMode(snapshot.summaryViewMode);
+        setSidebarVisible(snapshot.sidebarVisible);
+        setWaiversPanelOpen(snapshot.waiversPanelOpen);
+        if (compare && snapshot.compareActive !== compare.active) {
+            compare.setActive(snapshot.compareActive);
+        }
+    }, [compare, setWaiversPanelOpen]);
+
+    const onboardingTour = useOnboardingTour({
+        isEmpty,
+        isLoading,
+        sessionRestoreComplete,
+        onPrepare: prepareOnboardingTour,
+        onRestore: restoreOnboardingTour,
+    });
 
     const sourceById = useMemo(() => {
         return new Map(sources.map((source) => [source.id, source]));
@@ -1254,7 +1362,13 @@ export default function Dashboard({
         switch (currentContentKey) {
             case "Pivot":
                 return withTopLevelInfoPanel({
-                    content: <PointPivotView node={currentNode} compare={compareContext} />,
+                    content: (
+                        <PointPivotView
+                            node={currentNode}
+                            compare={compareContext}
+                            seedSuggestedLayout={onboardingTour.open}
+                        />
+                    ),
                     info: topLevelCoverageInfo,
                     treeSelectionKey: viewKey,
                 });
@@ -1311,6 +1425,7 @@ export default function Dashboard({
         onSelect,
         topLevelCoverageInfo,
         compareContext,
+        onboardingTour.open,
     ]);
 
     const applyLoadedEdits = () => {
@@ -1558,6 +1673,11 @@ export default function Dashboard({
                                                         }}
                                                     />
                                                 )}
+                                                <Flex
+                                                    gap="small"
+                                                    align="center"
+                                                    data-tour={TOUR_ANCHOR.views}
+                                                >
                                                 {showContentViewSelector && (
                                                     <Flex
                                                         align="center"
@@ -1615,6 +1735,7 @@ export default function Dashboard({
                                                         />
                                                     </Flex>
                                                 )}
+                                                </Flex>
                                                 {(showContentViewSelector
                                                     || currentContentKey === "Summary")
                                                 && (
@@ -1630,7 +1751,11 @@ export default function Dashboard({
                                                     />
                                                 )}
 
-                                                <Flex gap="small" align="center" style={{ paddingRight: 12 }}>
+                                                <Flex
+                                                    gap="small"
+                                                    align="center"
+                                                    style={{ paddingRight: 12 }}
+                                                >
                                                     {onOpenFile && (
                                                         <Button
                                                             icon={<FileAddOutlined />}
@@ -1690,6 +1815,7 @@ export default function Dashboard({
                                                         >
                                                             <Button
                                                                 size="small"
+                                                                data-tour={TOUR_ANCHOR.waivers}
                                                                 type={
                                                                     creatingWaivers || waiverFile.waivers.length > 0
                                                                         ? "primary"
@@ -1723,6 +1849,7 @@ export default function Dashboard({
                                                         >
                                                             <Button
                                                                 icon={<DiffOutlined />}
+                                                                data-tour={TOUR_ANCHOR.compare}
                                                                 onClick={() => compare.setActive(!compare.active)}
                                                                 size="small"
                                                                 type={compare.active ? "primary" : "default"}
@@ -1811,6 +1938,21 @@ export default function Dashboard({
                                                         );
                                                     })()}
                                                     <Button
+                                                        icon={<QuestionCircleOutlined />}
+                                                        onClick={onboardingTour.startTour}
+                                                        size="small"
+                                                        type="text"
+                                                        title="Take a tour"
+                                                        aria-label="Take a tour of the viewer"
+                                                        style={{
+                                                            width: 28,
+                                                            minWidth: 28,
+                                                            paddingInline: 0,
+                                                            display: "inline-flex",
+                                                            justifyContent: "center",
+                                                        }}
+                                                    />
+                                                    <Button
                                                         icon={<SettingOutlined />}
                                                         onClick={() => setSettingsModalOpen(true)}
                                                         size="small"
@@ -1830,6 +1972,18 @@ export default function Dashboard({
                                         </Flex>
                                     </Header>
                                 )}
+                                <div
+                                    data-tour={
+                                        compare?.active ? TOUR_ANCHOR.compareToolbar : undefined
+                                    }
+                                    style={{
+                                        flex: "1 1 auto",
+                                        minHeight: 0,
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        overflow: "hidden",
+                                    }}
+                                >
                                 {compare?.active && (
                                     <CompareToolbar
                                         compare={compare}
@@ -1858,10 +2012,22 @@ export default function Dashboard({
                                         })}
                                     onClose={() => setReportModalOpen(false)}
                                 />
-                                <Content {...view.body.content.props}>{selectedViewContent}</Content>
+                                <Content
+                                    {...view.body.content.props}
+                                    data-tour={TOUR_ANCHOR.content}
+                                >
+                                    {selectedViewContent}
+                                </Content>
+                                </div>
                             </Layout>
                         </Layout>
                         <ConfigProvider theme={modalAnt}>
+                            <OnboardingTour
+                                open={onboardingTour.open}
+                                onClose={onboardingTour.closeTour}
+                                onScene={applyTourScene}
+                                rootClassName={themeContext.theme.className}
+                            />
                             <Modal
                                 title={
                                     <span
@@ -2362,6 +2528,31 @@ export default function Dashboard({
                             )}
                         </Theme.Consumer>
                     )}
+                    <Theme.Consumer>
+                        {({ theme }) => (
+                            <Flex align="center" gap={12}>
+                                <Typography.Text strong style={{ fontSize: 14, minWidth: 60 }}>
+                                    Tour
+                                </Typography.Text>
+                                <Button
+                                    size="small"
+                                    icon={<QuestionCircleOutlined />}
+                                    onClick={onboardingTour.startTour}
+                                    disabled={isEmpty}
+                                >
+                                    Take a tour
+                                </Button>
+                                <Typography.Text
+                                    style={{
+                                        fontSize: 12,
+                                        color: theme.theme.colors.desaturatedtxt.value,
+                                    }}
+                                >
+                                    A short walkthrough of records, views, compare, and waivers.
+                                </Typography.Text>
+                            </Flex>
+                        )}
+                    </Theme.Consumer>
                     <Theme.Consumer>
                         {({ theme }) => (
                             <Typography.Text

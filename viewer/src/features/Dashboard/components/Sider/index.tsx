@@ -20,6 +20,7 @@ import {
 } from "../../lib/treeSearch";
 import Theme from "@/providers/Theme";
 import { hexToRgba } from "@/utils/colors";
+import { TOUR_ANCHOR } from "../OnboardingTour/tourAnchors";
 
 export const MIN_SIDEBAR_WIDTH = 180;
 export const MAX_SIDEBAR_WIDTH = 520;
@@ -272,6 +273,7 @@ export default function Sider({
     return (
         <Layout.Sider
             {...view.sider.props}
+            data-tour={TOUR_ANCHOR.tree}
             width={effectiveWidth}
             style={{
                 ...view.sider.props.style,

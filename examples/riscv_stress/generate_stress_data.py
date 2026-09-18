@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import random
 from collections import Counter
@@ -312,6 +313,30 @@ def generate_viewer_demo_readout(
     return readout
 
 
+def viewer_demo_waivers_path(archive_path: Path) -> Path:
+    return archive_path.with_name(f"{archive_path.stem}.waivers.json")
+
+
+# Sidecar for the viewer demo: excuses the painted jump_operations holes so
+# **Try with example data** can show waived buckets without a separate load.
+VIEWER_DEMO_WAIVERS = {
+    "waivers": [
+        {
+            "point": "StressTest.control_flow.jump_operations",
+            "axes": {"jump_type": "JALR", "rd": ["x0", "x1", "x2"]},
+            "reason": "Indirect jumps into x0–x2 are not generated in this demo stimulus",
+            "author": "example",
+        },
+        {
+            "point": "StressTest.control_flow.jump_operations",
+            "axes": {"jump_type": "Other"},
+            "reason": "Non-JAL/JALR encodings are not modelled in the demo",
+            "author": "example",
+        },
+    ]
+}
+
+
 def generate_viewer_demo(
     output_path: Path = Path("output/riscv_stress/riscv_stress_viewer_demo.bktgz"),
     *,
@@ -345,6 +370,12 @@ def generate_viewer_demo(
         )
     )
     log.info("Viewer demo written to %s (2 records)", output_path)
+    waivers_path = viewer_demo_waivers_path(output_path)
+    waivers_path.write_text(
+        json.dumps(VIEWER_DEMO_WAIVERS, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    log.info("Viewer demo waivers written to %s", waivers_path)
     return output_path
 
 

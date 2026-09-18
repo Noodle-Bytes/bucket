@@ -107,6 +107,20 @@ export function buildBucketAntModalTheme(pref: BucketTheme): ThemeConfig {
             Switch: {
                 colorText: txt,
             },
+            Radio: {
+                buttonBg: primaryBg,
+                buttonColor: txt,
+                buttonCheckedBg: isDarkUi ? highlightBg : panel,
+                buttonSolidCheckedColor: txt,
+                colorBorder: uiBorder,
+            },
+            Drawer: {
+                colorBgElevated: panel,
+                colorText: txt,
+            },
+            Tour: {
+                zIndexPopup: 1100,
+            },
             Table: {
                 headerBg: panel,
                 colorBgContainer: primaryBg,

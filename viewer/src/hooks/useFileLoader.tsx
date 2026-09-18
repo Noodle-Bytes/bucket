@@ -718,7 +718,7 @@ export function useFileLoader() {
         fileInputRef.current?.click();
     };
 
-    const loadExampleData = async (): Promise<void> => {
+    const loadExampleData = async (): Promise<boolean> => {
         try {
             const file = await fetchExampleCoverageFile();
             const result = await loadArchiveBatch(
@@ -726,12 +726,7 @@ export function useFileLoader() {
                 false,
                 "replace",
             );
-            if (result.success && result.recordIds && result.recordIds.length >= 2) {
-                setPendingCompareActivation({
-                    recordIdA: result.recordIds[0],
-                    recordIdB: result.recordIds[1],
-                });
-            }
+            return result.success;
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err);
             setError(errorMessage);
@@ -740,6 +735,7 @@ export function useFileLoader() {
                 description: errorMessage,
                 duration: 5,
             });
+            return false;
         }
     };
 
