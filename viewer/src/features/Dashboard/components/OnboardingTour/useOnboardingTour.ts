@@ -47,6 +47,40 @@ export function useOnboardingTour({
         }, 280);
     }, [onPrepare]);
 
+    const showTourOffer = useCallback(
+        ({ persistDecline }: { persistDecline: boolean }) => {
+            if (open || isEmpty || isLoading) {
+                return;
+            }
+            if (offerModalRef.current) {
+                return;
+            }
+            offerModalRef.current = confirmThemed({
+                title: "Take a quick tour?",
+                content: "A short walkthrough of the viewer. You can skip it at any time.",
+                okText: "Start tour",
+                cancelText: "Not now",
+                centered: true,
+                maskClosable: false,
+                onOk: () => {
+                    offerModalRef.current = null;
+                    startTour();
+                },
+                onCancel: () => {
+                    offerModalRef.current = null;
+                    if (persistDecline) {
+                        markOnboardingTourCompleted();
+                    }
+                },
+            });
+        },
+        [isEmpty, isLoading, open, startTour],
+    );
+
+    const offerTour = useCallback(() => {
+        showTourOffer({ persistDecline: false });
+    }, [showTourOffer]);
+
     const closeTour = useCallback(() => {
         setOpen(false);
         onRestore?.();
@@ -86,23 +120,8 @@ export function useOnboardingTour({
             return;
         }
         tourOfferInFlight = true;
-        offerModalRef.current = confirmThemed({
-            title: "Take a quick tour?",
-            content: "A short walkthrough of the viewer. You can skip it at any time.",
-            okText: "Start tour",
-            cancelText: "Not now",
-            centered: true,
-            maskClosable: false,
-            onOk: () => {
-                offerModalRef.current = null;
-                startTour();
-            },
-            onCancel: () => {
-                offerModalRef.current = null;
-                markOnboardingTourCompleted();
-            },
-        });
-    }, [sessionRestoreComplete, isEmpty, isLoading, open, startTour]);
+        showTourOffer({ persistDecline: true });
+    }, [sessionRestoreComplete, isEmpty, isLoading, open, showTourOffer]);
 
-    return { open, startTour, closeTour };
+    return { open, startTour, offerTour, closeTour };
 }

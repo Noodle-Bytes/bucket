@@ -1939,7 +1939,8 @@ export default function Dashboard({
                                                     })()}
                                                     <Button
                                                         icon={<QuestionCircleOutlined />}
-                                                        onClick={onboardingTour.startTour}
+                                                        onClick={onboardingTour.offerTour}
+                                                        disabled={isEmpty}
                                                         size="small"
                                                         type="text"
                                                         title="Take a tour"
