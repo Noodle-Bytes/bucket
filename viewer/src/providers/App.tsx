@@ -5,14 +5,17 @@
 
 import * as React from "react";
 import { PropsWithChildren } from "react";
-import { ErrorBoundary } from "react-error-boundary";
+import { ErrorBoundary, FallbackProps } from "react-error-boundary";
 // Hash-based so the view state in the query string survives on file://, app:// and
 // GitHub Pages without any server-side routing.
 import { HashRouter as Router } from "react-router-dom";
 import Theme from "./Theme";
 import { WaiverSessionProvider } from "@/hooks/useWaiverSession";
 
-function ErrorFallback({ error, resetErrorBoundary }: { error?: Error; resetErrorBoundary?: () => void }) {
+function ErrorFallback({ error: thrown, resetErrorBoundary }: FallbackProps) {
+    // react-error-boundary v6 types the caught value as `unknown` because
+    // anything can be thrown; normalise so the fallback can read message/stack.
+    const error = thrown instanceof Error ? thrown : new Error(String(thrown));
     return (
         <Theme.Consumer>
             {({ theme }) => {
