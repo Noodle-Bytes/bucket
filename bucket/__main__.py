@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
 
+import json as json_lib
 from pathlib import Path
 from typing import Iterable
 
 import click
 
 from . import DIST_NAME
+from .compare import METRICS, CompareError, coverage_overlap, overlap_percentage
 from .rw import (
     ArchiveAccessor,
     ConsoleWriter,
@@ -123,6 +125,29 @@ def get_readouts_from_spec(*specs: str) -> Iterable[Readout]:
             yield reader.read(record)
 
 
+def _apply_waivers(readouts, waiver_paths: tuple[Path]):
+    if not waiver_paths:
+        return readouts
+    try:
+        waiver_file = WaiverFile(
+            waivers=[
+                waiver for path in waiver_paths for waiver in load_waivers(path).waivers
+            ]
+        )
+        return [WaivedReadout(readout, waiver_file) for readout in readouts]
+    except (WaiverError, ValueError) as exc:
+        raise click.ClickException(f"Could not apply waivers: {exc}") from exc
+
+
+def _one_readout(spec: str, label: str):
+    readouts = list(get_readouts_from_spec(spec))
+    if len(readouts) != 1:
+        raise click.ClickException(
+            f"{label} must resolve to exactly one record, got {len(readouts)} from {spec!r}"
+        )
+    return readouts[0]
+
+
 @cli.group()
 @click.pass_context
 @click.option(
@@ -166,20 +191,64 @@ def write(ctx, readout_specs: Iterable[str], merge: bool, waiver_paths: tuple[Pa
     if merge:
         readouts = [MergeReadout(*readouts)]
 
-    if waiver_paths:
-        try:
-            waiver_file = WaiverFile(
-                waivers=[
-                    waiver
-                    for path in waiver_paths
-                    for waiver in load_waivers(path).waivers
-                ]
-            )
-            readouts = [WaivedReadout(readout, waiver_file) for readout in readouts]
-        except (WaiverError, ValueError) as exc:
-            raise click.ClickException(f"Could not apply waivers: {exc}") from exc
+    readouts = _apply_waivers(readouts, waiver_paths)
 
     ctx.obj["readouts"] = readouts
+
+
+@cli.command()
+@click.option(
+    "--a",
+    "spec_a",
+    required=True,
+    type=str,
+    help="Readout A (the coverage being measured). Same spec syntax as write -r.",
+)
+@click.option(
+    "--b",
+    "spec_b",
+    required=True,
+    type=str,
+    help="Readout B (the coverage checked against A). Same spec syntax as write -r.",
+)
+@click.option(
+    "--metric",
+    type=click.Choice(METRICS),
+    default="buckets",
+    show_default=True,
+    help="buckets: buckets A hit at least once that B also hit. "
+    "hits: goal-capped hits A recorded that B also recorded. "
+    "full: buckets where A met the goal and B did too.",
+)
+@click.option(
+    "--waivers",
+    "-w",
+    "waiver_paths",
+    multiple=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Waiver specification JSON applied to both records before comparing.",
+)
+def compare(spec_a: str, spec_b: str, metric: str, waiver_paths: tuple[Path]):
+    """Print the percentage of A's coverage that B also covers."""
+    readout_a, readout_b = _apply_waivers(
+        [_one_readout(spec_a, "A"), _one_readout(spec_b, "B")],
+        waiver_paths,
+    )
+    try:
+        numerator, denominator = coverage_overlap(readout_a, readout_b, metric)
+    except CompareError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(
+        json_lib.dumps(
+            {
+                "metric": metric,
+                "percentage": overlap_percentage(numerator, denominator),
+                "numerator": numerator,
+                "denominator": denominator,
+            },
+            sort_keys=True,
+        )
+    )
 
 
 @write.command()
