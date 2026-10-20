@@ -393,3 +393,52 @@ class TestCli:
     def test_unknown_spec_type_errors(self, tmp_path):
         result = self.run("write", "-r", tmp_path / "file.xyz", "console")
         assert result.exit_code != 0
+
+
+class TestCompareCommand:
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    def test_default_metric_is_buckets(self, runner, archives):
+        path_1, path_2, readout_1, readout_2 = archives
+        from bucket.compare import coverage_overlap, overlap_percentage
+
+        numerator, denominator = coverage_overlap(readout_1, readout_2, "buckets")
+        result = runner.invoke(cli, ["compare", "--a", str(path_1), "--b", str(path_2)])
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output) == {
+            "denominator": denominator,
+            "metric": "buckets",
+            "numerator": numerator,
+            "percentage": overlap_percentage(numerator, denominator),
+        }
+
+    def test_hits_and_full_metrics(self, runner, archives):
+        path_1, path_2, readout_1, readout_2 = archives
+        from bucket.compare import coverage_overlap, overlap_percentage
+
+        for metric in ("hits", "full"):
+            numerator, denominator = coverage_overlap(readout_1, readout_2, metric)
+            result = runner.invoke(
+                cli,
+                ["compare", "--a", str(path_1), "--b", str(path_2), "--metric", metric],
+            )
+            assert result.exit_code == 0, result.output
+            assert json.loads(result.output) == {
+                "denominator": denominator,
+                "metric": metric,
+                "numerator": numerator,
+                "percentage": overlap_percentage(numerator, denominator),
+            }
+
+    def test_mismatched_definitions_error(self, runner, tmp_path):
+        left = GeneratedReadout(def_seed=1, rec_seed=1)
+        right = GeneratedReadout(def_seed=2, rec_seed=1)
+        path_1 = tmp_path / "a.bktgz"
+        path_2 = tmp_path / "b.bktgz"
+        ArchiveAccessor(path_1).writer().write(left)
+        ArchiveAccessor(path_2).writer().write(right)
+        result = runner.invoke(cli, ["compare", "--a", str(path_1), "--b", str(path_2)])
+        assert result.exit_code != 0
+        assert "different covertree" in result.output

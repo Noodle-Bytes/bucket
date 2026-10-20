@@ -50,6 +50,26 @@ python -m bucket write -r archive:./run.bktgz console --points
 See [Exporting and merging coverage](export_and_merge.md) for the full `-r`
 readout syntax.
 
+To measure how much of record A's coverage record B also covers:
+
+```bash
+python -m bucket compare --a archive:./a.bktgz --b archive:./b.bktgz
+python -m bucket compare --a a.bktgz --b b.bktgz --metric hits
+python -m bucket compare --a a.bktgz --b b.bktgz --metric full
+```
+
+`--metric` defaults to `buckets`: of the buckets A hit at least once, the
+percentage B also hit. `hits` uses goal-capped total hits (B only counts up to
+the hits A already has on each bucket). `full` uses buckets that met their
+goal. Illegal, ignore, and waived buckets are excluded. Both records must share
+a covertree definition. `--a` and `--b` use the same readout spec as `-r`, and
+`-w` applies a waiver file to both before comparing.
+
+Stdout is one JSON object, for example
+`{"denominator": 40, "metric": "buckets", "numerator": 29, "percentage": 72.5}`.
+`percentage` is `100 * numerator / denominator`, or `0` when the denominator is
+`0`.
+
 ---
 
 ### Coverage report
