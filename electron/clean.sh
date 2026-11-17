@@ -29,13 +29,6 @@ else
     echo "✓ No dist/ directory found"
 fi
 
-# Remove any temporary HTML files in viewer/dist
-if [ -f "../viewer/dist/index-electron.html" ]; then
-    echo "Removing temporary HTML file..."
-    rm -f "../viewer/dist/index-electron.html"
-    echo "✓ Removed temporary HTML file"
-fi
-
 # Optionally remove node_modules if flag is set
 if [ "$REMOVE_NODE_MODULES" = true ]; then
     if [ -d "$SCRIPT_DIR/node_modules" ]; then
