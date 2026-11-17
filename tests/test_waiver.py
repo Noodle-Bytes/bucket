@@ -619,12 +619,14 @@ ACCESSORS = [
 ]
 
 
-def assert_waivers_roundtrip(away, back):
+def assert_stored_unwaived(unwaived, back):
+    """
+    Storage drops waivers, so a waived readout must read back exactly as the
+    same coverage with no waivers applied.
+    """
     assert list(back.iter_bucket_waivers()) == []
-    assert list(back.iter_point_hits()) == [
-        PointHitTuple(*ph[:5]) for ph in away.iter_point_hits()
-    ]
-    assert list(back.iter_bucket_hits()) == list(away.iter_bucket_hits())
+    assert list(back.iter_point_hits()) == list(unwaived.iter_point_hits())
+    assert list(back.iter_bucket_hits()) == list(unwaived.iter_bucket_hits())
     assert back.get_format_version() == FORMAT_VERSION
 
 
@@ -634,7 +636,7 @@ class TestRoundTrip:
         accessor = make_accessor(tmp_path)
         away = WaivedReadout(readout, waiver_file(RED_LARGE))
         ref = accessor.write(away)
-        assert_waivers_roundtrip(away, accessor.read(ref))
+        assert_stored_unwaived(readout, accessor.read(ref))
 
     def test_generated_readout_with_awkward_reasons(self, tmp_path, make_accessor):
         accessor = make_accessor(tmp_path)
@@ -648,7 +650,7 @@ class TestRoundTrip:
         )
         ref = accessor.write(away)
         back = accessor.read(ref)
-        assert_waivers_roundtrip(away, back)
+        assert_stored_unwaived(GeneratedReadout(def_seed=3, rec_seed=3), back)
 
     def test_multiple_records_keep_their_own_waivers(self, tmp_path, make_accessor):
         accessor = make_accessor(tmp_path)
@@ -659,7 +661,9 @@ class TestRoundTrip:
         assert list(accessor.read(refs[0]).iter_bucket_waivers()) == []
         assert list(accessor.read(refs[1]).iter_bucket_waivers()) == []
         assert list(accessor.read(refs[2]).iter_bucket_waivers()) == []
-        assert_waivers_roundtrip(waived, accessor.read(refs[1]))
+        assert_stored_unwaived(
+            GeneratedReadout(def_seed=4, rec_seed=5), accessor.read(refs[1])
+        )
 
     def test_serialized_layout_has_no_waiver_storage(
         self, tmp_path, make_accessor, readout
@@ -718,7 +722,7 @@ class TestLegacySQL:
             accessor, PointHitRow.__tablename__
         )
         assert not inspect(accessor.engine).has_table("bucket_waiver")
-        assert_waivers_roundtrip(away, accessor.read(ref))
+        assert_stored_unwaived(readout, accessor.read(ref))
 
     @pytest.mark.skipif(
         tuple(int(x) for x in sqlite3.sqlite_version.split(".")[:2]) < (3, 35),
@@ -753,7 +757,7 @@ class TestLegacySQL:
 
         # Subsequent writes continue to ignore legacy waiver storage.
         away = WaivedReadout(readout, waiver_file(RED_LARGE))
-        assert_waivers_roundtrip(away, accessor.read(accessor.write(away)))
+        assert_stored_unwaived(readout, accessor.read(accessor.write(away)))
         assert readouts_are_equal(readout, accessor.read(ref))
 
 
@@ -820,7 +824,7 @@ class TestMerge:
         assert list(merged.iter_bucket_waivers()) == []
         out = tmp_path / "merged.bktgz"
         ArchiveAccessor(out).write(merged)
-        assert_waivers_roundtrip(merged, next(ArchiveAccessor(out).read_all()))
+        assert_stored_unwaived(merged, next(ArchiveAccessor(out).read_all()))
 
 
 ###############################################################################

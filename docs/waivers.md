@@ -103,7 +103,8 @@ per-bucket table shows the waiver reason.
 
 The `write` group accepts `--waivers` / `-w` (repeatable). Waivers are applied
 in memory to every readout, after `--merge` if given. Console output reflects
-the waivers; archive, JSON, and SQL writers deliberately strip them:
+the waivers. Archive, JSON, SQL, HTML, and report output hold unwaived
+coverage, and the command prints a warning if `--waivers` is given with them:
 
 ```bash
 # Merge a regression, then waive, then print the summary

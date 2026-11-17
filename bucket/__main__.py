@@ -139,6 +139,15 @@ def _apply_waivers(readouts, waiver_paths: tuple[Path]):
         raise click.ClickException(f"Could not apply waivers: {exc}") from exc
 
 
+def _warn_waivers_not_stored(ctx, output_kind: str):
+    if ctx.obj.get("waiver_paths"):
+        click.echo(
+            f"Warning: {output_kind} output does not store waivers, so it holds "
+            "unwaived coverage. Keep the waiver file alongside it.",
+            err=True,
+        )
+
+
 def _one_readout(spec: str, label: str):
     readouts = list(get_readouts_from_spec(spec))
     if len(readouts) != 1:
@@ -194,6 +203,7 @@ def write(ctx, readout_specs: Iterable[str], merge: bool, waiver_paths: tuple[Pa
     readouts = _apply_waivers(readouts, waiver_paths)
 
     ctx.obj["readouts"] = readouts
+    ctx.obj["waiver_paths"] = waiver_paths
 
 
 @cli.command()
@@ -261,6 +271,7 @@ def compare(spec_a: str, spec_b: str, metric: str, waiver_paths: tuple[Path]):
     type=click.Path(path_type=Path),
 )
 def json(ctx, output: Path):
+    _warn_waivers_not_stored(ctx, "JSON")
     readouts = ctx.obj["readouts"]
     writer = JSONAccessor(output).writer()
 
@@ -278,6 +289,7 @@ def json(ctx, output: Path):
     type=click.Path(path_type=Path),
 )
 def archive(ctx, output: Path):
+    _warn_waivers_not_stored(ctx, "Archive")
     readouts = ctx.obj["readouts"]
     writer = ArchiveAccessor(output).writer()
 
@@ -295,6 +307,7 @@ def archive(ctx, output: Path):
     type=click.Path(path_type=Path),
 )
 def sql(ctx, output: Path):
+    _warn_waivers_not_stored(ctx, "SQL")
     readouts = ctx.obj["readouts"]
     writer = SQLAccessor.File(output).writer()
 
@@ -312,6 +325,7 @@ def sql(ctx, output: Path):
     type=click.Path(path_type=Path),
 )
 def html(ctx, output: Path):
+    _warn_waivers_not_stored(ctx, "HTML")
     readouts = ctx.obj["readouts"]
     web_path = ctx.obj["web_path"]
     try:
@@ -365,6 +379,7 @@ def report(
     tags: str | None,
     point: str | None,
 ):
+    _warn_waivers_not_stored(ctx, "Report")
     readouts = ctx.obj["readouts"]
     web_path = ctx.obj["web_path"]
     try:

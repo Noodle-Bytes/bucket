@@ -24,6 +24,7 @@ from .common import (
     Reader,
     Readout,
     Writer,
+    iter_unwaived_point_hits,
     point_tuple_from_row,
 )
 
@@ -205,7 +206,7 @@ class SQLWriter(Writer):
                 PointHitRow,
                 "run",
                 rec_ref,
-                readout.iter_point_hits(),
+                iter_unwaived_point_hits(readout),
             )
             bulk(BucketHitRow, "run", rec_ref, readout.iter_bucket_hits())
 

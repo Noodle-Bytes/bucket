@@ -352,6 +352,23 @@ def compute_point_hits(
         )
 
 
+def iter_unwaived_point_hits(readout: "Readout") -> Iterable[PointHitTuple]:
+    """
+    Point hits for every point of the readout, scored as if nothing were
+    waived. Storage formats carry no waiver data, so writers must store these:
+    waiver-adjusted hits would read back against the full, unwaived targets.
+    """
+    if next(iter(readout.iter_bucket_waivers()), None) is None:
+        yield from readout.iter_point_hits()
+        return
+    goal_targets = {goal.start: goal.target for goal in readout.iter_goals()}
+    yield from compute_point_hits(
+        readout.iter_points(),
+        [bucket_hit.hits for bucket_hit in readout.iter_bucket_hits()],
+        [goal_targets[bucket_goal.goal] for bucket_goal in readout.iter_bucket_goals()],
+    )
+
+
 def iter_waivers_in_range(
     waivers: Iterable[BucketWaiverTuple], start: int = 0, end: int | None = None
 ) -> Iterable[BucketWaiverTuple]:

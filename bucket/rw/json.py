@@ -21,6 +21,7 @@ from .common import (
     Readout,
     Writer,
     check_format_version,
+    iter_unwaived_point_hits,
     point_tuple_from_row,
 )
 
@@ -87,7 +88,7 @@ class JSONWriter(Writer):
                 # it describes how this record is laid out, not where the
                 # data came from.
                 "format_version": JSON_FORMAT_VERSION,
-                "point_hit": [list(it[:5]) for it in readout.iter_point_hits()],
+                "point_hit": [list(it[:5]) for it in iter_unwaived_point_hits(readout)],
                 "bucket_hit": [list(it) for it in readout.iter_bucket_hits()],
             }
 
