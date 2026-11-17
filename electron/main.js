@@ -3,9 +3,10 @@
  * Copyright (c) 2023-2026 Noodle-Bytes. All Rights Reserved
  */
 
-const { app, BrowserWindow, ipcMain, dialog, Menu, protocol, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, net, protocol, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 const fsp = fs.promises;
 const packageJson = require('./package.json');
 const windowStateKeeper = require('electron-window-state');
@@ -315,43 +316,119 @@ const distPath = app.isPackaged
   ? path.join(process.resourcesPath, 'viewer', 'dist')
   : path.join(__dirname, '../viewer/dist');
 
-// Register custom protocol to serve files from dist directory
-function setupProtocol() {
-  protocol.registerFileProtocol('app', (request, callback) => {
+// The viewer page is app://index-electron.html. Its host is the page's
+// origin, which scopes the viewer's stored session and preferences, so it
+// must not change even though no file of that name exists.
+const VIEWER_ENTRY = 'index-electron.html';
+
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self' app:",
+  "script-src 'self' app:",
+  // Ant Design injects its styles at runtime.
+  "style-src 'self' app: 'unsafe-inline'",
+  "img-src 'self' app: data: blob:",
+  "font-src 'self' app: data:",
+  // The archive parser is an inlined worker, started from a blob: or data: URL.
+  "worker-src 'self' app: blob: data:",
+  // The viewer's update check.
+  "connect-src 'self' app: https://api.github.com",
+  "object-src 'none'",
+  "form-action 'none'",
+].join('; ');
+
+let viewerHtmlPromise = null;
+
+/**
+ * The viewer's index.html, rewritten so its absolute asset paths load over
+ * app://. Built in memory: the app bundle can be read-only (AppImage, a
+ * translocated macOS app) or code-signed, so nothing may be written into it.
+ */
+function getViewerHtml() {
+  if (!viewerHtmlPromise) {
+    viewerHtmlPromise = fsp
+      .readFile(path.join(distPath, 'index.html'), 'utf8')
+      .then(html => {
+        let modifiedHtml = html;
+        if (!modifiedHtml.includes('<base')) {
+          modifiedHtml = modifiedHtml.replace('<head>', '<head>\n    <base href="app://">');
+        }
+        return modifiedHtml
+          .replace(/(href|src|action)="\//g, '$1="app://')
+          .replace(/(href|src|action)='\//g, "$1='app://")
+          .replace(/url\("\//g, 'url("app://')
+          .replace(/url\('\//g, "url('app://")
+          .replace(/url\(\/\//g, 'url(app://');
+      });
+    viewerHtmlPromise.catch(() => {
+      viewerHtmlPromise = null;
+    });
+  }
+  return viewerHtmlPromise;
+}
+
+function notFoundResponse() {
+  return new Response('Not found', { status: 404 });
+}
+
+/**
+ * Resolve an app:// request to a path inside the viewer build, or null if it
+ * falls outside it. Viewer asset URLs put their first path segment where the
+ * host goes (app://assets/index.js), so host and path are read as one path.
+ */
+function resolveViewerPath(requestUrl) {
+  let relativePath = requestUrl.slice('app://'.length).split(/[?#]/)[0];
+  try {
+    relativePath = decodeURIComponent(relativePath);
+  } catch {
+    return null;
+  }
+  relativePath = relativePath.replace(/^\/+|\/+$/g, '');
+  if (relativePath === '') {
+    relativePath = VIEWER_ENTRY;
+  }
+  const filePath = path.resolve(distPath, relativePath);
+  if (!filePath.startsWith(distPath + path.sep)) {
+    return null;
+  }
+  return filePath;
+}
+
+async function handleAppRequest(request) {
+  const filePath = resolveViewerPath(request.url);
+  if (filePath === null) {
+    return notFoundResponse();
+  }
+
+  if (filePath === path.join(distPath, VIEWER_ENTRY)) {
     try {
-      let url = request.url.replace('app://', '');
-
-      // Remove query string and hash if present
-      url = url.split('?')[0].split('#')[0];
-
-      // Normalise trailing slash, e.g. "index-electron.html/" -> "index-electron.html"
-      if (url.endsWith('/')) {
-        url = url.slice(0, -1);
-      }
-
-      // Handle root path
-      if (url === '' || url === '/') {
-        url = 'index-electron.html';
-      }
-
-      // Remove leading slash if present
-      if (url.startsWith('/')) {
-        url = url.substring(1);
-      }
-
-      const filePath = path.join(distPath, url);
-
-      // Pass path directly to Electron - it will handle file not found errors
-      // This avoids race conditions from checking existence separately
-      if (isDevelopment) {
-        console.log('Protocol: Serving file:', filePath);
-      }
-      callback({ path: filePath });
+      return new Response(await getViewerHtml(), {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Security-Policy': CONTENT_SECURITY_POLICY,
+        },
+      });
     } catch (error) {
-      console.error('Protocol error:', error);
-      callback({ error: -2 }); // FILE_NOT_FOUND
+      console.error('Protocol: failed to read viewer HTML:', error);
+      return notFoundResponse();
     }
-  });
+  }
+
+  const stats = await fsp.stat(filePath).catch(() => null);
+  if (!stats || !stats.isFile()) {
+    return notFoundResponse();
+  }
+  const response = await net.fetch(pathToFileURL(filePath).toString());
+  const headers = new Headers(response.headers);
+  headers.set('Content-Security-Policy', CONTENT_SECURITY_POLICY);
+  return new Response(response.body, { status: response.status, headers });
+}
+
+// Serve the viewer build over app://
+function setupProtocol() {
+  protocol.handle('app', request => handleAppRequest(request).catch(error => {
+    console.error('Protocol error:', error);
+    return notFoundResponse();
+  }));
 }
 
 /**
@@ -711,38 +788,15 @@ function loadDevelopmentViewer(window) {
  * @param {BrowserWindow} window - The window to load content into
  */
 async function loadProductionViewer(window) {
-  // In production, load the built React viewer
-  const htmlPath = path.join(distPath, 'index.html');
-
   try {
-    // Read file directly - handle errors if file doesn't exist
-    // This avoids race conditions from checking existence separately
-    const html = await fsp.readFile(htmlPath, 'utf8');
-
-    // Add base tag to set the base URL for relative paths
-    let modifiedHtml = html;
-    if (!modifiedHtml.includes('<base')) {
-      modifiedHtml = modifiedHtml.replace('<head>', '<head>\n    <base href="app://">');
-    }
-
-    // Replace all absolute paths (starting with /) with app:// protocol
-    modifiedHtml = modifiedHtml
-      .replace(/(href|src|action)="\//g, '$1="app://')
-      .replace(/(href|src|action)='\//g, "$1='app://")
-      .replace(/url\("\//g, 'url("app://')
-      .replace(/url\('\//g, "url('app://")
-      .replace(/url\(\/\//g, 'url(app://');
-
-    // Write modified HTML to dist directory and load via app:// protocol
-    const tempHtmlPath = path.join(distPath, 'index-electron.html');
-    await fsp.writeFile(tempHtmlPath, modifiedHtml, 'utf8');
-    window.loadURL('app://index-electron.html');
+    // Read up front so a missing build shows the error page below.
+    await getViewerHtml();
+    window.loadURL(`app://${VIEWER_ENTRY}`);
   } catch (err) {
     // Show error - this helps identify issues
     console.error('Failed to load viewer:', err.message);
     console.error('Stack:', err.stack);
     console.error('distPath:', distPath);
-    console.error('htmlPath:', htmlPath);
     // Load a simple error page
     const errorHtml = createErrorHtml(err.message);
     window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
