@@ -24,6 +24,7 @@ from .common import (
     Readout,
     Writer,
     check_format_version,
+    iter_unwaived_point_hits,
     iter_waivers_in_range,
     point_tuple_from_row,
 )
@@ -336,7 +337,7 @@ class ArchiveWriter(Writer):
                 work_path / POINT_HIT_PATH,
                 (
                     (ph.start, ph.depth, ph.hits, ph.hit_buckets, ph.full_buckets)
-                    for ph in readout.iter_point_hits()
+                    for ph in iter_unwaived_point_hits(readout)
                 ),
             )
 

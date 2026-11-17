@@ -205,11 +205,16 @@ class TestCli:
         assert "bucket_waiver" not in payload["tables"]
         assert "bucket_waiver" not in payload["records"][0]
         assert all(len(row) == 5 for row in payload["records"][0]["point_hit"])
-        # Waiver-adjusted core scores are written, but waiver metadata is not.
-        for point_hit in back.iter_point_hits():
-            assert point_hit.hits == 0
-            assert point_hit.waived_buckets == 0
-            assert point_hit.waived_target == 0
+        # The file holds no waiver data, so it must hold unwaived scores too:
+        # waived hits read back against full targets would understate coverage.
+        assert readouts_are_equal(readout_1, back)
+        assert "does not store waivers" in result.stderr
+
+    def test_write_without_waivers_does_not_warn(self, archives, tmp_path):
+        path_1, *_ = archives
+        result = self.run("write", "-r", path_1, "json", "-o", tmp_path / "out.json")
+        assert result.exit_code == 0, result.output
+        assert result.stderr == ""
 
     def test_write_with_waivers_applies_after_merge(self, waivable_archives, tmp_path):
         path_1, path_2, readout_1, _ = waivable_archives
@@ -248,14 +253,12 @@ class TestCli:
         second = write_waivers(
             tmp_path / "second.json", {"point": "*", "reason": "second file"}
         )
-        out = tmp_path / "waived.json"
         result = self.run(
-            "write", "-r", path_1, "-w", first, "-w", second, "json", "-o", out
+            "write", "-r", path_1, "-w", first, "-w", second, "console", "--points"
         )
         assert result.exit_code == 0, result.output
-        back = next(JSONAccessor(out).reader().read_all())
-        assert list(back.iter_bucket_waivers()) == []
-        assert all(point_hit.hits == 0 for point_hit in back.iter_point_hits())
+        assert "first file" in result.output
+        assert "second file" in result.output
 
     def test_waivers_with_unknown_axis_error_cleanly(self, waivable_archives, tmp_path):
         path_1, *_ = waivable_archives
